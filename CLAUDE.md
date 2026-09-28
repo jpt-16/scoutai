@@ -193,8 +193,9 @@ Card look (`ScoutCard.tsx`, PlayIQ-style):
   are circles with black letters (Q/F/H/X/Y/Z; the staff's own convention, kept over a generic
   X/T/QB/RB set).
 - **Lines:** routes are red, the ball carrier and fakes orange, blocks black. Every path is
-  straight segments with sharp breaks and `marker-end` arrows (ids from `useId`). Route labels
-  move to a clear spot when they'd land on a player.
+  straight segments with sharp breaks and `marker-end` arrows (ids from `useId`, drawn as a
+  narrow inset triangle rather than a full-height one). Route labels move to a clear spot when
+  they'd land on a player.
 - **Route angles:** true field angles (`YARD_X` across, `YARD_PX` up).
   - Slant: 5-yard stem, 45° inside.
   - Out: 10-yard stem, 90° to the sideline.
@@ -263,6 +264,8 @@ an optional short tag (e.g. `BANG`). These go in `card.routeOverrides` (keyed by
 `buildDiagram` applies them after the play call's routes, so "Auto" keeps the play call. A tag
 replaces the arrow label and appends to the table box. A play with only overrides draws as a
 pass (`hasCoachRoutes`) and is listed in 7v7 and Team. Choices live in `ROUTE_CHOICES`.
+Picking a route kind from the dropdown (including "Auto") clears any AI-detected `path` on that
+letter first — see the video-to-card section below for why.
 
 **Pencil drawing:** **Draw** (field view) turns the card into a drawing surface for Apple
 Pencil or a finger. There are four colors, plus **Undo** and **Clear** (tap twice). Strokes are
@@ -301,6 +304,35 @@ sustained GPU access and a long-running process, which Vercel's serverless funct
 provide). It's meant to be deployed separately, to its own GPU-capable host. See
 `video-service/README.md` for setup, licensing notes (RT-DETRv2 via `transformers`, ByteTrack via
 `supervision` — deliberately not the AGPL-licensed `ultralytics` package), and the API contract.
+
+## Video-to-card via a hosted vision model (`/api/parse-video`)
+
+A second, serverless-friendly path to the same goal as `video-service/` above, and the one
+that's actually wired into the app: **Upload game film (beta)** on the landing page uploads a
+clip straight to Vercel Blob (`/api/blob-upload` authorizes the client upload), then
+`/api/parse-video` sends its URL to Gemini 2.5 Flash (`@google/genai`, structured JSON output)
+to detect each skill player's route. Needs a `GEMINI_API_KEY` env var (Vercel project settings +
+`.env.local`).
+
+This is **not a calibrated top-down transform** — there's no homography or clicked calibration
+points here, unlike `video-service/`. It's the vision model's own spatial guess from an oblique
+camera angle, linearly stretched onto the card's field canvas by `src/lib/coordinateMapper.ts`
+(which also simplifies the model's noisy waypoints down to the app's usual straight-stem-with-
+sharp-break shape, `RDP`-style, instead of a literal curve). Treat it as a rough starting point,
+not a measurement.
+
+`src/lib/videoImport.ts`'s `buildCardFromDetection` turns a validated detection into a real
+`HudlPlayCard`: the formation is drawn in its normal, canonical shape (via `classifyFormation`,
+same as a CSV row) — only each letter's route is video-derived, stored as a `routeOverrides`
+entry with `source: "video"` and a raw `path` (waypoint deltas from the player's own position;
+see `RouteOverride.path` in `hudlParser.ts`). This reuses the exact override mechanism
+`EditPlayDialog`'s route picker already writes to, so a video-derived card flows through Print
+Grid, filters, swipe, and storage like any other card, with no separate rendering path.
+
+On the card itself, a route with `source: "video"` gets draggable circle handles at each break
+point (`ScoutCard`'s `onEditDetectedRoute` prop) — the same pointer-capture/`svgPoint` drag
+pattern as moving a Scout D defender or the Pencil overlay — so a coach corrects the AI's guess
+by dragging, which is the whole point given the mapping above is approximate.
 
 ## Conventions
 
