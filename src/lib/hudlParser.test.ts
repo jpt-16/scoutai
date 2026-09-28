@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEMO_CSV } from "./demoScript";
+import { MOCK_HUDL_CSV } from "./demoScript";
 import { buildDiagram } from "./formations";
 import {
   classifyConcept,
@@ -8,6 +8,7 @@ import {
   mapColumns,
   parseHash,
   parseHudlCsvText,
+  parseYardLine,
 } from "./hudlParser";
 
 describe("mapColumns", () => {
@@ -55,27 +56,38 @@ describe("mapColumns", () => {
 
 describe("parseHudlCsvText", () => {
   it("parses the demo script into five cards", () => {
-    const result = parseHudlCsvText(DEMO_CSV);
+    const result = parseHudlCsvText(MOCK_HUDL_CSV);
     expect(result.cards).toHaveLength(5);
     expect(result.missingColumns).toEqual([]);
+    expect(result.warnings).toEqual([]);
 
-    const third = result.cards[2];
-    expect(third).toMatchObject({
-      playNumber: 3,
-      down: 3,
-      distance: 6,
-      downDistance: "3rd & 6",
-      hash: "R",
-      yardLine: -39,
-      formation: "PRO RT",
-      formationKey: "pro",
+    expect(result.cards.map((c) => [c.formationKey, c.concept, c.frontKey])).toEqual([
+      ["spread", "inside-zone", "4-3"],
+      ["trips", "slant", "3-4"],
+      ["i-form", "power", "5-2"],
+      ["double-eagle", "sweep", "4-3"],
+      ["pro", "boot", "unknown"], // "Cover 3" is a coverage, not a front
+    ]);
+
+    expect(result.cards[1]).toMatchObject({
+      playNumber: 2,
+      down: 2,
+      distance: 4,
+      downDistance: "2nd & 4",
+      hash: "L",
+      yardLine: 39,
+      yardLineLabel: "Opp 39",
+      formation: "Trips Right",
       formationSide: "right",
-      concept: "slant",
-      frontKey: "4-3",
+      playDirection: "right",
     });
+    expect(result.cards[4].raw.RESULT).toBe("Touchdown");
+  });
 
-    const last = result.cards[4];
-    expect(last).toMatchObject({
+  it("mirrors left-handed formations and reads Bear", () => {
+    const csv = "PLAY #,DN,DIST,HASH,YARD LN,OFF FORM,OFF PLAY,DEF FRONT\n5,3,2,R,+12,DOUBLE EAGLE LT,SWEEP LT,BEAR\n";
+    expect(parseHudlCsvText(csv).cards[0]).toMatchObject({
+      yardLine: 12,
       formationKey: "double-eagle",
       formationSide: "left",
       playDirection: "left",
@@ -170,11 +182,25 @@ describe("classifiers", () => {
   ])("hash %s → %s", (text, hash) => {
     expect(parseHash(text)).toBe(hash);
   });
+
+  it.each([
+    ["Opp 45", 45],
+    ["OPP8", 8],
+    ["+20", 20],
+    ["Own 35", -35],
+    ["-35", -35],
+    ["50", 50],
+    ["Mid", 50],
+    ["", null],
+    ["Opp 60", null],
+  ])("yard line %s → %s", (text, yardLine) => {
+    expect(parseYardLine(text)).toBe(yardLine);
+  });
 });
 
 describe("buildDiagram", () => {
   it("places 11 on offense and 11 on defense for every demo play", () => {
-    for (const card of parseHudlCsvText(DEMO_CSV).cards) {
+    for (const card of parseHudlCsvText(MOCK_HUDL_CSV).cards) {
       const diagram = buildDiagram(card);
       expect(diagram.offense.length + 1).toBe(11);
       expect(diagram.defense).toHaveLength(11);

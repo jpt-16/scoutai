@@ -17,7 +17,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { DEMO_CSV, DEMO_FILE_NAME } from "@/lib/demoScript";
+import { MOCK_HUDL_CSV, DEMO_FILE_NAME } from "@/lib/demoScript";
 import { parseHudlCsv, parseHudlCsvText, type HudlField, type HudlParseResult } from "@/lib/hudlParser";
 import { saveScript } from "@/lib/scriptStore";
 
@@ -75,7 +75,7 @@ export default function UploadPage() {
   };
 
   const handleDemo = () => {
-    saveScript(DEMO_FILE_NAME, parseHudlCsvText(DEMO_CSV));
+    saveScript(DEMO_FILE_NAME, parseHudlCsvText(MOCK_HUDL_CSV));
     router.push("/script");
   };
 

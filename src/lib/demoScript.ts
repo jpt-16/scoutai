@@ -4,10 +4,9 @@
  */
 export const DEMO_FILE_NAME = "demo-script.csv";
 
-export const DEMO_CSV = `PLAY #,ODK,DN,DIST,HASH,YARD LN,OFF FORM,OFF PLAY,PLAY TYPE,DEF FRONT
-1,O,1,10,L,-35,SPREAD,IZ RT,Run,4-3 OVER
-2,O,2,7,M,-38,TRIPS RT,BUBBLE RT,Pass,3-4
-3,O,3,6,R,-39,PRO RT,SLANT RT,Pass,4-3
-4,O,1,10,L,45,I-FORM RT,POWER RT,Run,5-2
-5,O,3,2,R,12,DOUBLE EAGLE LT,SWEEP LT,Run,BEAR
-`;
+export const MOCK_HUDL_CSV = `PLAY #,ODK,DN,DIST,YARD LN,HASH,OFF FORM,OFF PLAY,DEF FRONT,RESULT
+1,O,1,10,Opp 45,L,Spread,Inside Zone,4-3,Gain 6
+2,O,2,4,Opp 39,L,Trips Right,Quick Slant,3-4,Gain 12
+3,O,1,10,Opp 27,M,I-Form,Power Right,5-2,Gain 4
+4,O,2,6,Opp 23,R,Double Eagle,Jet Sweep,4-3,Gain 15
+5,O,1,10,Opp 8,R,Pro Set,PA TE Leak,Cover 3,Touchdown`;

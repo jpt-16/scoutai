@@ -191,12 +191,18 @@ export function parseHash(value: string): Hash | null {
   return null;
 }
 
+/**
+ * Hudl yard lines are signed from the offense's view: "-35" / "Own 35" is the
+ * offense's own 35, "+20" / "Opp 20" is the opponent's 20. "50" / "Mid" is midfield.
+ */
 export function parseYardLine(value: string): number | null {
-  const match = value.trim().match(/^([+-]?)\s*(\d{1,2})/);
+  const v = value.trim().toUpperCase();
+  if (/^(MID|MIDFIELD)$/.test(v)) return 50;
+  const match = v.match(/^(OPP|OWN|O|[+-])?\s*(\d{1,2})$/);
   if (!match) return null;
   const n = Number(match[2]);
   if (n > 50) return null;
-  return match[1] === "-" ? -n : n;
+  return match[1] === "-" || match[1] === "OWN" ? -n : n;
 }
 
 /** Word-boundary keyword test that treats hyphens and slashes as separators. */

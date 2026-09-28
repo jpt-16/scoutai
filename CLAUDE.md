@@ -49,7 +49,7 @@ src/
   lib/
     hudlParser.ts          CSV → HudlPlayCard[] (column mapping + normalization + classifiers)
     formations.ts          Coordinate dictionaries + buildDiagram() (players, routes)
-    demoScript.ts          5-play sample CSV used by the "Demo Script" button
+    demoScript.ts          MOCK_HUDL_CSV: 5-play sample used by the "Demo Script" button
     scriptStore.ts         Persists the loaded script in localStorage (offline on the field)
     hudlParser.test.ts     Vitest suite
 ```
@@ -73,7 +73,7 @@ then matched against `COLUMN_ALIASES` in priority order:
 | Play #      | `PLAY #`, `PLAY#`, `PLAY NO`, `PLAY NUMBER`, `PLAY` → else row index |
 | Down        | `DN`, `DOWN`                                                        |
 | Distance    | `DIST`, `DISTANCE`, `YDS TO GO`, `TO GO` (`G` = goal to go)         |
-| Yard line   | `YARD LN`, `YARD LINE`, `YARDLINE`, `YD LN`, `BALL ON`, `FIELD POS` |
+| Yard line   | `YARD LN`, `YARD LINE`, `YARDLINE`, `YD LN`, `BALL ON`, `FIELD POS`; values `Opp 45`/`+45`, `Own 35`/`-35`, `50`/`Mid` |
 | Hash        | `HASH`, `HASH MARK(S)`; values `L`/`R`/`M` (also Left, Rt, Mid…)    |
 | Formation   | `OFF FORM`, `OFF FORMATION`, `FORMATION`, `OFF FORM NAME`           |
 | Play call   | `OFF PLAY`, `PLAY CALL`, `OFF PLAY CALL`, then `PLAY TYPE`          |

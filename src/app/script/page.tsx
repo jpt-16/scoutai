@@ -10,7 +10,7 @@ import { PrintGrid } from "@/components/PrintGrid";
 import { ScoutCard, SCOUT_CARD_ASPECT } from "@/components/ScoutCard";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { DEMO_CSV, DEMO_FILE_NAME } from "@/lib/demoScript";
+import { MOCK_HUDL_CSV, DEMO_FILE_NAME } from "@/lib/demoScript";
 import { FORMATION_LABELS } from "@/lib/formations";
 import { parseHudlCsvText, type FormationKey, type HudlPlayCard } from "@/lib/hudlParser";
 import { loadScript, saveScript, type StoredScript } from "@/lib/scriptStore";
@@ -102,7 +102,7 @@ export default function ScriptPage() {
   };
 
   const loadDemo = () => {
-    setScript(saveScript(DEMO_FILE_NAME, parseHudlCsvText(DEMO_CSV)));
+    setScript(saveScript(DEMO_FILE_NAME, parseHudlCsvText(MOCK_HUDL_CSV)));
     setIndex(0);
   };
 
