@@ -95,7 +95,21 @@ export const FORMATIONS: Record<Exclude<FormationKey, "unknown">, FormationShape
       { label: "Z", role: "WR", at: [338, 166] },
     ],
   },
+  // Pro: QB under center, F behind him, H behind the F.
   pro: {
+    qb: [250, 166],
+    backs: [
+      { label: "F", role: "FB", at: [250, 198] },
+      { label: "H", role: "RB", at: [250, 230] },
+    ],
+    skill: [
+      { label: "X", role: "WR", at: [40, 150] },
+      { label: "Y", role: "TE", at: [316, 150] },
+      { label: "Z", role: "WR", at: [444, 160] },
+    ],
+  },
+  // Split Pro (only when the formation says SPLIT): backs side by side.
+  "split-pro": {
     qb: [250, 166],
     backs: [
       { label: "F", role: "FB", at: [222, 206] },
@@ -115,6 +129,7 @@ export const FORMATION_LABELS: Record<FormationKey, string> = {
   "i-form": "I-Form",
   "double-eagle": "Double Eagle",
   pro: "Pro",
+  "split-pro": "Split Pro",
   unknown: "Other",
 };
 

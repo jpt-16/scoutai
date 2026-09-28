@@ -33,6 +33,7 @@ const FORMATION_ORDER: FormationKey[] = [
   "trips",
   "i-form",
   "pro",
+  "split-pro",
   "double-eagle",
   "unknown",
 ];

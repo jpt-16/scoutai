@@ -159,6 +159,8 @@ Free-text tags are classified by keyword (`classifyFormation`, `classifyFront`,
 
   A blank play call with `PLAY DIR` = `N` counts as a pass (`inferConcept`).
 - Positions: linemen are unlabeled, and skill players are **Q, F, H, X, Y, Z** only.
+- Formations: Spread, Trips, I-Form, Double Eagle, **Pro** (Q under center, F behind him, H behind
+  the F) and **Split Pro** (backs side by side, used only when the tag says SPLIT).
 
 Coordinates:
 

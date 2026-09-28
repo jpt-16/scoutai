@@ -13,6 +13,7 @@ export type FormationKey =
   | "i-form"
   | "double-eagle"
   | "pro"
+  | "split-pro"
   | "unknown";
 
 export type FrontKey = "4-3" | "3-4" | "5-2" | "bear" | "unknown";
@@ -291,7 +292,11 @@ export function classifyFormation(formation: string): FormationKey {
   if (has(formation, /\s(DOUBLE|DBL|DBLE)\s*EAGLE\s|\sEAGLE\s/)) return "double-eagle";
   if (has(formation, /\s(TRIPS|TREY|TRIO|TRIPLE|BUNCH)\s/)) return "trips";
   if (has(formation, /\s(I|IFORM|I FORM|POWER I|TIGHT I|SLOT I|MAX I)\s/)) return "i-form";
-  if (has(formation, /\s(PRO|SPLIT|SPLIT BACK|SPLITBACK|WEAK|STRONG|TWINS)\s/)) return "pro";
+  // Pro is I-backs (F behind Q, H behind F); split backs only when the tag says so.
+  if (has(formation, /\s(SPLIT|SPLITS|SPLIT BACK|SPLIT BACKS|SPLITBACK|SPLITBACKS|SPLIT PRO|PRO SPLIT)\s/)) {
+    return "split-pro";
+  }
+  if (has(formation, /\s(PRO|WEAK|STRONG|TWINS)\s/)) return "pro";
   if (has(formation, /\s(SPREAD|DOUBLES|DBLS|2X2|GUN|SHOTGUN|ACE|ACES|DEUCE|DEUCES|DUCES|EMPTY|DOUBLE)\s/)) return "spread";
   return "unknown";
 }

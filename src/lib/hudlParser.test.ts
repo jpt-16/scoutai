@@ -424,7 +424,10 @@ describe("classifiers", () => {
     ["Power I Rt", "i-form"],
     ["DBL EAGLE", "double-eagle"],
     ["PRO LT", "pro"],
-    ["Split Back", "pro"],
+    ["Split Back", "split-pro"],
+    ["PRO SPLIT", "split-pro"],
+    ["Split Pro Rt", "split-pro"],
+    ["PRO", "pro"],
     ["2x2", "spread"],
     ["DOUBLES GUN", "spread"],
     ["WILDCAT", "unknown"],
@@ -498,7 +501,7 @@ describe("buildDiagram (offense only)", () => {
   const labels = (d: ReturnType<typeof buildDiagram>) => d.players.map((p) => p.label).filter(Boolean).sort();
 
   it("draws 11 on offense, linemen unlabeled, skill players Q F H X Y Z", () => {
-    for (const key of ["spread", "trips", "i-form", "double-eagle", "pro"] as const) {
+    for (const key of ["spread", "trips", "i-form", "double-eagle", "pro", "split-pro"] as const) {
       const d = buildDiagram(card(key, "IZ"));
       expect(d.players).toHaveLength(11);
       expect(d.players.filter((p) => p.role === "OL" && p.label === "")).toHaveLength(5);
@@ -587,6 +590,21 @@ describe("buildDiagram (offense only)", () => {
     expect(d.targetBlocks.map((t) => t.target)).toEqual(["C"]);
   });
 
+  it("Pro stacks F behind Q and H behind F; Split Pro sets them side by side", () => {
+    const backs = (key: FormationKey) =>
+      buildDiagram(card(key, ""))
+        .players.filter((p) => p.label === "F" || p.label === "H")
+        .map((p) => [p.label, p.x, p.y]);
+    expect(backs("pro")).toEqual([
+      ["F", 250, 198],
+      ["H", 250, 230],
+    ]);
+    expect(backs("split-pro")).toEqual([
+      ["F", 222, 206],
+      ["H", 278, 206],
+    ]);
+  });
+
   it("7v7 drops the offensive line and its blocks", () => {
     const d = buildDiagram(card("trips", "RPO BUBBLE"), "7v7");
     expect(d.players.some((p) => p.role === "OL")).toBe(false);
@@ -628,7 +646,7 @@ describe("buildDiagram (offense only)", () => {
     });
 
     it("never stacks two defenders on the same spot", () => {
-      for (const key of ["spread", "trips", "i-form", "double-eagle", "pro"] as const) {
+      for (const key of ["spread", "trips", "i-form", "double-eagle", "pro", "split-pro"] as const) {
         for (const front of ["4-3", "3-4", "5-2", "BEAR"]) {
           for (const dir of ["left", "right"] as const) {
             const { defense } = buildDiagram(withFront(key, front, dir), "team", "defense");
