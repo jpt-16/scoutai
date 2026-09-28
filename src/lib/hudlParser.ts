@@ -343,21 +343,111 @@ export function rowToCard(
   };
 }
 
-/** Parses Hudl breakdown CSV text synchronously. */
-export function parseHudlCsvText(text: string): HudlParseResult {
-  const { body, skippedLines } = locateHeaderRow(text);
-  const parsed = Papa.parse<CsvRow>(body, {
+/**
+ * Normalizes characters that Excel, Google Sheets, and copy-paste from texts or
+ * email put into hand-edited files:
+ * - curly double quotes (“ ” „ ‟ ″) become straight `"`
+ * - curly single quotes (‘ ’ ‚ ‛ ′) become straight `'`
+ * - zero-width and non-breaking spaces become normal spaces
+ * Straightening quotes can leave a cell like `"Hot" Slant` with unbalanced
+ * quoting, so `parseHudlCsvText` follows up with `repairCsvLine` when needed.
+ */
+export function cleanCsvText(rawText: string): string {
+  return rawText
+    .replace(/[“”„‟″]/g, '"')
+    .replace(/[‘’‚‛′]/g, "'")
+    .replace(/[​‌‍⁠   ]/g, " ");
+}
+
+function quoteField(field: string, delimiter: string): string {
+  return /["\r\n]/.test(field) || field.includes(delimiter)
+    ? `"${field.replace(/"/g, '""')}"`
+    : field;
+}
+
+/**
+ * Re-quotes one CSV line leniently, then writes it back as valid CSV:
+ * - A cell that starts with `"` ends at the first `"` that is followed by the
+ *   delimiter or the end of the line. Quotes inside it are kept literally, so
+ *   `"Slant "Hot" Rt"` reads as `Slant "Hot" Rt`.
+ * - If no such closing quote exists (`"Hot" Slant Rt`), the opening quote was
+ *   just text: the cell runs to the next delimiter like an unquoted one.
+ * Works on single lines, so it's only used on files that failed to parse,
+ * where a multi-line quoted cell is already lost anyway.
+ */
+export function repairCsvLine(line: string, delimiter: string): string {
+  const fields: string[] = [];
+  let i = 0;
+  for (;;) {
+    if (line[i] === '"') {
+      let close = -1;
+      for (let j = i + 1; j < line.length; j++) {
+        if (line[j] !== '"') continue;
+        if (line[j + 1] === '"') {
+          j++; // escaped "" inside the cell
+          continue;
+        }
+        if (j + 1 === line.length || line.startsWith(delimiter, j + 1)) {
+          close = j;
+          break;
+        }
+      }
+      if (close !== -1) {
+        fields.push(line.slice(i + 1, close).replace(/""/g, '"'));
+        if (close + 1 === line.length) break;
+        i = close + 1 + delimiter.length;
+        continue;
+      }
+    }
+    const next = line.indexOf(delimiter, i);
+    fields.push(line.slice(i, next === -1 ? line.length : next));
+    if (next === -1) break;
+    i = next + delimiter.length;
+  }
+  return fields.map((f) => quoteField(f, delimiter)).join(delimiter);
+}
+
+function parseCsvBody(body: string) {
+  return Papa.parse<CsvRow>(body, {
     header: true,
     // Auto-detect comma, tab, semicolon, or pipe (European Excel saves with ";").
     delimiter: "",
+    quoteChar: '"',
+    escapeChar: '"',
     skipEmptyLines: "greedy",
     // Numeric cells become numbers; `cell()` turns everything back into trimmed text.
     dynamicTyping: true,
-    // Trims header keys ("  OFF FORM ", "OFF  PLAY"), strips a BOM, normalizes case.
+    // Trims and uppercases header keys ("  off form " → "OFF FORM"), and also strips a
+    // BOM and collapses inner whitespace/dots/underscores.
     transformHeader: normalizeHeader,
     // Trims spaces around commas before dynamicTyping sees the value.
     transform: (value) => value.trim(),
   });
+}
+
+/** Parses Hudl breakdown CSV text synchronously. */
+export function parseHudlCsvText(text: string): HudlParseResult {
+  const { body, skippedLines } = locateHeaderRow(cleanCsvText(text));
+  let parsed = parseCsvBody(body);
+  let repairedQuotes = false;
+
+  // Stray or unbalanced quotes: PapaParse either warns (and keeps the row) or,
+  // worse, swallows the rest of the file into one cell. Re-quote each line
+  // leniently and parse again; keep whichever result has fewer quote errors.
+  const quoteErrors = (p: typeof parsed) => p.errors.filter((e) => e.type === "Quotes").length;
+  if (quoteErrors(parsed) > 0) {
+    const delimiter = parsed.meta.delimiter || ",";
+    const repaired = parseCsvBody(
+      body
+        .split(/\r\n|\n|\r/)
+        .map((line) => repairCsvLine(line, delimiter))
+        .join("\n"),
+    );
+    if (quoteErrors(repaired) < quoteErrors(parsed)) {
+      parsed = repaired;
+      repairedQuotes = true;
+    }
+  }
 
   const headers = parsed.meta.fields ?? [];
   const columns = mapColumns(headers);
@@ -366,6 +456,9 @@ export function parseHudlCsvText(text: string): HudlParseResult {
     warnings.push(
       `Skipped ${skippedLines} line${skippedLines === 1 ? "" : "s"} above the header row (title or notes).`,
     );
+  }
+  if (repairedQuotes) {
+    warnings.push("Fixed stray quote marks in the file. Double-check play names that use quotes.");
   }
 
   for (const error of parsed.errors.slice(0, 5)) {
@@ -384,11 +477,20 @@ export function parseHudlCsvText(text: string): HudlParseResult {
     );
   }
 
+  // PapaParse errors above are warnings only: every row it returned is still
+  // read, and a row that can't be turned into a card is skipped, not fatal.
   const cards: HudlPlayCard[] = [];
   let skipped = 0;
+  let unreadable = 0;
   parsed.data.forEach((row, rowIndex) => {
+    let card: HudlPlayCard;
+    try {
+      card = rowToCard(row, rowIndex, columns);
+    } catch {
+      unreadable += 1;
+      return;
+    }
     const odk = cell(row, columns.odk).toUpperCase();
-    const card = rowToCard(row, rowIndex, columns);
     const hasPlayData = Boolean(card.formation || card.playCall || card.defFront);
     if (odk === "K" || !hasPlayData) {
       skipped += 1;
@@ -396,6 +498,10 @@ export function parseHudlCsvText(text: string): HudlParseResult {
     }
     cards.push(card);
   });
+
+  if (unreadable > 0) {
+    warnings.push(`Couldn't read ${unreadable} row${unreadable === 1 ? "" : "s"}; the rest loaded normally.`);
+  }
 
   if (skipped > 0) {
     warnings.push(

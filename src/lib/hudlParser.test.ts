@@ -5,10 +5,12 @@ import {
   classifyConcept,
   classifyFormation,
   classifyFront,
+  cleanCsvText,
   mapColumns,
   parseHash,
   parseHudlCsvText,
   parseYardLine,
+  repairCsvLine,
 } from "./hudlParser";
 
 describe("mapColumns", () => {
@@ -161,6 +163,52 @@ describe("parseHudlCsvText", () => {
       const result = expectOneCard(`${header}\n${row}\n`);
       expect(result.cards[0].raw.DN).toBe("3");
       expect(result.cards[0].raw["YARD LN"]).toBe("Opp 45");
+    });
+  });
+
+  describe("quotes and invisible characters", () => {
+    const header = "PLAY #,DN,DIST,OFF FORM,OFF PLAY,DEF FRONT";
+    const second = "2,1,10,Spread,IZ,4-3";
+    const plays = (csv: string) => parseHudlCsvText(csv).cards.map((c) => [c.playCall, c.defFront]);
+
+    it("cleanCsvText straightens curly quotes and normalizes odd spaces", () => {
+      expect(cleanCsvText("\u201CHot\u201D \u2018Rt\u2019\u00A0x\u200By")).toBe(`"Hot" 'Rt' x y`);
+    });
+
+    it("keeps a curly-quoted play name without swallowing the rest of the file", () => {
+      // Straightened, this becomes "Hot" Slant Rt: an unbalanced quoted cell.
+      expect(plays(`${header}\n1,3,6,Trips Rt,\u201CHot\u201D Slant Rt,4-3\n${second}\n`)).toEqual([
+        ['"Hot" Slant Rt', "4-3"],
+        ["IZ", "4-3"],
+      ]);
+    });
+
+    it("reads unescaped quotes inside a quoted cell (Trailing quote malformed)", () => {
+      const result = parseHudlCsvText(`${header}\n1,3,6,Trips Rt,"Slant "Hot" Rt",4-3\n${second}\n`);
+      expect(result.cards.map((c) => c.playCall)).toEqual(['Slant "Hot" Rt', "IZ"]);
+      expect(result.warnings.some((w) => /malformed|quote/i.test(w))).toBe(true);
+    });
+
+    it("keeps commas inside a curly-quoted cell in one column", () => {
+      expect(plays(`${header}\n1,3,6,Trips Rt,\u201CSlant, Hot\u201D,4-3\n${second}\n`)).toEqual([
+        ["Slant, Hot", "4-3"],
+        ["IZ", "4-3"],
+      ]);
+    });
+
+    it("keeps reading valid rows around a broken one", () => {
+      const csv = `${header}\n1,3,6,Trips Rt,"Hot" Slant Rt,4-3\n${second}\n3,2,5,Pro,Power,5-2\n`;
+      expect(parseHudlCsvText(csv).cards.map((c) => c.playNumber)).toEqual([1, 2, 3]);
+    });
+
+    it.each([
+      ['a,"Slant "Hot" Rt",b', 'a,"Slant ""Hot"" Rt",b'],
+      ['a,"Hot" Slant,b', 'a,"""Hot"" Slant",b'],
+      ['a,"x, y",b', 'a,"x, y",b'],
+      ['a,"""Hot"" Rt",', 'a,"""Hot"" Rt",'],
+      ["a;\"q\" r;b", 'a;"""q"" r";b'],
+    ])("repairCsvLine %s", (line, fixed) => {
+      expect(repairCsvLine(line, line.includes(";") ? ";" : ",")).toBe(fixed);
     });
   });
 

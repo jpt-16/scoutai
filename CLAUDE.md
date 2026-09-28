@@ -86,6 +86,13 @@ The parser also handles hand-edited files. It auto-detects the delimiter (comma,
 skips title or `sep=,` lines above the header. Without that step, PapaParse reads the title
 as a 1-column header and reports "Too many fields" on every row.
 
+Quotes: `cleanCsvText` straightens curly quotes and turns zero-width/non-breaking spaces into
+normal spaces before parsing. Straightened quotes can unbalance a cell (`"Hot" Slant Rt`),
+which makes PapaParse swallow the rest of the file. So when PapaParse reports quote
+errors, each line is re-quoted leniently with `repairCsvLine` and parsed again.
+(`relaxUnescapedQuotes` belongs to `csv-parse`, not PapaParse.) Parse errors are warnings:
+valid rows always load.
+
 Rows with no formation, play call, **and** front are dropped as special teams/blank rows,
 and the result carries a warning when that happens.
 
