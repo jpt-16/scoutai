@@ -94,9 +94,33 @@ export interface HudlPlayCard {
   defenseOverrides?: Record<string, { x: number; y: number }>;
   /** A coach's own text for assignment-table boxes, by key ("PST", "Y", "FRONT"). */
   assignmentNotes?: Record<string, string>;
+  /**
+   * A coach's route for a letter ("X", "F"), overriding the play call: a route
+   * kind ("fade", "wheel"), "stalk", "protect", or "none"; plus an optional tag
+   * written at the arrow tip ("HOT").
+   */
+  routeOverrides?: Record<string, RouteOverride>;
+  /** Pencil drawings on the card, per scout unit, in card (SVG) coordinates. */
+  drawings?: Partial<Record<"offense" | "defense", InkStroke[]>>;
 
   /** Every column of the original row, keyed by the normalized header. */
   raw: Record<string, string>;
+}
+
+/** A coach's route assignment for one letter (see `routeOverrides`). */
+export interface RouteOverride {
+  /** Route kind from the tree or off it ("slant", "wheel"), or "stalk" / "protect" / "none". */
+  route?: string;
+  /** Short tag at the arrow tip and in the table ("HOT", "SIGHT", "READ 1"). */
+  tag?: string;
+}
+
+/** One pencil stroke on a card. */
+export interface InkStroke {
+  color: string;
+  width: number;
+  /** [x, y] points in the card's SVG coordinates (viewBox 500 × 300). */
+  points: [number, number][];
 }
 
 /** The logical fields the parser maps Hudl columns onto. */
@@ -561,7 +585,15 @@ export function deriveCard(base: PlaySource): HudlPlayCard {
 export type CardEdits = Partial<
   Pick<
     HudlPlayCard,
-    "formation" | "offStrength" | "playCall" | "playDir" | "defFront" | "coverage" | "hash" | "notes"
+    | "formation"
+    | "offStrength"
+    | "playCall"
+    | "playDir"
+    | "defFront"
+    | "coverage"
+    | "hash"
+    | "notes"
+    | "routeOverrides"
   >
 >;
 

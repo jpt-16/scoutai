@@ -683,6 +683,37 @@ describe("buildDiagram (offense only)", () => {
     ]);
   });
 
+  it("a coach can change any letter's route and tag it", () => {
+    const base = card("spread", "81");
+    const d = buildDiagram({
+      ...base,
+      routeOverrides: { X: { route: "corner" }, F: { route: "wheel", tag: "HOT" }, H: { route: "none" } },
+    });
+    expect(routesBy(d)).toEqual({ X: "7", Y: "1", Z: "8", F: "HOT" });
+    expect(d.jobs).toMatchObject({ X: "7 Corner", H: "—", F: "Wheel · HOT" });
+    const rows = buildAssignments({ defFront: "", coverage: "", notes: "" }, d);
+    expect(rows.find((r) => r.key === "F")!.text).toBe("Wheel · HOT");
+  });
+
+  it("stalk and tag-only overrides", () => {
+    const d = buildDiagram({
+      ...card("spread", "SLANT"),
+      routeOverrides: { Z: { route: "stalk" }, X: { tag: "SIGHT" } },
+    });
+    expect(routesBy(d)).toEqual({ X: "SIGHT", H: "2", Y: "2" });
+    expect(d.jobs.Z).toBe("Stalk");
+    expect(d.jobs.X).toBe("2 Slant · SIGHT");
+  });
+
+  it("routes on an untagged play make it a pass, listed in Team", () => {
+    const untagged = card("trips", "");
+    expect(buildDiagram(untagged).kind).toBe("none");
+    const withRoutes = { ...untagged, routeOverrides: { Z: { route: "fade" } } };
+    expect(buildDiagram(withRoutes).kind).toBe("pass");
+    expect(inPeriod(withRoutes, "team", "offense")).toBe(true);
+    expect(inPeriod(untagged, "team", "offense")).toBe(false);
+  });
+
   it("RPO and play action draw the mesh fake plus routes", () => {
     const rpo = buildDiagram(card("trips", "RPO BUBBLE"));
     expect(rpo.fakes.length).toBeGreaterThan(0);

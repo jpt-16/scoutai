@@ -257,6 +257,19 @@ buttons. It can **Duplicate** or **Delete** the play. Edits go through `updateCa
 re-derives the card with `deriveCard` so it draws exactly like a Hudl row. They're saved to
 localStorage and marked "edited" in the play list, and coach notes show on the card.
 
+**Routes per letter:** the Edit play dialog's **Routes** section (Scout O) sets each of X, H, Y,
+Z and F to a route (tree 0–9, GO, WHEEL, BUBBLE, …), **Stalk**, **Protect** or **None**, and adds
+an optional short tag (e.g. `BANG`). These go in `card.routeOverrides` (keyed by letter).
+`buildDiagram` applies them after the play call's routes, so "Auto" keeps the play call. A tag
+replaces the arrow label and appends to the table box. A play with only overrides draws as a
+pass (`hasCoachRoutes`) and is listed in 7v7 and Team. Choices live in `ROUTE_CHOICES`.
+
+**Pencil drawing:** **Draw** (field view) turns the card into a drawing surface for Apple
+Pencil or a finger. There are four colors, plus **Undo** and **Clear** (tap twice). Strokes are
+stored in SVG viewBox coordinates in `card.drawings.offense` / `.defense`, so Scout O and
+Scout D each have their own layer. They print and survive reloads. Swiping and Adjust X's are
+off while drawing. `ScoutCard`'s `ink` prop enables the overlay.
+
 ## Offline / iPad install
 
 - Safari → Share → **Add to Home Screen**. The manifest launches `/script` standalone.

@@ -457,14 +457,33 @@ export type Period = "all" | "7v7" | "team";
  *   reps; Scout D lines up to any formation, so it gets every look too.
  */
 export function inPeriod(
-  card: Pick<HudlPlayCard, "playCall" | "concept" | "formation" | "defFront">,
+  card: Pick<HudlPlayCard, "playCall" | "concept" | "formation" | "defFront" | "routeOverrides">,
   period: Period,
   unit: ScoutUnit,
 ): boolean {
   if (period === "all") return true;
   if (unit === "defense") return Boolean(card.formation || card.defFront);
   if (period === "7v7") return isPassPlay(card) || playKind(card) === "none";
-  return playKind(card) !== "none";
+  // Routes a coach assigned by hand make an untagged play a real pass.
+  return playKind(card) !== "none" || hasCoachRoutes(card);
+}
+
+/** Route choices a coach can give a letter (Edit play): the tree, then the rest. */
+export const ROUTE_CHOICES: { value: string; label: string }[] = [
+  ...ROUTE_TREE.map((kind) => ({ value: kind, label: routeText(kind) })),
+  ...(["go", "hitch", "dig", "wheel", "flat", "swing", "bubble", "leak"] as RouteKind[]).map(
+    (kind) => ({ value: kind, label: routeText(kind) }),
+  ),
+  { value: "stalk", label: "Stalk block" },
+  { value: "protect", label: "Pass pro" },
+  { value: "none", label: "No route" },
+];
+
+/** True when a coach gave any letter an actual route. */
+export function hasCoachRoutes(card: Pick<HudlPlayCard, "routeOverrides">): boolean {
+  return Object.values(card.routeOverrides ?? {}).some(
+    (o) => o.route && o.route !== "none" && o.route !== "stalk" && o.route !== "protect",
+  );
 }
 
 /** Blocking scheme from play-call keywords ("G ISO" → power, "QB LEAD DRAW" → draw). */
@@ -891,6 +910,7 @@ export function buildDiagram(
     | "frontKey"
     | "defenseOverrides"
     | "yardLine"
+    | "routeOverrides"
   >,
   mode: DiagramMode = "team",
   unit: ScoutUnit = "offense",
@@ -900,7 +920,9 @@ export function buildDiagram(
     FORMATIONS[formationFallback ? "spread" : (card.formationKey as keyof typeof FORMATIONS)];
   const side = card.formationSide;
   const d = card.playDirection === "right" ? 1 : -1;
-  const kind = playKind(card);
+  // Routes a coach assigned by hand make an untagged play a pass.
+  let kind = playKind(card);
+  if (kind === "none" && unit === "offense" && hasCoachRoutes(card)) kind = "pass";
 
   const line = OFFENSIVE_LINE.map((s) => place(s, side));
   const qb = place({ label: "Q", role: "QB", at: shape.qb }, side);
@@ -1004,6 +1026,40 @@ export function buildDiagram(
             ? [qb.at, [250 - d * 60, qb.y + 12], [250 - d * 100, 172]]
             : [qb.at, [qb.x, qb.y + 26]],
         );
+      }
+    }
+  }
+
+  // A coach's own routes and tags per letter win over the play call.
+  if (unit === "offense") {
+    const startsAt = (pl: Placed) => (path: Pt[]) => path[0][0] === pl.at[0] && path[0][1] === pl.at[1];
+    for (const pl of [...skill, ...backs]) {
+      const own = card.routeOverrides?.[pl.label];
+      if (!own) continue;
+      const mine = startsAt(pl);
+      const o = pl.x > 250 ? 1 : pl.x < 250 ? -1 : d;
+      if (own.route) {
+        routes = routes.filter((r) => !mine(r.path));
+        blocks.splice(0, blocks.length, ...blocks.filter((b) => !mine(b)));
+        targetBlocks.splice(0, targetBlocks.length, ...targetBlocks.filter((t) => !mine(t.path)));
+        if (own.route === "none") {
+          jobs[pl.label] = "—";
+        } else if (own.route === "stalk") {
+          blocks.push([pl.at, [pl.x, 124]]);
+          jobs[pl.label] = "Stalk";
+        } else if (own.route === "protect") {
+          blocks.push(pl.y === 150 ? [pl.at, [pl.x + o * 8, 162]] : [pl.at, [pl.x + o * 14, pl.y - 12]]);
+          jobs[pl.label] = "Pass pro";
+        } else if (own.route in ROUTE_NAMES) {
+          const routeKind = own.route as RouteKind;
+          routes.push({ path: routePath(routeKind, pl.at, o, d), label: routeLabel(routeKind) });
+          jobs[pl.label] = routeText(routeKind);
+        }
+      }
+      if (own.tag) {
+        const route = routes.find((r) => mine(r.path));
+        if (route) route.label = own.tag;
+        jobs[pl.label] = jobs[pl.label] && jobs[pl.label] !== "—" ? `${jobs[pl.label]} · ${own.tag}` : own.tag;
       }
     }
   }

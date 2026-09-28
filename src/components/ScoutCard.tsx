@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useRef, useState } from "react";
-import type { HudlPlayCard } from "@/lib/hudlParser";
+import type { HudlPlayCard, InkStroke } from "@/lib/hudlParser";
 import {
   buildAssignments,
   buildDiagram,
@@ -35,6 +35,11 @@ interface ScoutCardProps {
    * with the box key ("PST", "Y", "NOTES") and the new text ("" = back to auto).
    */
   onAssignmentChange?: (key: string, text: string) => void;
+  /**
+   * Turns on drawing (Apple Pencil or finger) over the field. Each finished
+   * stroke is handed to `onStroke`; saved strokes come from `card.drawings`.
+   */
+  ink?: { color: string; width?: number; onStroke: (stroke: InkStroke) => void };
   className?: string;
 }
 
@@ -138,6 +143,7 @@ export function ScoutCard({
   unit = "offense",
   onMoveDefender,
   onAssignmentChange,
+  ink,
   className,
 }: ScoutCardProps) {
   const c = PALETTES[variant];
@@ -146,6 +152,8 @@ export function ScoutCard({
   const uid = useId().replace(/[^a-zA-Z0-9]/g, "");
   const svgRef = useRef<SVGSVGElement>(null);
   const [drag, setDrag] = useState<{ id: string; x: number; y: number } | null>(null);
+  const [stroke, setStroke] = useState<[number, number][] | null>(null);
+  const strokes = card.drawings?.[unit] ?? [];
   const movable = Boolean(onMoveDefender) && unit === "defense";
   const isDefense = unit === "defense";
   const cardNumber = String(card.playNumber).padStart(2, "0");
@@ -162,6 +170,20 @@ export function ScoutCard({
   const tag = isDefense ? "DEF" : PLAY_KIND_LABELS[diagram.kind];
   const tagColor = isDefense ? c.defense : diagram.kind === "run" ? c.ball : c.los;
   const marker = (name: string) => `url(#${uid}-${name})`;
+
+  /** Pointer positions in SVG coordinates, including the Pencil's in-between samples. */
+  const inkPoints = (e: React.PointerEvent): [number, number][] => {
+    const m = svgRef.current?.getScreenCTM();
+    if (!m) return [];
+    const inv = m.inverse();
+    const events = e.nativeEvent.getCoalescedEvents?.() ?? [];
+    return (events.length ? events : [e.nativeEvent]).map((ev) => {
+      const p = new DOMPoint(ev.clientX, ev.clientY).matrixTransform(inv);
+      return [Math.round(p.x * 10) / 10, Math.round(p.y * 10) / 10];
+    });
+  };
+  const inkPath = (points: [number, number][]) =>
+    points.map(([x, y], i) => `${i ? "L" : "M"} ${x} ${y}`).join(" ");
 
   /** Pointer position in SVG coordinates, kept on the field and on the defense's side. */
   const svgPoint = (e: React.PointerEvent): Point | null => {
@@ -529,6 +551,53 @@ export function ScoutCard({
               )}
             </g>
           ),
+        )}
+
+        {/* Coach drawings (Pencil), then the live stroke. */}
+        <g fill="none" strokeLinecap="round" strokeLinejoin="round">
+          {strokes.map((st, i) => (
+            <path
+              key={`ink${i}`}
+              d={inkPath(st.points.length === 1 ? [st.points[0], st.points[0]] : st.points)}
+              stroke={st.color}
+              strokeWidth={st.width}
+            />
+          ))}
+          {stroke && ink && (
+            <path d={inkPath(stroke)} stroke={ink.color} strokeWidth={ink.width ?? 3.5} />
+          )}
+        </g>
+        {ink && (
+          <rect
+            x={0}
+            y={0}
+            width={FIELD.width}
+            height={FIELD.height}
+            fill="transparent"
+            style={{ touchAction: "none", cursor: "crosshair" }}
+            aria-label="Drawing area"
+            onPointerDown={(e) => {
+              e.stopPropagation();
+              e.currentTarget.setPointerCapture(e.pointerId);
+              setStroke(inkPoints(e));
+            }}
+            onPointerMove={(e) => {
+              if (!stroke) return;
+              const next = inkPoints(e);
+              const [lx, ly] = stroke[stroke.length - 1] ?? [0, 0];
+              // Skip samples closer than ~1 px to keep saved strokes small.
+              const far = next.filter(([x, y]) => Math.hypot(x - lx, y - ly) > 1);
+              if (far.length) setStroke([...stroke, ...far]);
+            }}
+            onPointerUp={(e) => {
+              e.stopPropagation();
+              if (stroke?.length) {
+                ink.onStroke({ color: ink.color, width: ink.width ?? 3.5, points: stroke });
+              }
+              setStroke(null);
+            }}
+            onPointerCancel={() => setStroke(null)}
+          />
         )}
       </svg>
 

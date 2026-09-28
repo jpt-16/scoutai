@@ -11,6 +11,9 @@ import {
   Move,
   RotateCcw,
   Pencil,
+  PenLine,
+  Undo2,
+  Eraser,
   RectangleVertical,
   Upload,
 } from "lucide-react";
@@ -24,7 +27,12 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MOCK_HUDL_CSV, DEMO_FILE_NAME } from "@/lib/demoScript";
 import { FORMATION_LABELS, inPeriod, type Period, type ScoutUnit } from "@/lib/formations";
-import { parseHudlCsvText, type FormationKey, type HudlPlayCard } from "@/lib/hudlParser";
+import {
+  parseHudlCsvText,
+  type FormationKey,
+  type HudlPlayCard,
+  type InkStroke,
+} from "@/lib/hudlParser";
 import { importFilms } from "@/lib/importFilms";
 import { loadScript, saveScript, storeScript, type StoredScript } from "@/lib/scriptStore";
 import { cn } from "@/lib/utils";
@@ -51,6 +59,14 @@ const FORMATION_ORDER: FormationKey[] = [
 ];
 const SWIPE_THRESHOLD = 60;
 
+/** Pencil colors: dark enough to read on the white field in sunlight. */
+const INK_COLORS = [
+  { value: "#111111", label: "Black" },
+  { value: "#dc2626", label: "Red" },
+  { value: "#2563eb", label: "Blue" },
+  { value: "#16a34a", label: "Green" },
+];
+
 const MODES: { value: Mode; label: string; short: string }[] = [
   { value: "all", label: "ALL PLAYS", short: "ALL" },
   { value: "7v7", label: "7v7 / PASS SKEL", short: "7v7" },
@@ -75,6 +91,10 @@ export default function ScriptPage() {
   const [index, setIndex] = useState(0);
   const [editing, setEditing] = useState(false);
   const [adjusting, setAdjusting] = useState(false);
+  const [drawing, setDrawing] = useState(false);
+  const [inkColor, setInkColor] = useState(INK_COLORS[0].value);
+  // Card id + unit waiting on a second tap of Clear.
+  const [clearArmed, setClearArmed] = useState<string | null>(null);
   const [notice, setNotice] = useState({
     heading: "",
     detail: "",
@@ -122,7 +142,11 @@ export default function ScriptPage() {
   ];
 
   const filmOptions: FilterOption<string>[] = [
-    { value: "all", label: "All", count: cards.filter((c) => inPeriod(c, mode, unit)).length },
+    {
+      value: "all",
+      label: "All",
+      count: cards.filter((c) => inPeriod(c, mode, unit)).length,
+    },
     ...(script?.films ?? []).map((name) => ({
       value: name,
       label: name.replace(/\.csv$/i, ""),
@@ -176,6 +200,28 @@ export default function ScriptPage() {
     if (!script) return;
     setScript(storeScript({ ...script, cards: nextCards }));
   };
+
+  /** Replaces the current card's pencil strokes for the unit on screen. */
+  const setStrokes = (change: (strokes: InkStroke[]) => InkStroke[]) => {
+    if (!current) return;
+    saveCards(
+      cards.map((c) =>
+        c.id === current.id
+          ? {
+              ...c,
+              drawings: {
+                ...c.drawings,
+                [unit]: change(c.drawings?.[unit] ?? []),
+              },
+            }
+          : c,
+      ),
+    );
+  };
+  const strokeCount = current?.drawings?.[unit]?.length ?? 0;
+  const clearKey = current ? `${current.id}:${unit}` : null;
+  const confirmClear = clearArmed !== null && clearArmed === clearKey;
+  const setConfirmClear = (armed: boolean) => setClearArmed(armed ? clearKey : null);
 
   const addFilms = async (files: File[]) => {
     if (!script || files.length === 0) return;
@@ -337,40 +383,116 @@ export default function ScriptPage() {
       </header>
 
       <div className="no-print flex h-16 shrink-0 items-center gap-3 border-b px-4 sm:px-6">
-        <div className="flex min-w-0 flex-1 items-center gap-5 overflow-x-auto">
-          <FilterGroup
-            label="DOWN"
-            options={downOptions}
-            value={down}
-            onChange={setFilter(setDown)}
-          />
-          <span className="h-7 w-px shrink-0 bg-border" aria-hidden="true" />
-          <FilterGroup
-            label="FORMATION"
-            options={formationOptions}
-            value={formation}
-            onChange={setFilter(setFormation)}
-          />
-          {multiFilm && (
-            <>
-              <span className="h-7 w-px shrink-0 bg-border" aria-hidden="true" />
-              <FilterGroup
-                label="FILM"
-                options={filmOptions}
-                value={film}
-                onChange={setFilter(setFilm)}
-              />
-            </>
-          )}
-        </div>
+        {drawing && view === "field" ? (
+          <div className="flex min-w-0 flex-1 items-center gap-3 overflow-x-auto">
+            <span className="shrink-0 text-xs font-bold tracking-[0.12em] text-muted-foreground">
+              PENCIL
+            </span>
+            <div role="group" aria-label="Pencil color" className="flex shrink-0 gap-1.5">
+              {INK_COLORS.map((color) => (
+                <button
+                  key={color.value}
+                  type="button"
+                  aria-label={color.label}
+                  aria-pressed={inkColor === color.value}
+                  onClick={() => setInkColor(color.value)}
+                  className={cn(
+                    "flex size-11 items-center justify-center rounded-[10px] border-2 transition-colors",
+                    "focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none",
+                    inkColor === color.value
+                      ? "border-foreground"
+                      : "border-transparent hover:border-border",
+                  )}
+                >
+                  <span
+                    className="size-7 rounded-full border-2 border-white/80"
+                    style={{ backgroundColor: color.value }}
+                  />
+                </button>
+              ))}
+            </div>
+            <span className="h-7 w-px shrink-0 bg-border" aria-hidden="true" />
+            <Button
+              size="lg"
+              variant="outline"
+              disabled={strokeCount === 0}
+              onClick={() => setStrokes((s) => s.slice(0, -1))}
+            >
+              <Undo2 aria-hidden="true" />
+              Undo
+            </Button>
+            <Button
+              size="lg"
+              variant={confirmClear ? "destructive" : "outline"}
+              disabled={strokeCount === 0}
+              onClick={() => {
+                if (!confirmClear) return setConfirmClear(true);
+                setStrokes(() => []);
+                setConfirmClear(false);
+              }}
+            >
+              <Eraser aria-hidden="true" />
+              {confirmClear ? "Tap again to clear" : "Clear"}
+            </Button>
+            <p className="hidden shrink-0 text-sm text-muted-foreground xl:block">
+              Draw on the field with a Pencil or finger. Swiping is paused.
+            </p>
+          </div>
+        ) : (
+          <div className="flex min-w-0 flex-1 items-center gap-5 overflow-x-auto">
+            <FilterGroup
+              label="DOWN"
+              options={downOptions}
+              value={down}
+              onChange={setFilter(setDown)}
+            />
+            <span className="h-7 w-px shrink-0 bg-border" aria-hidden="true" />
+            <FilterGroup
+              label="FORMATION"
+              options={formationOptions}
+              value={formation}
+              onChange={setFilter(setFormation)}
+            />
+            {multiFilm && (
+              <>
+                <span className="h-7 w-px shrink-0 bg-border" aria-hidden="true" />
+                <FilterGroup
+                  label="FILM"
+                  options={filmOptions}
+                  value={film}
+                  onChange={setFilter(setFilm)}
+                />
+              </>
+            )}
+          </div>
+        )}
         <div className="flex shrink-0 gap-2 border-l pl-3">
-          {unit === "defense" && view === "field" && (
+          {view === "field" && (
+            <Button
+              size="lg"
+              variant={drawing ? "default" : "outline"}
+              aria-pressed={drawing}
+              onClick={() => {
+                setDrawing((d) => !d);
+                setAdjusting(false);
+                setConfirmClear(false);
+              }}
+              disabled={!current}
+            >
+              <PenLine aria-hidden="true" />
+              {drawing ? "Done" : "Draw"}
+            </Button>
+          )}
+          {unit === "defense" && view === "field" && !drawing && (
             <>
               <Button
                 size="lg"
                 variant={adjusting ? "default" : "outline"}
                 aria-pressed={adjusting}
-                onClick={() => setAdjusting((a) => !a)}
+                onClick={() => {
+                  setAdjusting((a) => !a);
+                  setDrawing(false);
+                }}
                 disabled={!current}
               >
                 <Move aria-hidden="true" />
@@ -472,8 +594,8 @@ export default function ScriptPage() {
             onPointerUp={(e) => {
               const start = pointerStart.current;
               pointerStart.current = null;
-              // No swiping while dragging X's around.
-              if (!start || (adjusting && unit === "defense")) return;
+              // No swiping while dragging X's around or drawing.
+              if (!start || drawing || (adjusting && unit === "defense")) return;
               const dx = e.clientX - start.x;
               const dy = e.clientY - start.y;
               if (Math.abs(dx) < SWIPE_THRESHOLD || Math.abs(dx) < Math.abs(dy)) return;
@@ -486,7 +608,11 @@ export default function ScriptPage() {
           >
             <div className="absolute inset-0 flex items-center justify-center">
               {current ? (
-                <div style={{ width: `min(100cqw, calc(100cqh * ${SCOUT_CARD_ASPECT}))` }}>
+                <div
+                  style={{
+                    width: `min(100cqw, calc(100cqh * ${SCOUT_CARD_ASPECT}))`,
+                  }}
+                >
                   <ScoutCard
                     card={current}
                     mode={cardMode}
@@ -499,12 +625,26 @@ export default function ScriptPage() {
                                 c.id === current.id
                                   ? {
                                       ...c,
-                                      defenseOverrides: { ...c.defenseOverrides, [id]: at },
+                                      defenseOverrides: {
+                                        ...c.defenseOverrides,
+                                        [id]: at,
+                                      },
                                       edited: true,
                                     }
                                   : c,
                               ),
                             )
+                        : undefined
+                    }
+                    ink={
+                      drawing
+                        ? {
+                            color: inkColor,
+                            onStroke: (stroke) => {
+                              setConfirmClear(false);
+                              setStrokes((s) => [...s, stroke]);
+                            },
+                          }
                         : undefined
                     }
                     onAssignmentChange={(key, text) =>

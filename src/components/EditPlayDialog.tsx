@@ -12,7 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import type { DiagramMode, ScoutUnit } from "@/lib/formations";
+import { buildDiagram, ROUTE_CHOICES, type DiagramMode, type ScoutUnit } from "@/lib/formations";
 import { updateCard, type CardEdits, type Hash, type HudlPlayCard } from "@/lib/hudlParser";
 import { cn } from "@/lib/utils";
 
@@ -137,10 +137,23 @@ export function EditPlayDialog({
     coverage: card.coverage,
     hash: card.hash,
     notes: card.notes,
+    routeOverrides: card.routeOverrides ?? {},
   });
   const [confirmDelete, setConfirmDelete] = useState(false);
   const set = (edits: CardEdits) => setDraft((d) => ({ ...d, ...edits }));
   const preview = updateCard(card, draft);
+  const previewJobs = buildDiagram(preview, "team", "offense").jobs;
+  const routes = draft.routeOverrides ?? {};
+  /** Sets one letter's route or tag; an empty route and tag drops the override. */
+  const setRoute = (letter: string, change: { route?: string; tag?: string }) => {
+    const next = { ...routes[letter], ...change };
+    if (!next.route) delete next.route;
+    if (!next.tag) delete next.tag;
+    const all = { ...routes };
+    if (next.route || next.tag) all[letter] = next;
+    else delete all[letter];
+    set({ routeOverrides: all });
+  };
   const upper = (v: string) => v.toUpperCase();
 
   return (
@@ -227,6 +240,56 @@ export function EditPlayDialog({
               </Field>
             </div>
             <Picks options={FRONT_PICKS} onPick={(v) => set({ defFront: v })} />
+
+            {unit === "offense" && (
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold tracking-[0.12em] text-muted-foreground">
+                    ROUTES (EACH LETTER)
+                  </span>
+                  {Object.keys(routes).length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => set({ routeOverrides: {} })}
+                      className="h-9 rounded-md px-2 text-sm font-bold text-primary hover:bg-accent"
+                    >
+                      Reset to play call
+                    </button>
+                  )}
+                </div>
+                {["X", "H", "Y", "Z", "F"].map((letter) => (
+                  <div key={letter} className="grid grid-cols-[36px_minmax(0,1fr)_96px] items-center gap-2">
+                    <span
+                      className="flex size-9 items-center justify-center rounded-full border-2 border-foreground font-display text-lg font-extrabold"
+                      aria-hidden="true"
+                    >
+                      {letter}
+                    </span>
+                    <select
+                      aria-label={`${letter} route`}
+                      className={cn(inputClass, "normal-case")}
+                      value={routes[letter]?.route ?? ""}
+                      onChange={(e) => setRoute(letter, { route: e.target.value })}
+                    >
+                      <option value="">Auto · {previewJobs[letter] ?? "—"}</option>
+                      {ROUTE_CHOICES.map((choice) => (
+                        <option key={choice.value} value={choice.value}>
+                          {choice.label}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      aria-label={`${letter} tag`}
+                      placeholder="Tag"
+                      maxLength={10}
+                      className={inputClass}
+                      value={routes[letter]?.tag ?? ""}
+                      onChange={(e) => setRoute(letter, { tag: e.target.value.toUpperCase() })}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
 
             <Field label="COACH NOTE (SHOWS ON THE CARD)" htmlFor="edit-notes">
               <textarea
