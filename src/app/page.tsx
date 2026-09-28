@@ -91,9 +91,9 @@ const VIDEO_STEPS: { icon: typeof Upload; title: string; detail: string }[] = [
   },
   {
     icon: ScanEye,
-    title: "Gemini watches the play",
+    title: "AI analyzes the play",
     detail:
-      "Google's Gemini 2.5 Flash reviews the clip and tracks each skill player — Q, F, H, X, Y, " +
+      "The AI reviews the clip and tracks each skill player — Q, F, H, X, Y, " +
       "Z — noting where they line up, where their route breaks, and where they end up.",
   },
   {
@@ -500,9 +500,9 @@ export default function UploadPage() {
 
           <p className="flex items-start gap-2 rounded-lg border bg-card p-3 text-sm leading-relaxed">
             <AlertTriangle className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden="true" />
-            Unlike the CSV importer above, your clip does leave the device — it&apos;s sent to
-            Google&apos;s Gemini API for analysis. Don&apos;t upload film you&apos;re not allowed
-            to share off-device.
+            Unlike the CSV importer above, your clip does leave the device — it&apos;s sent to an
+            AI service for analysis. Don&apos;t upload film you&apos;re not allowed to share
+            off-device.
           </p>
           <p className="flex items-start gap-2 rounded-lg border bg-card p-3 text-sm leading-relaxed">
             <Lock className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden="true" />
