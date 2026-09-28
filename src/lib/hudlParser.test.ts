@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { MOCK_HUDL_CSV } from "./demoScript";
-import { buildDiagram, isPassPlay, runScheme } from "./formations";
+import { buildDiagram, inPeriod, isPassPlay, runScheme } from "./formations";
 import {
   classifyConcept,
   type FormationKey,
@@ -564,6 +564,29 @@ describe("buildDiagram (offense only)", () => {
     expect(pa.routes).toHaveLength(1);
   });
 
+  it("trips bubble: the other two ball-side receivers block the LB and the S/C", () => {
+    const d = buildDiagram(card("trips", "RPO BUBBLE"));
+    expect(d.routes).toHaveLength(1);
+    const [lb, sc] = d.targetBlocks;
+    expect(d.targetBlocks.map((t) => t.target)).toEqual(["LB", "S/C"]);
+    // Trips right: the LB blocker (inside receiver) goes up then back inside.
+    expect(lb.path[0].x).toBe(400);
+    expect(lb.path[lb.path.length - 1].x).toBeLessThan(lb.path[0].x);
+    // The S/C blocker (outside receiver) climbs deeper than the LB block.
+    expect(sc.path[0].x).toBe(464);
+    expect(sc.path[sc.path.length - 1].y).toBeLessThan(lb.path[lb.path.length - 1].y);
+    // Backside X just stalks.
+    expect(d.blocks.some((b) => b[0].x === 36)).toBe(true);
+    // Same assignments survive in 7v7, and for a plain SCREEN call.
+    expect(buildDiagram(card("trips", "RPO BUBBLE"), "7v7").targetBlocks).toHaveLength(2);
+    expect(buildDiagram(card("trips", "SCREEN")).targetBlocks.map((t) => t.target)).toEqual(["LB", "S/C"]);
+  });
+
+  it("2x2 bubble: the lone ball-side blocker takes the corner", () => {
+    const d = buildDiagram(card("spread", "BUBBLE"));
+    expect(d.targetBlocks.map((t) => t.target)).toEqual(["C"]);
+  });
+
   it("7v7 drops the offensive line and its blocks", () => {
     const d = buildDiagram(card("trips", "RPO BUBBLE"), "7v7");
     expect(d.players.some((p) => p.role === "OL")).toBe(false);
@@ -637,6 +660,26 @@ describe("buildDiagram (offense only)", () => {
       const [c] = parseHudlCsvText("OFF FORM,DEF FRONT,COVERAGE\nTRIO,EVEN,6 - DOUBLE FIRE\n").cards;
       expect(c.coverage).toBe("6 - DOUBLE FIRE");
     });
+  });
+
+  it("7v7 periods: every pass from team, untagged reps for Scout O, every look for Scout D", () => {
+    const csv = `PLAY #,OFF FORM,OFF PLAY,PLAY DIR,DEF FRONT
+1,TRIO,G ISO,L,EVEN
+2,TRIO,FADE OUT OUT FADE,N,EVEN
+3,PRO,,N,EVEN
+4,ACES OFF,,R,ODD
+5,PRO,ISO,R,
+`;
+    const cards = parseHudlCsvText(csv).cards;
+    expect(cards[2].concept).toBe("dropback"); // blank play + PLAY DIR N = pass
+    const list = (period: "all" | "7v7" | "team", unit: "offense" | "defense") =>
+      cards.filter((c) => inPeriod(c, period, unit)).map((c) => c.playNumber);
+    expect(list("team", "offense")).toEqual([1, 2, 3, 5]);
+    expect(list("7v7", "offense")).toEqual([2, 3, 4]);
+    expect(list("7v7", "defense")).toEqual([1, 2, 3, 4, 5]);
+    // Every team pass is also in 7v7.
+    const team = cards.filter((c) => inPeriod(c, "team", "offense") && isPassPlay(c));
+    expect(team.every((c) => inPeriod(c, "7v7", "offense"))).toBe(true);
   });
 
   it("keeps plays with isPassPlay for 7v7", () => {

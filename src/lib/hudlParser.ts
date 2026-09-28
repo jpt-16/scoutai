@@ -330,6 +330,18 @@ export function classifyConcept(playCall: string, playType = ""): PlayConcept {
   return "unknown";
 }
 
+/**
+ * Concept from the play call / play type. A blank play call with PLAY DIR "N"
+ * (no direction) is a pass: Hudl staffs tag run direction, not pass direction.
+ */
+export function inferConcept(playCall: string, playType: string, playDir: string): PlayConcept {
+  const concept = classifyConcept(playCall, playType);
+  if (concept === "unknown" && !playCall.trim() && /^(N|NONE|NO DIR|NA)$/i.test(playDir.trim())) {
+    return "dropback";
+  }
+  return concept;
+}
+
 /** Reads a dedicated direction cell (Hudl OFF STR / PLAY DIR): L, R, LT, Right… BAL/N → null. */
 export function parseSideTag(value: string): Side | null {
   const v = value.trim().toUpperCase();
@@ -521,7 +533,7 @@ export function rowToCard(
     formationSide,
     playCall,
     playType,
-    concept: classifyConcept(playCall, playType),
+    concept: inferConcept(playCall, playType, cell(row, columns.playDir)),
     playDirection: parseSideTag(cell(row, columns.playDir)) ?? parseSide(playCall) ?? formationSide,
     defFront,
     frontKey: classifyFront(defFront),

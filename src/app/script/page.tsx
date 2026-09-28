@@ -12,14 +12,13 @@ import { ScoutCard, SCOUT_CARD_ASPECT } from "@/components/ScoutCard";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MOCK_HUDL_CSV, DEMO_FILE_NAME } from "@/lib/demoScript";
-import { FORMATION_LABELS, isPassPlay, playKind, type ScoutUnit } from "@/lib/formations";
+import { FORMATION_LABELS, inPeriod, type Period, type ScoutUnit } from "@/lib/formations";
 import { parseHudlCsvText, type FormationKey, type HudlPlayCard } from "@/lib/hudlParser";
 import { loadScript, saveScript, type StoredScript } from "@/lib/scriptStore";
 import { cn } from "@/lib/utils";
 
 type View = "field" | "print";
-/** ALL = every play; 7v7 = pass/RPO/PA plays as a skeleton (no linemen); TEAM = runs and passes with all 11. */
-type Mode = "all" | "7v7" | "team";
+type Mode = Period;
 type DownFilter = "all" | 1 | 2 | 3 | 4;
 type FormationFilter = "all" | FormationKey;
 
@@ -50,16 +49,6 @@ const UNITS: { value: ScoutUnit; label: string; short: string }[] = [
   { value: "defense", label: "SCOUT DEFENSE", short: "SCOUT D" },
 ];
 
-function inMode(card: HudlPlayCard, mode: Mode, unit: ScoutUnit): boolean {
-  if (mode === "7v7") return isPassPlay(card);
-  if (mode === "team") {
-    // Scout defense still needs the alignment when the play call is blank.
-    return unit === "defense"
-      ? Boolean(card.formation || card.defFront)
-      : playKind(card) !== "none";
-  }
-  return true;
-}
 
 export default function ScriptPage() {
   const router = useRouter();
@@ -77,7 +66,7 @@ export default function ScriptPage() {
   }, []);
 
   const cards = useMemo(() => script?.cards ?? [], [script]);
-  const modeCards = useMemo(() => cards.filter((c) => inMode(c, mode, unit)), [cards, mode, unit]);
+  const modeCards = useMemo(() => cards.filter((c) => inPeriod(c, mode, unit)), [cards, mode, unit]);
   const filtered = useMemo(
     () =>
       modeCards.filter(
@@ -230,7 +219,7 @@ export default function ScriptPage() {
           className="flex shrink-0 rounded-xl border bg-secondary p-1"
         >
           {MODES.map((m) => {
-            const count = cards.filter((c) => inMode(c, m.value, unit)).length;
+            const count = cards.filter((c) => inPeriod(c, m.value, unit)).length;
             const selected = mode === m.value;
             return (
               <button

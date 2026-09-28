@@ -330,6 +330,28 @@ export function isPassPlay(card: Pick<HudlPlayCard, "playCall" | "concept">): bo
   return kind === "pass" || kind === "rpo" || kind === "pa";
 }
 
+/** Practice period on the script page. */
+export type Period = "all" | "7v7" | "team";
+
+/**
+ * Which plays a practice period lists:
+ * - ALL: every play.
+ * - TEAM: Scout O gets runs and passes; Scout D gets every look (anything with a
+ *   formation or front, even with a blank play call).
+ * - 7v7: Scout O gets every pass from team plus untagged plays as formation
+ *   reps; Scout D lines up to any formation, so it gets every look too.
+ */
+export function inPeriod(
+  card: Pick<HudlPlayCard, "playCall" | "concept" | "formation" | "defFront">,
+  period: Period,
+  unit: ScoutUnit,
+): boolean {
+  if (period === "all") return true;
+  if (unit === "defense") return Boolean(card.formation || card.defFront);
+  if (period === "7v7") return isPassPlay(card) || playKind(card) === "none";
+  return playKind(card) !== "none";
+}
+
 /** Blocking scheme from play-call keywords ("G ISO" → power, "QB LEAD DRAW" → draw). */
 export function runScheme(card: Pick<HudlPlayCard, "playCall" | "concept">): RunScheme {
   const w = words(card.playCall);
@@ -366,6 +388,12 @@ export interface Diagram {
   routes: Point[][];
   /** Blocks: a line ending in a T-bar. */
   blocks: Point[][];
+  /**
+   * Blocks with a named target, drawn with a label at the T-bar: on bubbles and
+   * screens the ball-side receivers block the linebacker ("LB") and the
+   * safety/corner ("S/C").
+   */
+  targetBlocks: { path: Point[]; target: string }[];
   /** Pulling linemen (arrows behind the line). */
   pulls: Point[][];
   /** Run fakes on play action / RPO mesh (dashed arrows). */
@@ -443,11 +471,12 @@ function buildRoutes(
   skill: Placed[],
   backs: Placed[],
   d: number,
-): { routes: Pt[][]; stalks: Pt[][] } {
+): { routes: Pt[][]; stalks: Pt[][]; targeted: { path: Pt[]; target: string }[] } {
   const side = (x: number) => (x > 250 ? 1 : x < 250 ? -1 : d);
   const tokens = routeTokens(playCall);
   const routes: Pt[][] = [];
   const stalks: Pt[][] = [];
+  const targeted: { path: Pt[]; target: string }[] = [];
   const assigned = new Set<Placed>();
   const run = (pl: Placed, kind: RouteKind) => {
     routes.push(routePath(kind, pl.at, side(pl.x), d));
@@ -464,10 +493,26 @@ function buildRoutes(
   if (others.length === 1) {
     const [only] = others;
     if (only === "bubble") {
-      // Bubble to the play-side slot; everyone else on the perimeter blocks.
-      const playSide = receivers.filter((p) => p.role === "WR" && side(p.x) === d);
-      const slot = playSide.sort((a, b) => Math.abs(a.x - 250) - Math.abs(b.x - 250))[0];
+      // Bubble / screen to the play-side slot. The other ball-side receivers,
+      // inside out, block the linebacker and then the safety/corner; the
+      // backside receivers stalk.
+      const playSide = receivers
+        .filter((p) => p.role === "WR" && side(p.x) === d)
+        .sort((a, b) => Math.abs(a.x - 250) - Math.abs(b.x - 250));
+      const [slot, ...blockers] = playSide;
       if (slot) run(slot, "bubble");
+      blockers.forEach((p, i) => {
+        const o = side(p.x);
+        const [x] = p.at;
+        if (blockers.length >= 2 && i === 0) {
+          targeted.push({ path: [p.at, [x, 132], [x - o * 34, 106]], target: "LB" }); // up, then inside
+        } else if (blockers.length >= 2 && i === 1) {
+          targeted.push({ path: [p.at, [x, 122], [x - o * 12, 92]], target: "S/C" }); // up and in, deep
+        } else {
+          targeted.push({ path: [p.at, [x, 114]], target: "C" }); // lone blocker: the corner
+        }
+        assigned.add(p);
+      });
       for (const p of receivers) {
         if (!assigned.has(p) && p.role === "WR") stalks.push([p.at, [p.x, 124]]);
       }
@@ -485,7 +530,7 @@ function buildRoutes(
         : receivers;
     others.slice(0, eligible.length).forEach((kind, i) => run(eligible[i], kind));
   }
-  return { routes, stalks };
+  return { routes, stalks, targeted };
 }
 
 /** Offensive line (and tight end / fullback) assignments for a run scheme. */
@@ -607,6 +652,7 @@ export function buildDiagram(
   const tightEndsOnLine = skill.filter((p) => p.role === "TE" && p.y === 150);
 
   const blocks: Pt[][] = [];
+  const targetBlocks: { path: Pt[]; target: string }[] = [];
   const pulls: Pt[][] = [];
   const fakes: Pt[][] = [];
   let routes: Pt[][] = [];
@@ -640,6 +686,7 @@ export function buildDiagram(
     const passing = buildRoutes(card.playCall, skill, backs, d);
     routes = passing.routes;
     blocks.push(...passing.stalks);
+    targetBlocks.push(...passing.targeted);
     const rb = backs[backs.length - 1];
     if ((kind === "rpo" || kind === "pa") && rb) {
       // The mesh / run fake: the back's run path, dashed.
@@ -684,6 +731,10 @@ export function buildDiagram(
     carrier: carrier ? carrier.map(toPoint).map(turn) : null,
     routes: turnAll(points(routes)),
     blocks: turnAll(points(blocks)),
+    targetBlocks: targetBlocks.map(({ path, target }) => ({
+      path: path.map(toPoint).map(turn),
+      target,
+    })),
     pulls: turnAll(points(pulls)),
     fakes: turnAll(points(fakes)),
     defense: defense.map(turn),

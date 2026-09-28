@@ -159,6 +159,12 @@ export function ScoutCard({
         ? "front drawn as 4-3"
         : "no front tagged, drawn as 4-3"
       : null,
+    !isDefense &&
+    diagram.kind !== "run" &&
+    diagram.routes.length === 0 &&
+    diagram.targetBlocks.length === 0
+      ? "no routes tagged"
+      : null,
   ]
     .filter(Boolean)
     .join(" · ");
@@ -275,6 +281,38 @@ export function ScoutCard({
             return <path key={i} d={line + bar} />;
           })}
         </g>
+        {diagram.targetBlocks.map(({ path, target }, i) => {
+          const { line, bar } = blockPaths(path);
+          const tip = path[path.length - 1];
+          const { cos, sin } = heading(path[path.length - 2], tip);
+          return (
+            <g key={`t${i}`}>
+              <path
+                d={line + bar}
+                fill="none"
+                stroke={c.block}
+                strokeWidth={3.5}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              <text
+                x={tip.x + cos * 15}
+                y={tip.y + sin * 15}
+                dy="0.36em"
+                textAnchor="middle"
+                fontSize={12}
+                fontWeight={800}
+                fontFamily="'Barlow Condensed', sans-serif"
+                fill={c.ink}
+                stroke={c.field}
+                strokeWidth={3}
+                paintOrder="stroke"
+              >
+                {target}
+              </text>
+            </g>
+          );
+        })}
         {diagram.pulls.map((p, i) => (
           <g key={i}>
             <path

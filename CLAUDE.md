@@ -135,7 +135,10 @@ Free-text tags are classified by keyword (`classifyFormation`, `classifyFront`,
     Receivers stalk-block, and the ball carrier's path is orange.
   - **Passes:** `routeTokens` reads route words (SLANT, BUBBLE, CORNER, WHEEL, ACROSS/CROSS,
     OUT, FADE, LEAK, GO, POST, CURL, DIG, FLAT, SWING). One word goes to every WR
-    ("SLANT" = all slants), and BUBBLE goes to the play-side slot while the rest stalk.
+    ("SLANT" = all slants). BUBBLE or SCREEN goes to the play-side slot. The other ball-side
+    receivers block from the inside out: the first takes the **LB** (up, then inside) and the
+    second the **S/C** (up and in). With only one blocker, he takes the **C**. Each block is
+    labeled at its T-bar, and backside receivers stalk.
     Several words go left to right across the receivers ("FADE OUT OUT FADE"). LEAK goes to
     the tight end.
   - **RPO / PA:** also draw a dashed mesh fake. RPO adds zone blocking; PA adds the QB's
@@ -148,9 +151,13 @@ Free-text tags are classified by keyword (`classifyFormation`, `classifyFront`,
   Scout defense cards are **flipped 180°** (`Diagram.flipped`, `losY` = 160). The defense is at
   the bottom and the offense on top, as the scout defense sees it, so the offense's right is on
   their left. Text stays upright. The header's `HASH` stays as recorded in Hudl.
-- **7v7** drops the linemen on both sides. The script page's 7v7 period only lists
-  pass/RPO/PA plays. Team lists runs and passes, or for scout defense anything with a
-  formation or front.
+- **7v7** drops the linemen on both sides. `inPeriod` decides which plays each period lists:
+  - Scout O 7v7: every pass/RPO/PA from team, plus untagged plays as formation reps (the card
+    says "no routes tagged").
+  - Scout D 7v7 and Team: every look (any formation or front).
+  - Scout O Team: runs and passes.
+
+  A blank play call with `PLAY DIR` = `N` counts as a pass (`inferConcept`).
 - Positions: linemen are unlabeled, and skill players are **Q, F, H, X, Y, Z** only.
 
 Coordinates:
