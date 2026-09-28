@@ -309,10 +309,12 @@ provide). It's meant to be deployed separately, to its own GPU-capable host. See
 
 A second, serverless-friendly path to the same goal as `video-service/` above, and the one
 that's actually wired into the app: **Upload game film (beta)** on the landing page uploads a
-clip straight to Vercel Blob (`/api/blob-upload` authorizes the client upload), then
-`/api/parse-video` sends its URL to Gemini 2.5 Flash (`@google/genai`, structured JSON output)
-to detect each skill player's route. Needs a `GEMINI_API_KEY` env var (Vercel project settings +
-`.env.local`).
+clip straight to a **private** Vercel Blob store (`/api/blob-upload` authorizes the client
+upload; private, not public — opposing-team film shouldn't sit at a plain fetchable URL), then
+`/api/parse-video` fetches it back with `BLOB_READ_WRITE_TOKEN` (auto-added once a Blob store is
+connected to the project) and sends it to Gemini 2.5 Flash (`@google/genai`, structured JSON
+output) to detect each skill player's route. Also needs a `GEMINI_API_KEY` env var (Vercel
+project settings + `.env.local`).
 
 This is **not a calibrated top-down transform** — there's no homography or clicked calibration
 points here, unlike `video-service/`. It's the vision model's own spatial guess from an oblique

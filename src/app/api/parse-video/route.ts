@@ -100,10 +100,18 @@ export async function POST(request: Request): Promise<NextResponse> {
   if (!apiKey) {
     return NextResponse.json({ error: "Server is missing GEMINI_API_KEY" }, { status: 500 });
   }
+  const blobToken = process.env.BLOB_READ_WRITE_TOKEN;
+  if (!blobToken) {
+    return NextResponse.json({ error: "Server is missing BLOB_READ_WRITE_TOKEN" }, { status: 500 });
+  }
 
   let videoResponse: Response;
   try {
-    videoResponse = await fetch(body.videoUrl);
+    // The clip is uploaded as a private blob (see page.tsx) — reading it back
+    // server-side needs the same auth a private blob always requires.
+    videoResponse = await fetch(body.videoUrl, {
+      headers: { Authorization: `Bearer ${blobToken}` },
+    });
   } catch {
     return NextResponse.json({ error: "Could not fetch the uploaded clip" }, { status: 400 });
   }

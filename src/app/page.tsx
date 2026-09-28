@@ -122,8 +122,10 @@ export default function UploadPage() {
     setVideoError(null);
     try {
       const { upload } = await import("@vercel/blob/client");
+      // Private: opposing-team film shouldn't sit at a plain fetchable URL.
+      // /api/parse-video authenticates when it fetches this server-side.
       const blob = await upload(file.name, file, {
-        access: "public",
+        access: "private",
         handleUploadUrl: "/api/blob-upload",
       });
 
