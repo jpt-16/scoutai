@@ -113,6 +113,16 @@ export interface RouteOverride {
   route?: string;
   /** Short tag at the arrow tip and in the table ("HOT", "SIGHT", "READ 1"). */
   tag?: string;
+  /**
+   * A literal route shape instead of a named kind: waypoints in the diagram's
+   * own units, each relative to the player's own position (a delta, not an
+   * absolute point), so it survives hash/formation changes the same way a
+   * named route does. Set by video detection; a coach can drag its points to
+   * correct it (see `source`). Takes priority over `route` when both are set.
+   */
+  path?: [number, number][];
+  /** Where this override came from — a coach typing it in, or AI video detection. */
+  source?: "coach" | "video";
 }
 
 /** One pencil stroke on a card. */
