@@ -283,7 +283,12 @@ off while drawing. `ScoutCard`'s `ink` prop enables the overlay.
 
 ## Deploying to Vercel
 
-No environment variables or server code are needed for the Next.js app itself.
+The free CSV/scout-card core needs no environment variables or server code at all. The paid
+video-analysis feature (below) does: `GEMINI_API_KEY`, `BLOB_READ_WRITE_TOKEN`,
+`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`,
+`STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_ID` — set in Vercel project settings
+and mirrored in `.env.local` for dev (`.env*` is gitignored). The app still builds and the CSV
+path still works with none of these set; only the video feature's routes need them.
 
 - **Git:** push to GitHub, then at vercel.com/new import the repo. Vercel detects
   Next.js (build `next build`, output `.next`). Every push to the default branch deploys.
@@ -340,17 +345,60 @@ by dragging, which is the whole point given the mapping above is approximate.
 anything once a matching Vercel Firewall rule exists (a `rate_limit_api_id` condition on
 `"parse-video"` / `"blob-upload"`) — creating one for this project returned a 404 ("Seawall
 Config not found") on every attempt, consistent with custom WAF rules being a paid-plan feature.
-The actual cap right now is `src/lib/rateLimit.ts`'s `checkBlobRateLimit`: a per-IP counter kept
-as tiny marker blobs in the same private Blob store (`ratelimit/<bucket>/<ip hash>/<window>/`,
-counted with `list()`), 3 clips / 10 min on `/api/parse-video` and 5 uploads / 10 min on
-`/api/blob-upload`. Not perfectly atomic under concurrent hits from one IP — fine for a small
-coaching staff's traffic, not a guarantee against a determined distributed abuser. If this
-project ever moves to a plan with Firewall rate limiting, add the matching rules (dashboard or
-`vercel firewall rules add`) and `checkRateLimit` starts enforcing immediately, no code change.
+The actual cap right now is `src/lib/rateLimit.ts`'s `checkBlobRateLimit`: a counter (keyed by the
+entitled **team id**, not IP — see below) kept as tiny marker blobs in the same private Blob store
+(`ratelimit/<bucket>/<hashed team id>/<window>/`, counted with `list()`), 3 clips / 10 min on
+`/api/parse-video` and 5 uploads / 10 min on `/api/blob-upload`. Not perfectly atomic under
+concurrent hits from one team — fine for a small coaching staff's traffic, and it's
+defense-in-depth layered on top of the auth/billing gate below, not the primary defense against
+strangers anymore. If this project ever moves to a plan with Firewall rate limiting, add the
+matching rules (dashboard or `vercel firewall rules add`) and `checkRateLimit` starts enforcing
+immediately, no code change.
 
-There's no per-user auth or database here — "row-level security" doesn't apply (nothing to
-apply it to). The equivalent concern, keeping strangers from running up the Gemini/Blob bill, is
-what the rate limits above are for.
+## Auth, teams, and billing (Supabase + Stripe)
+
+The video-analysis feature is paid, per coaching staff — everything else in this app (CSV import,
+`/script`, printing) stays free and zero-auth, exactly as described everywhere else in this file.
+Only `/api/parse-video`, `/api/blob-upload`, `/api/stripe/*`, `/api/team/*`, and `/invite/*` touch
+any of what's below; `src/lib/scriptStore.ts` and the CSV import path have no account concept and
+never will.
+
+- **Supabase** provides both auth and the database (one vendor, chosen over Clerk since the app
+  already uses Supabase elsewhere). Auth is magic-link/OTP only — no passwords. Supabase has no
+  built-in "teams/organizations" concept, so `supabase/migrations/0001_teams_billing.sql` adds a
+  small layer on top: `teams` (one row per coaching staff, with denormalized Stripe fields since a
+  team has exactly one subscription at a time), `team_members` (`team_id`/`user_id`/`role`,
+  `owner` or `member`), `team_invites` (invite-by-link tokens), and `stripe_events` (a webhook
+  idempotency ledger). RLS is on for every table; `is_team_member()`/`is_team_owner()` are
+  `SECURITY DEFINER` helpers so membership policies don't recurse on themselves. Team creation and
+  invite redemption go through `create_team()`/`redeem_invite()` RPCs rather than raw table
+  inserts, so each does its multi-row write atomically.
+- `src/lib/supabase/client.ts` (browser), `server.ts` (Route Handlers, Next 15's **async**
+  `cookies()`), and `admin.ts` (service-role, bypasses RLS — imported only by the Stripe webhook)
+  are the three client factories. `middleware.ts` refreshes the session cookie on every request and
+  fast-fails an unauthenticated call to the two gated API routes with a 401, before any Blob/Gemini
+  work — its `matcher` is scoped to those routes plus `/invite/*` and `/account/*`, so it never
+  runs on `/` or `/script`.
+- `src/lib/entitlement.ts`: `evaluateEntitlement()` is the pure decision (unit-tested) —
+  signed-in? on a team? team's `subscription_status` `active`/`trialing`? — and
+  `requireEntitlement()` is the I/O wrapper both gated routes call **first**, before rate limiting,
+  returning a specific 401/403/402 the client renders as sign-in / create-a-team / subscribe.
+- **Stripe**: `/api/stripe/checkout` starts a Checkout session for the caller's team (price comes
+  from `STRIPE_PRICE_ID`, an env var, not hardcoded — pricing can change later in the Stripe
+  dashboard with no code change, per the "decide pricing later" call); `/api/stripe/portal` opens
+  the Billing Portal for managing/canceling; `/api/stripe/webhook` (raw body, signature-verified)
+  keeps `teams.subscription_status` in sync on `checkout.session.completed` /
+  `customer.subscription.updated` / `customer.subscription.deleted`. The event→patch mapping is a
+  pure function (`src/lib/stripeWebhook.ts`, `mapStripeEventToTeamPatch`) separate from the
+  signature-verification/DB-write plumbing, so it's unit-tested without a live webhook secret. It
+  matches a team primarily by `team_id` in Stripe metadata (set at Checkout) rather than
+  `stripe_customer_id`, since that column isn't populated on the team row yet on the very first
+  `checkout.session.completed` event.
+- Client UI: `AuthDialog` (sign-in), `AccountMenu` (header sign-in/out, invite-link copy, "Manage
+  billing"), and the video-upload card on the landing page walk through
+  loading → sign-in → create-a-team → subscribe → the existing upload flow, via the
+  `useTeamAccount()` hook (`src/lib/useTeamAccount.ts`) both share. `src/app/invite/[token]/page.tsx`
+  redeems an invite link.
 
 ## Conventions
 

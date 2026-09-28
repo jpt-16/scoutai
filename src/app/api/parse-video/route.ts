@@ -18,14 +18,15 @@
 import { GoogleGenAI, Type, type Schema } from "@google/genai";
 import { checkRateLimit } from "@vercel/firewall";
 import { NextResponse } from "next/server";
-import { checkBlobRateLimit, clientIp } from "@/lib/rateLimit";
+import { requireEntitlement } from "@/lib/entitlement";
+import { checkBlobRateLimit } from "@/lib/rateLimit";
 import { validateDetectedPlay, type DetectedPlay } from "@/lib/videoImport";
 
 // Each Gemini call here costs real money — kept tight. checkRateLimit() only
 // enforces anything once a matching Vercel Firewall rule exists (see
 // src/lib/rateLimit.ts for why that isn't available on this project yet);
 // checkBlobRateLimit() is what's actually enforcing this limit right now.
-const PARSE_VIDEO_RATE_LIMIT = { limit: 3, windowMs: 10 * 60 * 1000 }; // 3 per 10 minutes per IP
+const PARSE_VIDEO_RATE_LIMIT = { limit: 3, windowMs: 10 * 60 * 1000 }; // 3 per 10 minutes per team
 
 export const runtime = "nodejs";
 // Vision analysis of even a short clip can take a while. Raise this if your
@@ -94,13 +95,24 @@ interface RequestBody {
 }
 
 export async function POST(request: Request): Promise<NextResponse> {
+  // Middleware already fast-fails an unauthenticated request; this re-check
+  // is authoritative for a money-costing call and is also what resolves the
+  // team id used to key the rate limit below.
+  const entitlement = await requireEntitlement();
+  if (!entitlement.ok) {
+    return NextResponse.json(
+      { error: entitlement.error, message: entitlement.message },
+      { status: entitlement.status },
+    );
+  }
+
   // See the const above and src/lib/rateLimit.ts: checkRateLimit is a no-op
   // without a Firewall rule this project's plan doesn't support creating;
   // checkBlobRateLimit is the real cap.
   const { rateLimited } = await checkRateLimit("parse-video", { request });
   const { ok } = await checkBlobRateLimit(
     "parse-video",
-    clientIp(request),
+    entitlement.teamId,
     PARSE_VIDEO_RATE_LIMIT.limit,
     PARSE_VIDEO_RATE_LIMIT.windowMs,
   );

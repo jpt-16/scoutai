@@ -12,19 +12,30 @@
 import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
 import { checkRateLimit } from "@vercel/firewall";
 import { NextResponse } from "next/server";
-import { checkBlobRateLimit, clientIp } from "@/lib/rateLimit";
+import { requireEntitlement } from "@/lib/entitlement";
+import { checkBlobRateLimit } from "@/lib/rateLimit";
 
 // Every upload here is normally followed by a paid /api/parse-video call, so
 // this gets its own cap too, a bit looser than that route's. See
 // src/lib/rateLimit.ts for why checkBlobRateLimit, not just checkRateLimit,
 // is what actually enforces this.
-const BLOB_UPLOAD_RATE_LIMIT = { limit: 5, windowMs: 10 * 60 * 1000 }; // 5 per 10 minutes per IP
+const BLOB_UPLOAD_RATE_LIMIT = { limit: 5, windowMs: 10 * 60 * 1000 }; // 5 per 10 minutes per team
 
 export async function POST(request: Request): Promise<NextResponse> {
+  // Middleware already fast-fails an unauthenticated request; this re-check
+  // is authoritative and is also what resolves the team id used below.
+  const entitlement = await requireEntitlement();
+  if (!entitlement.ok) {
+    return NextResponse.json(
+      { error: entitlement.error, message: entitlement.message },
+      { status: entitlement.status },
+    );
+  }
+
   const { rateLimited } = await checkRateLimit("blob-upload", { request });
   const { ok } = await checkBlobRateLimit(
     "blob-upload",
-    clientIp(request),
+    entitlement.teamId,
     BLOB_UPLOAD_RATE_LIMIT.limit,
     BLOB_UPLOAD_RATE_LIMIT.windowMs,
   );

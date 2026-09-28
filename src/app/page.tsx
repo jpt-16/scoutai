@@ -13,6 +13,8 @@ import {
   Upload,
   X,
 } from "lucide-react";
+import { AccountMenu } from "@/components/AccountMenu";
+import { AuthDialog } from "@/components/AuthDialog";
 import { BrandMark } from "@/components/BrandMark";
 import { ScoutCard } from "@/components/ScoutCard";
 import { UploadDropzone } from "@/components/UploadDropzone";
@@ -31,6 +33,7 @@ import { MOCK_HUDL_CSV, DEMO_FILE_NAME } from "@/lib/demoScript";
 import { parseHudlCsvText, type HudlField, type HudlParseResult, type UnsupportedFileKind } from "@/lib/hudlParser";
 import { importFilms } from "@/lib/importFilms";
 import { saveScript, storeScript } from "@/lib/scriptStore";
+import { useTeamAccount } from "@/lib/useTeamAccount";
 import { buildCardFromDetection, type DetectedPlay } from "@/lib/videoImport";
 
 const PREVIEW_CARD = parseHudlCsvText(
@@ -118,7 +121,13 @@ export default function UploadPage() {
   const [videoBusy, setVideoBusy] = useState(false);
   const [videoError, setVideoError] = useState<string | null>(null);
   const [howItWorksOpen, setHowItWorksOpen] = useState(false);
+  const [authOpen, setAuthOpen] = useState(false);
+  const [createTeamOpen, setCreateTeamOpen] = useState(false);
+  const [teamName, setTeamName] = useState("");
+  const [teamBusy, setTeamBusy] = useState(false);
+  const [teamError, setTeamError] = useState<string | null>(null);
   const videoInput = useRef<HTMLInputElement>(null);
+  const account = useTeamAccount();
 
   const handleFiles = async (files: File[]) => {
     setBusy(true);
@@ -154,6 +163,82 @@ export default function UploadPage() {
     saveScript(DEMO_FILE_NAME, parseHudlCsvText(MOCK_HUDL_CSV));
     router.push("/script");
   };
+
+  const handleCreateTeam = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setTeamBusy(true);
+    setTeamError(null);
+    try {
+      const res = await fetch("/api/team/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: teamName }),
+      });
+      const payload = await res.json();
+      if (!res.ok) {
+        setTeamError(payload.error ?? "Couldn't create that team.");
+        return;
+      }
+      setCreateTeamOpen(false);
+      setTeamName("");
+      account.refresh();
+    } catch {
+      setTeamError("Couldn't create that team. Try again.");
+    } finally {
+      setTeamBusy(false);
+    }
+  };
+
+  const handleSubscribe = async () => {
+    setVideoBusy(true);
+    setVideoError(null);
+    try {
+      const res = await fetch("/api/stripe/checkout", { method: "POST" });
+      const payload = await res.json();
+      if (!res.ok || !payload.url) {
+        setVideoError(payload.error ?? "Couldn't start checkout.");
+        setVideoBusy(false);
+        return;
+      }
+      window.location.href = payload.url;
+    } catch {
+      setVideoError("Couldn't start checkout. Try again.");
+      setVideoBusy(false);
+    }
+  };
+
+  const handleUploadClick = () => {
+    if (account.loading) return;
+    if (!account.user) {
+      setAuthOpen(true);
+      return;
+    }
+    if (!account.team) {
+      setCreateTeamOpen(true);
+      return;
+    }
+    if (!account.entitled) {
+      void handleSubscribe();
+      return;
+    }
+    videoInput.current?.click();
+  };
+
+  const uploadButtonLabel = account.loading
+    ? "Loading…"
+    : videoBusy
+      ? !account.user || !account.team
+        ? "Working…"
+        : !account.entitled
+          ? "Redirecting to checkout…"
+          : "Reading the clip…"
+      : !account.user
+        ? "Sign in to upload film"
+        : !account.team
+          ? "Create a team to continue"
+          : !account.entitled
+            ? "Subscribe to unlock AI film import"
+            : "Upload game film";
 
   /**
    * Beta: upload a game clip straight to blob storage, send its URL to
@@ -208,10 +293,13 @@ export default function UploadPage() {
     <div className="flex min-h-dvh flex-col">
       <header className="flex h-[72px] shrink-0 items-center justify-between border-b px-6 lg:px-12">
         <BrandMark />
-        <p className="hidden items-center gap-2 text-[15px] font-medium text-muted-foreground md:flex">
-          <Smartphone className="size-[18px]" aria-hidden="true" />
-          Add to Home Screen to use offline on the field
-        </p>
+        <div className="flex items-center gap-5">
+          <p className="hidden items-center gap-2 text-[15px] font-medium text-muted-foreground md:flex">
+            <Smartphone className="size-[18px]" aria-hidden="true" />
+            Add to Home Screen to use offline on the field
+          </p>
+          <AccountMenu />
+        </div>
       </header>
 
       <main className="grid flex-1 gap-10 px-6 py-10 lg:grid-cols-[minmax(0,1fr)_520px] lg:gap-14 lg:px-12 lg:py-12">
@@ -253,11 +341,11 @@ export default function UploadPage() {
                 <Button
                   size="lg"
                   className="w-fit"
-                  disabled={videoBusy}
-                  onClick={() => videoInput.current?.click()}
+                  disabled={videoBusy || account.loading}
+                  onClick={handleUploadClick}
                 >
                   <Film aria-hidden="true" />
-                  {videoBusy ? "Reading the clip…" : "Upload game film"}
+                  {uploadButtonLabel}
                 </Button>
                 <button
                   type="button"
@@ -270,6 +358,8 @@ export default function UploadPage() {
               <p className="max-w-[540px] text-sm text-muted-foreground">
                 AI-detected routes are a rough first pass — this clip is sent to a vision model for
                 analysis, unlike the CSV above. You&apos;ll drag each route into shape on the card.
+                A paid feature for your coaching staff: sign in, create or join your staff&apos;s
+                team, and subscribe once to unlock it for everyone on the team.
               </p>
               {videoError && <p className="text-sm font-semibold text-destructive">{videoError}</p>}
               <input
@@ -414,12 +504,47 @@ export default function UploadPage() {
             Google&apos;s Gemini API for analysis. Don&apos;t upload film you&apos;re not allowed
             to share off-device.
           </p>
+          <p className="flex items-start gap-2 rounded-lg border bg-card p-3 text-sm leading-relaxed">
+            <Lock className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden="true" />
+            This is a paid feature, billed per coaching staff. Sign in, create (or join) your
+            staff&apos;s team, and subscribe once — every coach on that team then gets AI film
+            import. The CSV importer above stays free with no sign-in, always.
+          </p>
 
           <DialogFooter>
             <Button size="lg" onClick={() => setHowItWorksOpen(false)}>
               Got it
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <AuthDialog open={authOpen} onOpenChange={setAuthOpen} />
+
+      <Dialog open={createTeamOpen} onOpenChange={setCreateTeamOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Name your coaching staff</DialogTitle>
+            <DialogDescription>
+              This is the team your whole staff shares one subscription under. You can invite the
+              rest of your coaches once it&apos;s created.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleCreateTeam} className="flex flex-col gap-3">
+            <input
+              type="text"
+              required
+              autoFocus
+              placeholder="e.g. Central High Football"
+              value={teamName}
+              onChange={(e) => setTeamName(e.target.value)}
+              className="h-11 rounded-md border-2 border-input bg-transparent px-3 text-sm outline-none focus-visible:border-ring"
+            />
+            {teamError && <p className="text-destructive text-sm">{teamError}</p>}
+            <Button type="submit" size="lg" disabled={teamBusy}>
+              {teamBusy ? "Creating…" : "Create team"}
+            </Button>
+          </form>
         </DialogContent>
       </Dialog>
     </div>

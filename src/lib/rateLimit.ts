@@ -1,6 +1,14 @@
 /**
- * Per-IP rate limiting for the video-analysis routes, backed by this
- * project's own private Vercel Blob store.
+ * Rate limiting for the video-analysis routes, backed by this project's own
+ * private Vercel Blob store. Both gated routes now require an authenticated,
+ * entitled team session (see `src/lib/entitlement.ts`) before this even
+ * runs, so the identity passed in is the resolved **team id**, not an IP —
+ * per-account limiting is what actually matters once every caller is a
+ * paying customer, and it avoids a whole coaching staff on one office/
+ * stadium Wi-Fi IP tripping a shared limit. This stays as deliberate
+ * defense-in-depth against a compromised or over-eager account hammering
+ * the endpoint, since Stripe billing itself has no built-in usage cap.
+ * `clientIp` is kept for logging.
  *
  * The natural fit here is Vercel's platform-level Firewall rate limiting
  * (`@vercel/firewall`'s `checkRateLimit`, still called alongside this in
@@ -17,10 +25,10 @@
  * How it works: each allowed request writes a tiny (empty) marker blob
  * under `ratelimit/<bucket>/<hashed identity>/<window start>/<random>`;
  * checking the limit is `list()`ing that prefix and counting. Not
- * perfectly atomic — two requests from the same IP in the same instant
+ * perfectly atomic — two requests from the same team in the same instant
  * could both read the count before either writes its marker — which is
  * fine for this app's actual traffic (a small coaching staff), not a
- * guarantee against a determined, concurrent, distributed abuser.
+ * guarantee against a determined, concurrent abuser.
  */
 
 import { list, put } from "@vercel/blob";
