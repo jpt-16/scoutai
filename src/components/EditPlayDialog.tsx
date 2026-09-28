@@ -144,13 +144,25 @@ export function EditPlayDialog({
   const preview = updateCard(card, draft);
   const previewJobs = buildDiagram(preview, "team", "offense").jobs;
   const routes = draft.routeOverrides ?? {};
-  /** Sets one letter's route or tag; an empty route and tag drops the override. */
+  /**
+   * Sets one letter's route or tag; an empty route, tag, and path drops the
+   * override. Picking a route kind (or "Auto") from the dropdown means the
+   * coach is taking over the shape, so it drops any AI-detected `path` too —
+   * `buildDiagram` prefers a raw `path` over a named `route`, so a stale one
+   * would otherwise keep winning silently. Editing only the tag leaves an
+   * existing AI path alone.
+   */
   const setRoute = (letter: string, change: { route?: string; tag?: string }) => {
     const next = { ...routes[letter], ...change };
+    if ("route" in change) {
+      delete next.path;
+      delete next.source;
+    }
     if (!next.route) delete next.route;
     if (!next.tag) delete next.tag;
     const all = { ...routes };
-    if (next.route || next.tag) all[letter] = next;
+    const hasPath = Boolean(next.path && next.path.length > 0);
+    if (next.route || next.tag || hasPath) all[letter] = next;
     else delete all[letter];
     set({ routeOverrides: all });
   };

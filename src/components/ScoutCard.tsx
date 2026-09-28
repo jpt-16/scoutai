@@ -40,6 +40,13 @@ interface ScoutCardProps {
    * stroke is handed to `onStroke`; saved strokes come from `card.drawings`.
    */
   ink?: { color: string; width?: number; onStroke: (stroke: InkStroke) => void };
+  /**
+   * Lets a coach drag the break points of an AI-detected route (a
+   * `routeOverrides` entry with `source: "video"`) to correct it. Called on
+   * release with the letter and its full updated path (see
+   * `RouteOverride.path` — deltas from the player's own position).
+   */
+  onEditDetectedRoute?: (letter: string, path: [number, number][]) => void;
   className?: string;
 }
 
@@ -144,6 +151,7 @@ export function ScoutCard({
   onMoveDefender,
   onAssignmentChange,
   ink,
+  onEditDetectedRoute,
   className,
 }: ScoutCardProps) {
   const c = PALETTES[variant];
@@ -153,6 +161,11 @@ export function ScoutCard({
   const svgRef = useRef<SVGSVGElement>(null);
   const [drag, setDrag] = useState<{ id: string; x: number; y: number } | null>(null);
   const [stroke, setStroke] = useState<[number, number][] | null>(null);
+  // Live-drag state for a video-detected route's break point (index within
+  // that route's own path, 1-based — index 0 is the player, never draggable).
+  const [routeDrag, setRouteDrag] = useState<{ letter: string; pointIndex: number; x: number; y: number } | null>(
+    null,
+  );
   const strokes = card.drawings?.[unit] ?? [];
   const movable = Boolean(onMoveDefender) && unit === "defense";
   const isDefense = unit === "defense";
@@ -281,11 +294,12 @@ export function ScoutCard({
               viewBox="0 0 10 10"
               refX={8}
               refY={5}
-              markerWidth={4}
-              markerHeight={4}
+              markerWidth={3.2}
+              markerHeight={3.2}
               orient="auto-start-reverse"
             >
-              <path d="M 0 0 L 10 5 L 0 10 Z" fill={color} />
+              {/* A narrower arrowhead than a full-height triangle (base inset from the marker's edges). */}
+              <path d="M 1.5 1.5 L 10 5 L 1.5 8.5 Z" fill={color} />
             </marker>
           ))}
         </defs>
@@ -347,12 +361,12 @@ export function ScoutCard({
         <rect x={0} y={diagram.losY - 2.5} width={FIELD.width} height={5} fill={c.los} />
 
         {/* Blocks, pulls, fakes, routes, ball carrier. */}
-        <g fill="none" stroke={c.block} strokeWidth={3} strokeLinecap="butt" strokeLinejoin="miter">
+        <g fill="none" stroke={c.block} strokeWidth={2.2} strokeLinecap="butt" strokeLinejoin="miter">
           {diagram.blocks.map((b, i) => (
             <path key={i} d={blockPath(b)} />
           ))}
           {diagram.targetBlocks.map(({ path }, i) => (
-            <path key={`t${i}`} d={blockPath(path)} strokeWidth={3.5} />
+            <path key={`t${i}`} d={blockPath(path)} strokeWidth={2.5} />
           ))}
           {diagram.pulls.map((p, i) => (
             <path key={`p${i}`} d={linePath(p, 3)} markerEnd={marker("block")} />
@@ -386,25 +400,31 @@ export function ScoutCard({
               key={`f${i}`}
               d={linePath(p, 3)}
               stroke={c.ball}
-              strokeWidth={3}
+              strokeWidth={2.2}
               strokeDasharray="7 6"
               markerEnd={marker("ball")}
             />
           ))}
-          {diagram.routes.map((p, i) => (
-            <path
-              key={`r${i}`}
-              d={linePath(p, 3)}
-              stroke={c.route}
-              strokeWidth={3.5}
-              markerEnd={marker("route")}
-            />
-          ))}
+          {diagram.routes.map((p, i) => {
+            const letter = diagram.routeVideoLetters[i];
+            // While a break point is being dragged, preview the path live.
+            const drag = routeDrag && letter && routeDrag.letter === letter ? routeDrag : null;
+            const live = drag ? p.map((pt, j) => (j === drag.pointIndex ? { x: drag.x, y: drag.y } : pt)) : p;
+            return (
+              <path
+                key={`r${i}`}
+                d={linePath(live, 3)}
+                stroke={c.route}
+                strokeWidth={2.5}
+                markerEnd={marker("route")}
+              />
+            );
+          })}
           {diagram.carrier && (
             <path
               d={linePath(diagram.carrier, 3)}
               stroke={c.ball}
-              strokeWidth={4}
+              strokeWidth={3}
               markerEnd={marker("ball")}
             />
           )}
@@ -448,6 +468,69 @@ export function ScoutCard({
             </text>
           );
         })}
+
+        {/* AI-detected routes: draggable handles at each break point. */}
+        {onEditDetectedRoute &&
+          diagram.routes.map((p, i) => {
+            const letter = diagram.routeVideoLetters[i];
+            if (!letter) return null;
+            return p.slice(1).map((point, k) => {
+              const pointIndex = k + 1; // index within `p`; 0 is the player, never draggable
+              const drag =
+                routeDrag && routeDrag.letter === letter && routeDrag.pointIndex === pointIndex
+                  ? routeDrag
+                  : null;
+              const at = drag ? { x: drag.x, y: drag.y } : point;
+              return (
+                <g
+                  key={`vr${i}-${pointIndex}`}
+                  role="button"
+                  aria-label={`Adjust ${letter}'s route`}
+                  style={{ cursor: "grab", touchAction: "none" }}
+                  onPointerDown={(e) => {
+                    e.stopPropagation(); // keep the card's swipe from seeing this touch
+                    e.currentTarget.setPointerCapture(e.pointerId);
+                    const pt = svgPoint(e);
+                    if (pt) setRouteDrag({ letter, pointIndex, ...pt });
+                  }}
+                  onPointerMove={(e) => {
+                    if (!drag) return;
+                    const pt = svgPoint(e);
+                    if (pt) setRouteDrag({ letter, pointIndex, ...pt });
+                  }}
+                  onPointerUp={(e) => {
+                    e.stopPropagation();
+                    if (drag) {
+                      const raw = fromCardPoint(diagram, { x: drag.x, y: drag.y });
+                      const player = diagram.players.find((pl) => pl.label === letter);
+                      const startRaw = player && fromCardPoint(diagram, player);
+                      const original = card.routeOverrides?.[letter]?.path ?? [];
+                      if (startRaw) {
+                        const updated = original.map((delta, idx) =>
+                          idx === pointIndex - 1
+                            ? ([raw.x - startRaw.x, raw.y - startRaw.y] as [number, number])
+                            : delta,
+                        );
+                        onEditDetectedRoute(letter, updated);
+                      }
+                    }
+                    setRouteDrag(null);
+                  }}
+                  onPointerCancel={() => setRouteDrag(null)}
+                >
+                  <circle
+                    cx={at.x}
+                    cy={at.y}
+                    r={drag ? 11 : 9}
+                    fill={c.route}
+                    fillOpacity={drag ? 0.9 : 0.55}
+                    stroke={c.field}
+                    strokeWidth={2}
+                  />
+                </g>
+              );
+            });
+          })}
 
         {/* Scout defense: X's (draggable while adjusting). */}
         {diagram.defense.map((d) => {
