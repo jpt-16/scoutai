@@ -1,0 +1,23 @@
+# ScoutCard AI video-analytics service.
+#
+# Install torch separately first, matching your host's CUDA version, per
+# https://pytorch.org/get-started/locally/ — the plain `pip install torch`
+# below will get you a working (if not optimally matched) build, but a GPU
+# host should install the CUDA-specific wheel explicitly before this file,
+# e.g.:
+#   pip install torch --index-url https://download.pytorch.org/whl/cu124
+#   pip install -r requirements.txt
+
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+python-multipart==0.0.20  # required for FastAPI's File()/Form() uploads
+pydantic==2.10.5
+
+opencv-python-headless==4.10.0.84  # CPU-only wheel; see README's OpenCV/CUDA note
+numpy==1.26.4
+
+torch==2.5.1
+transformers==4.47.1  # provides RT-DETRv2 (Apache-2.0), no ultralytics dependency
+supervision==0.25.1  # ByteTrack implementation (MIT), independent of ultralytics
+
+pytest==8.3.4  # for test_homography.py

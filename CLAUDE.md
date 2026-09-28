@@ -280,13 +280,27 @@ off while drawing. `ScoutCard`'s `ink` prop enables the overlay.
 
 ## Deploying to Vercel
 
-No environment variables or server code are needed.
+No environment variables or server code are needed for the Next.js app itself.
 
 - **Git:** push to GitHub, then at vercel.com/new import the repo. Vercel detects
   Next.js (build `next build`, output `.next`). Every push to the default branch deploys.
 - **CLI:** `npx vercel` for a preview, `npx vercel --prod` for production.
 
 `next.config.ts` sends `Cache-Control: no-cache` for `/sw.js` so iPads pick up new versions.
+
+## Video analytics service (`video-service/`)
+
+A separate Python/FastAPI microservice, groundwork for an upcoming AI feature: upload a game
+clip and 4 calibration points, get every player's path back in true field-yardage coordinates
+(via an `cv2.getPerspectiveTransform` homography), for a later stage to turn into scout cards.
+
+This is a deliberate exception to "everything runs client-side" above — video leaves the device
+for this feature. It's also **not** part of the Next.js/Vercel deploy: `next build` only touches
+`src/`, so Vercel never builds or serves this directory, and it couldn't anyway (it needs
+sustained GPU access and a long-running process, which Vercel's serverless functions don't
+provide). It's meant to be deployed separately, to its own GPU-capable host. See
+`video-service/README.md` for setup, licensing notes (RT-DETRv2 via `transformers`, ByteTrack via
+`supervision` — deliberately not the AGPL-licensed `ultralytics` package), and the API contract.
 
 ## Conventions
 

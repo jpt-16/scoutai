@@ -39,3 +39,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# video-service (Python)
+video-service/__pycache__/
+video-service/**/__pycache__/
+video-service/.venv/
+video-service/*.pyc
