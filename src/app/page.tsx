@@ -2,7 +2,17 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, Check, Film, Lock, Smartphone, X } from "lucide-react";
+import {
+  AlertTriangle,
+  Check,
+  Film,
+  Lock,
+  MousePointerClick,
+  ScanEye,
+  Smartphone,
+  Upload,
+  X,
+} from "lucide-react";
 import { BrandMark } from "@/components/BrandMark";
 import { ScoutCard } from "@/components/ScoutCard";
 import { UploadDropzone } from "@/components/UploadDropzone";
@@ -67,6 +77,39 @@ const STEPS = [
   "Run the script on the iPad or print it",
 ];
 
+const VIDEO_STEPS: { icon: typeof Upload; title: string; detail: string }[] = [
+  {
+    icon: Upload,
+    title: "Upload one play's clip",
+    detail:
+      "Pick a short clip (10–20 seconds is plenty) of a single play, from a sideline or " +
+      "endzone angle. It uploads straight to a private cloud file — never held in the app or " +
+      "shown to anyone else.",
+  },
+  {
+    icon: ScanEye,
+    title: "Gemini watches the play",
+    detail:
+      "Google's Gemini 2.5 Flash reviews the clip and tracks each skill player — Q, F, H, X, Y, " +
+      "Z — noting where they line up, where their route breaks, and where they end up.",
+  },
+  {
+    icon: Film,
+    title: "A card builds instantly",
+    detail:
+      "The formation, each player's route, and a route tag appear on a scout card right away " +
+      "— the exact same card, Print Grid, and storage a CSV-imported play gets.",
+  },
+  {
+    icon: MousePointerClick,
+    title: "You correct it by dragging",
+    detail:
+      "The AI is reading camera angle and depth by eye, not measuring the field — it's a rough " +
+      "starting point, not a measurement. Tap and drag any route's break point on the card to " +
+      "match what you actually saw on tape.",
+  },
+];
+
 export default function UploadPage() {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -74,6 +117,7 @@ export default function UploadPage() {
   const [report, setReport] = useState<{ fileName: string; result: HudlParseResult } | null>(null);
   const [videoBusy, setVideoBusy] = useState(false);
   const [videoError, setVideoError] = useState<string | null>(null);
+  const [howItWorksOpen, setHowItWorksOpen] = useState(false);
   const videoInput = useRef<HTMLInputElement>(null);
 
   const handleFiles = async (files: File[]) => {
@@ -192,35 +236,56 @@ export default function UploadPage() {
             Parsed on this device. Your film breakdown never leaves the iPad.
           </p>
 
-          <div className="flex flex-col gap-2 border-t pt-5">
-            <Button
-              variant="outline"
-              size="lg"
-              className="w-fit"
-              disabled={videoBusy}
-              onClick={() => videoInput.current?.click()}
-            >
-              <Film aria-hidden="true" />
-              {videoBusy ? "Reading the clip…" : "Upload game film (beta)"}
-            </Button>
-            <p className="max-w-[540px] text-sm text-muted-foreground">
-              AI-detected routes are a rough first pass — this clip is sent to a vision model for
-              analysis, unlike the CSV above. You&apos;ll drag each route into shape on the card.
-            </p>
-            {videoError && <p className="text-sm font-semibold text-destructive">{videoError}</p>}
-            <input
-              ref={videoInput}
-              type="file"
-              accept="video/mp4,video/quicktime,video/x-m4v"
-              className="sr-only"
-              aria-label="Upload a game clip"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                e.target.value = "";
-                if (file) void handleVideoFile(file);
-              }}
-            />
-          </div>
+          <Card className="gap-3 rounded-2xl border-2 border-primary/70 bg-primary/[0.07] py-5">
+            <CardContent className="flex flex-col gap-3 px-5">
+              <div className="flex flex-wrap items-center gap-2.5">
+                <Badge className="h-6 rounded-full bg-primary px-2.5 text-xs font-extrabold tracking-[0.08em] text-primary-foreground">
+                  NEW
+                </Badge>
+                <span className="text-sm font-bold tracking-[0.14em] text-primary">
+                  NO HUDL BREAKDOWN? USE YOUR GAME FILM
+                </span>
+              </div>
+              <h2 className="font-display text-2xl leading-tight font-extrabold uppercase sm:text-[28px]">
+                Turn a game clip into a scout card
+              </h2>
+              <div className="flex flex-wrap items-center gap-4">
+                <Button
+                  size="lg"
+                  className="w-fit"
+                  disabled={videoBusy}
+                  onClick={() => videoInput.current?.click()}
+                >
+                  <Film aria-hidden="true" />
+                  {videoBusy ? "Reading the clip…" : "Upload game film"}
+                </Button>
+                <button
+                  type="button"
+                  onClick={() => setHowItWorksOpen(true)}
+                  className="text-sm font-bold text-primary underline-offset-4 hover:underline focus-visible:underline focus-visible:outline-none"
+                >
+                  How does this work?
+                </button>
+              </div>
+              <p className="max-w-[540px] text-sm text-muted-foreground">
+                AI-detected routes are a rough first pass — this clip is sent to a vision model for
+                analysis, unlike the CSV above. You&apos;ll drag each route into shape on the card.
+              </p>
+              {videoError && <p className="text-sm font-semibold text-destructive">{videoError}</p>}
+              <input
+                ref={videoInput}
+                type="file"
+                accept="video/mp4,video/quicktime,video/x-m4v"
+                className="sr-only"
+                aria-label="Upload a game clip"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  e.target.value = "";
+                  if (file) void handleVideoFile(file);
+                }}
+              />
+            </CardContent>
+          </Card>
         </section>
 
         <aside className="flex flex-col gap-5">
@@ -310,6 +375,51 @@ export default function UploadPage() {
               </DialogFooter>
             </>
           )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={howItWorksOpen} onOpenChange={setHowItWorksOpen}>
+        <DialogContent className="sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle className="font-display text-3xl font-bold">
+              How AI video import works
+            </DialogTitle>
+            <DialogDescription className="text-base">
+              Four steps from a game clip to a card you can adjust and print.
+            </DialogDescription>
+          </DialogHeader>
+
+          <ol className="flex flex-col gap-4">
+            {VIDEO_STEPS.map(({ icon: Icon, title, detail }, i) => (
+              <li key={title} className="flex gap-3.5">
+                <span
+                  className="flex size-9 shrink-0 items-center justify-center rounded-full border-2 border-primary text-primary"
+                  aria-hidden="true"
+                >
+                  <Icon className="size-[18px]" />
+                </span>
+                <div className="flex flex-col gap-0.5 pt-1">
+                  <span className="font-display text-lg leading-none font-extrabold uppercase">
+                    {String(i + 1)}. {title}
+                  </span>
+                  <span className="text-sm leading-relaxed text-muted-foreground">{detail}</span>
+                </div>
+              </li>
+            ))}
+          </ol>
+
+          <p className="flex items-start gap-2 rounded-lg border bg-card p-3 text-sm leading-relaxed">
+            <AlertTriangle className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden="true" />
+            Unlike the CSV importer above, your clip does leave the device — it&apos;s sent to
+            Google&apos;s Gemini API for analysis. Don&apos;t upload film you&apos;re not allowed
+            to share off-device.
+          </p>
+
+          <DialogFooter>
+            <Button size="lg" onClick={() => setHowItWorksOpen(false)}>
+              Got it
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

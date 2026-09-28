@@ -336,6 +336,22 @@ point (`ScoutCard`'s `onEditDetectedRoute` prop) — the same pointer-capture/`s
 pattern as moving a Scout D defender or the Pencil overlay — so a coach corrects the AI's guess
 by dragging, which is the whole point given the mapping above is approximate.
 
+**Rate limiting:** both routes call `checkRateLimit` from `@vercel/firewall`, which only enforces
+anything once a matching Vercel Firewall rule exists (a `rate_limit_api_id` condition on
+`"parse-video"` / `"blob-upload"`) — creating one for this project returned a 404 ("Seawall
+Config not found") on every attempt, consistent with custom WAF rules being a paid-plan feature.
+The actual cap right now is `src/lib/rateLimit.ts`'s `checkBlobRateLimit`: a per-IP counter kept
+as tiny marker blobs in the same private Blob store (`ratelimit/<bucket>/<ip hash>/<window>/`,
+counted with `list()`), 3 clips / 10 min on `/api/parse-video` and 5 uploads / 10 min on
+`/api/blob-upload`. Not perfectly atomic under concurrent hits from one IP — fine for a small
+coaching staff's traffic, not a guarantee against a determined distributed abuser. If this
+project ever moves to a plan with Firewall rate limiting, add the matching rules (dashboard or
+`vercel firewall rules add`) and `checkRateLimit` starts enforcing immediately, no code change.
+
+There's no per-user auth or database here — "row-level security" doesn't apply (nothing to
+apply it to). The equivalent concern, keeping strangers from running up the Gemini/Blob bill, is
+what the rate limits above are for.
+
 ## Conventions
 
 - Keep `src/lib/*` framework-free (relative imports, no React) so Vitest runs it directly.

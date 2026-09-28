@@ -10,9 +10,31 @@
  */
 
 import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
+import { checkRateLimit } from "@vercel/firewall";
 import { NextResponse } from "next/server";
+import { checkBlobRateLimit, clientIp } from "@/lib/rateLimit";
+
+// Every upload here is normally followed by a paid /api/parse-video call, so
+// this gets its own cap too, a bit looser than that route's. See
+// src/lib/rateLimit.ts for why checkBlobRateLimit, not just checkRateLimit,
+// is what actually enforces this.
+const BLOB_UPLOAD_RATE_LIMIT = { limit: 5, windowMs: 10 * 60 * 1000 }; // 5 per 10 minutes per IP
 
 export async function POST(request: Request): Promise<NextResponse> {
+  const { rateLimited } = await checkRateLimit("blob-upload", { request });
+  const { ok } = await checkBlobRateLimit(
+    "blob-upload",
+    clientIp(request),
+    BLOB_UPLOAD_RATE_LIMIT.limit,
+    BLOB_UPLOAD_RATE_LIMIT.windowMs,
+  );
+  if (rateLimited || !ok) {
+    return NextResponse.json(
+      { error: "Too many uploads recently. Wait a few minutes and try again." },
+      { status: 429 },
+    );
+  }
+
   const body = (await request.json()) as HandleUploadBody;
 
   try {
@@ -22,8 +44,9 @@ export async function POST(request: Request): Promise<NextResponse> {
       onBeforeGenerateToken: async () => ({
         allowedContentTypes: ["video/mp4", "video/quicktime", "video/x-m4v"],
         addRandomSuffix: true,
-        // A generous cap for a single-play clip; adjust if coaches upload longer cutups.
-        maximumSizeInBytes: 250 * 1024 * 1024,
+        // A single play is seconds long — cap well below what a full cutup
+        // would need, since bigger clips mean bigger Gemini bills.
+        maximumSizeInBytes: 75 * 1024 * 1024,
       }),
       onUploadCompleted: async ({ blob }) => {
         // No app-side record needed — /api/parse-video fetches the blob URL

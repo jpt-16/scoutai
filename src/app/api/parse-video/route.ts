@@ -16,8 +16,16 @@
  */
 
 import { GoogleGenAI, Type, type Schema } from "@google/genai";
+import { checkRateLimit } from "@vercel/firewall";
 import { NextResponse } from "next/server";
+import { checkBlobRateLimit, clientIp } from "@/lib/rateLimit";
 import { validateDetectedPlay, type DetectedPlay } from "@/lib/videoImport";
+
+// Each Gemini call here costs real money — kept tight. checkRateLimit() only
+// enforces anything once a matching Vercel Firewall rule exists (see
+// src/lib/rateLimit.ts for why that isn't available on this project yet);
+// checkBlobRateLimit() is what's actually enforcing this limit right now.
+const PARSE_VIDEO_RATE_LIMIT = { limit: 3, windowMs: 10 * 60 * 1000 }; // 3 per 10 minutes per IP
 
 export const runtime = "nodejs";
 // Vision analysis of even a short clip can take a while. Raise this if your
@@ -86,6 +94,23 @@ interface RequestBody {
 }
 
 export async function POST(request: Request): Promise<NextResponse> {
+  // See the const above and src/lib/rateLimit.ts: checkRateLimit is a no-op
+  // without a Firewall rule this project's plan doesn't support creating;
+  // checkBlobRateLimit is the real cap.
+  const { rateLimited } = await checkRateLimit("parse-video", { request });
+  const { ok } = await checkBlobRateLimit(
+    "parse-video",
+    clientIp(request),
+    PARSE_VIDEO_RATE_LIMIT.limit,
+    PARSE_VIDEO_RATE_LIMIT.windowMs,
+  );
+  if (rateLimited || !ok) {
+    return NextResponse.json(
+      { error: "Too many clips submitted recently. Wait a few minutes and try again." },
+      { status: 429 },
+    );
+  }
+
   let body: RequestBody;
   try {
     body = await request.json();
