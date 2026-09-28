@@ -1,0 +1,19 @@
+{
+  "name": "ScoutCard AI",
+  "short_name": "ScoutCard",
+  "description": "Turn your weekly Hudl breakdown CSV into vector scout team cards for the iPad or print.",
+  "id": "/",
+  "start_url": "/script",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0d1210",
+  "theme_color": "#0d1210",
+  "categories": ["sports", "education", "productivity"],
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "/icons/apple-touch-icon.png", "sizes": "180x180", "type": "image/png" }
+  ]
+}

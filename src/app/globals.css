@@ -1,0 +1,83 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+/*
+ * ScoutCard AI runs dark-only: it's built for bright sun on an iPad, where a
+ * dark ground with chalk-white ink and one safety-orange accent reads best.
+ * Printed cards switch to black ink on white (see ScoutCard's print variant).
+ */
+:root {
+  --radius: 0.75rem;
+
+  --background: #0d1210;
+  --foreground: #f4f1e8;
+  --card: #121a16;
+  --card-foreground: #f4f1e8;
+  --popover: #151c19;
+  --popover-foreground: #f4f1e8;
+  --primary: #ff8a3d;
+  --primary-foreground: #0d1210;
+  --secondary: #151c19;
+  --secondary-foreground: #f4f1e8;
+  --muted: #1b2620;
+  --muted-foreground: #a3ada7;
+  --accent: #1b2620;
+  --accent-foreground: #f4f1e8;
+  --destructive: #e5484d;
+  --border: #2a3530;
+  --input: #3d4d45;
+  --ring: #ff8a3d;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  --font-sans: "Barlow", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Barlow Condensed", "Barlow", ui-sans-serif, system-ui, sans-serif;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html,
+  body {
+    @apply bg-background text-foreground font-sans;
+  }
+  body {
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+@media print {
+  html,
+  body {
+    background: #ffffff !important;
+    color: #111111 !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+}
