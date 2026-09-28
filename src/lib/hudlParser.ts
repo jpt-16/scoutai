@@ -89,6 +89,8 @@ export type HudlField =
   | "playType"
   | "defFront"
   | "result"
+  | "offStrength"
+  | "playDir"
   | "odk";
 
 export interface HudlParseResult {
@@ -100,6 +102,19 @@ export interface HudlParseResult {
   warnings: string[];
   /** Data rows read from the file, before empty/special-teams rows are dropped. */
   rowCount: number;
+  /**
+   * Set when the upload isn't a text CSV at all (a Numbers or Excel file with a
+   * .csv name). The app shows export steps instead of "No plays found".
+   */
+  unsupportedFile?: UnsupportedFile;
+}
+
+export type UnsupportedFileKind = "numbers" | "excel" | "binary";
+
+export interface UnsupportedFile {
+  kind: UnsupportedFileKind;
+  /** Plain-language explanation plus how to export a real CSV. */
+  message: string;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -123,6 +138,8 @@ export const COLUMN_ALIASES: Record<HudlField, string[]> = {
   playType: ["PLAY TYPE", "PLAY TYP", "RUN/PASS"],
   defFront: ["DEF FRONT", "FRONT", "DEF ALIGN", "DEF FORM", "DEF FORMATION"],
   result: ["RESULT", "PLAY RESULT", "GN/LS", "GAIN/LOSS"],
+  offStrength: ["OFF STR", "OFF STRENGTH", "STRENGTH", "STR"],
+  playDir: ["PLAY DIR", "PLAY DIRECTION", "DIR", "DIRECTION"],
   odk: ["ODK"],
 };
 
@@ -163,6 +180,8 @@ const HEADER_PATTERNS: Record<HudlField, RegExp> = {
   playType: /^PLAY TYPE$|\bRUN ?\/? ?PASS\b/,
   defFront: /\b(DEF|DEFENSIVE|DEFENSE|D) ?(FRONT|FRONTS|ALIGN|ALIGNMENT|FORM|FORMATION)\b|^FRONTS?$/,
   result: /\bRESULTS?\b|^(GN|GAIN) ?\/? ?(LS|LOSS)$/,
+  offStrength: /^(OFF |OFFENSIVE |FORM )?STR(ENGTH)?$/,
+  playDir: /^(PLAY |RUN )?DIR(ECTION)?$/,
   odk: /^ODK$/,
 };
 
@@ -267,7 +286,7 @@ export function classifyFormation(formation: string): FormationKey {
   if (has(formation, /\s(TRIPS|TREY|TRIO|TRIPLE|BUNCH)\s/)) return "trips";
   if (has(formation, /\s(I|IFORM|I FORM|POWER I|TIGHT I|SLOT I|MAX I)\s/)) return "i-form";
   if (has(formation, /\s(PRO|SPLIT|SPLIT BACK|SPLITBACK|WEAK|STRONG|TWINS)\s/)) return "pro";
-  if (has(formation, /\s(SPREAD|DOUBLES|DBLS|2X2|GUN|SHOTGUN|ACE|EMPTY|DOUBLE)\s/)) return "spread";
+  if (has(formation, /\s(SPREAD|DOUBLES|DBLS|2X2|GUN|SHOTGUN|ACE|ACES|DEUCE|DEUCES|DUCES|EMPTY|DOUBLE)\s/)) return "spread";
   return "unknown";
 }
 
@@ -276,7 +295,7 @@ export function classifyFront(front: string): FrontKey {
   const f = front.toUpperCase().replace(/\s+/g, " ");
   if (has(f, /\s(BEAR|46|DOUBLE EAGLE|DBL EAGLE)\s/)) return "bear";
   if (/\b5[\s-]?[23]\b|\bOKIE\b|\bOKLAHOMA\b|\b50\b/.test(f)) return "5-2";
-  if (/\b3[\s-]?[34](?:[\s-]?5)?\b|\bTITE\b|\bMINT\b|\bSTACK\b/.test(f)) return "3-4";
+  if (/\b3[\s-]?[34](?:[\s-]?5)?\b|\bTITE\b|\bMINT\b|\bSTACK\b|\bODD\b/.test(f)) return "3-4";
   if (/\b4[\s-]?[34](?:[\s-]?5)?\b|\b4[\s-]?2[\s-]?5\b|\bOVER\b|\bUNDER\b|\bEVEN\b/.test(f)) return "4-3";
   return "unknown";
 }
@@ -288,9 +307,12 @@ export function classifyConcept(playCall: string, playType = ""): PlayConcept {
     if (has(p, /\s(BOOT|BOOTLEG|NAKED|WAGGLE|SPRINT|ROLL|ROLLOUT|PA|PLAY ACTION)\s/)) return "boot";
     if (has(p, /\s(VERTS|VERT|VERTICAL|VERTICALS|4 VERTS|FOUR VERTS|GO|GOES|SEAM|SEAMS|FADE)\s/)) return "verticals";
     if (has(p, /\s(SLANT|SLANTS|QUICK|STICK|HITCH|SPACING)\s/)) return "slant";
-    if (has(p, /\s(SWEEP|TOSS|PITCH|JET|FLY|BUCK SWEEP|REVERSE)\s/)) return "sweep";
+    if (has(p, /\s(QB|Q)\s/) && has(p, /\s(ISO|DRAW|POWER|LEAD|RUN|SNEAK|COUNTER|G|TRAP|ZONE|KEEP|B)\s/)) {
+      return "qb-run";
+    }
+    if (has(p, /\s(SWEEP|TOSS|PITCH|JET|FLY|BUCK SWEEP|REVERSE|OPTION|SPEED OPTION|SPEED)\s/)) return "sweep";
     if (has(p, /\s(OZ|OUTSIDE ZONE|STRETCH|WIDE ZONE|OUTSIDE)\s/)) return "outside-zone";
-    if (has(p, /\s(POWER|COUNTER|GT|TRAP|ISO|LEAD|BELLY|DART|G)\s/)) return "power";
+    if (has(p, /\s(POWER|COUNTER|TREY|GT|TRAP|ISO|LEAD|BELLY|DART|G)\s/)) return "power";
     if (has(p, /\s(SNEAK|QB DRAW|QB RUN|QB POWER|QB COUNTER|DRAW)\s/)) return "qb-run";
     if (has(p, /\s(IZ|INSIDE ZONE|ZONE|DIVE|MID ZONE|SPLIT ZONE|ZONE READ|RPO)\s/)) return "inside-zone";
     if (has(p, /\s(PASS|DROPBACK|DROP|SMASH|CURL|FLAT|FLOOD|MESH|SAIL|DIG|POST|CORNER|OUT|DAGGER|Y CROSS|CROSS|SHALLOW)\s/)) return "dropback";
@@ -300,6 +322,14 @@ export function classifyConcept(playCall: string, playType = ""): PlayConcept {
   if (t.startsWith("RUN")) return "inside-zone";
   if (t.startsWith("PASS")) return "dropback";
   return "unknown";
+}
+
+/** Reads a dedicated direction cell (Hudl OFF STR / PLAY DIR): L, R, LT, Right… BAL/N → null. */
+export function parseSideTag(value: string): Side | null {
+  const v = value.trim().toUpperCase();
+  if (/^(L|LT|LFT|LEFT)$/.test(v)) return "left";
+  if (/^(R|RT|RGT|RIGHT)$/.test(v)) return "right";
+  return null;
 }
 
 /** Reads a left/right tag ("RT", "LEFT", trailing "R") out of free text. */
@@ -466,7 +496,8 @@ export function rowToCard(
   const playType = cell(row, columns.playType);
   const defFront = cell(row, columns.defFront);
 
-  const formationSide = parseSide(formation) ?? "right";
+  // Explicit Hudl OFF STR / PLAY DIR columns win over tags inside the text.
+  const formationSide = parseSideTag(cell(row, columns.offStrength)) ?? parseSide(formation) ?? "right";
 
   return {
     id: `play-${playNumber}-${rowIndex}`,
@@ -485,7 +516,7 @@ export function rowToCard(
     playCall,
     playType,
     concept: classifyConcept(playCall, playType),
-    playDirection: parseSide(playCall) ?? formationSide,
+    playDirection: parseSideTag(cell(row, columns.playDir)) ?? parseSide(playCall) ?? formationSide,
     defFront,
     frontKey: classifyFront(defFront),
     result: cell(row, columns.result),
@@ -517,11 +548,60 @@ export function resolveBarePlayColumn(
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
 /**
+ * Recognizes uploads that aren't text CSV even though they're named .csv:
+ * Apple Numbers and Excel .xlsx files are zip archives (they start with "PK"),
+ * and old Excel .xls files start with the OLE signature. Returns null for text.
+ */
+export function detectUnsupportedFile(text: string): UnsupportedFile | null {
+  const head = text.slice(0, 4096);
+  if (head.startsWith("PK\u0003\u0004")) {
+    if (text.includes("Index/Document.iwa") || text.includes("Index/Tables/")) {
+      return {
+        kind: "numbers",
+        message:
+          "This is an Apple Numbers file saved with a .csv name, not a real CSV. In Numbers, choose File → Export To → CSV…, then upload the exported file.",
+      };
+    }
+    if (text.includes("xl/workbook") || text.includes("[Content_Types].xml")) {
+      return {
+        kind: "excel",
+        message:
+          "This is an Excel workbook (.xlsx) with a .csv name, not a real CSV. In Excel, choose File → Save As → CSV UTF-8 (Comma delimited), then upload that file.",
+      };
+    }
+  }
+  // Zip archives and files full of control bytes (.xls, PDFs…) aren't text.
+  // NUL is left out on purpose: UTF-16 text decodes with NULs and parses fine.
+  const binary =
+    head.startsWith("PK\u0003\u0004") ||
+    (head.match(/[\u0001-\u0008\u000E-\u001A]/g)?.length ?? 0) > 20;
+  if (binary) {
+    return {
+      kind: "binary",
+      message:
+        "This file isn't a text CSV (it looks like a spreadsheet or other binary file). Export the breakdown as CSV from Hudl, Excel, Numbers, or Google Sheets and upload that.",
+    };
+  }
+  return null;
+}
+
+/**
  * Parses Hudl breakdown CSV text synchronously:
  * sanitize → raw 2D rows → find the header row → map rows by column index.
  * Never throws; problems come back as `warnings` and valid rows always load.
  */
 export function parseHudlCsvText(text: string): HudlParseResult {
+  const unsupportedFile = detectUnsupportedFile(text);
+  if (unsupportedFile) {
+    return {
+      cards: [],
+      columns: {},
+      missingColumns: [...CORE_FIELDS],
+      warnings: [unsupportedFile.message],
+      rowCount: 0,
+      unsupportedFile,
+    };
+  }
   const sanitized = sanitizeCsvInput(text);
   let parsed = parseRawRows(sanitized);
   let repairedQuotes = false;

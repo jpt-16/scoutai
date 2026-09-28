@@ -5,6 +5,7 @@ import {
   classifyConcept,
   classifyFormation,
   classifyFront,
+  detectUnsupportedFile,
   sanitizeCsvInput,
   mapColumns,
   parseHash,
@@ -359,6 +360,51 @@ describe("parseHudlCsvText", () => {
       const result = parseHudlCsvText("PLAY,DN,OFF FORM,OFF PLAY\n12,3,Trips Rt,Slant\n13,1,Spread,IZ\n");
       expect(result.columns.playNumber).toBe("PLAY");
       expect(result.cards.map((c) => c.playNumber)).toEqual([12, 13]);
+    });
+  });
+
+  describe("files that aren't CSV", () => {
+    it("recognizes an Apple Numbers file saved with a .csv name", () => {
+      const numbers = "PK\u0003\u0004\u0014\u0000\u0000\u0000Index/Document.iwa\u0000\u0008binary...";
+      const result = parseHudlCsvText(numbers);
+      expect(result.unsupportedFile?.kind).toBe("numbers");
+      expect(result.unsupportedFile?.message).toMatch(/File → Export To → CSV/);
+      expect(result.cards).toEqual([]);
+    });
+
+    it("recognizes an Excel .xlsx saved with a .csv name", () => {
+      expect(detectUnsupportedFile("PK\u0003\u0004\u0014\u0000[Content_Types].xml xl/workbook.xml")?.kind).toBe("excel");
+    });
+
+    it("recognizes other binary files", () => {
+      expect(detectUnsupportedFile("\u0001\u0002\u0003\u0004".repeat(10))?.kind).toBe("binary");
+    });
+
+    it("leaves real CSV text alone, including UTF-16 decoded with NULs", () => {
+      expect(detectUnsupportedFile(MOCK_HUDL_CSV)).toBeNull();
+      expect(detectUnsupportedFile("P\u0000L\u0000A\u0000Y\u0000 \u0000#\u0000,\u0000".repeat(20))).toBeNull();
+    });
+  });
+
+  describe("real staff file (OFF STR / PLAY DIR columns)", () => {
+    const csv = `PLAY #,ODK,DN,DIST,YARD LN,HASH,OFF FORM,OFF PLAY,OFF STR,PLAY DIR,DEF FRONT,COVERAGE
+1,O,1,10,-40,R,TRIO,QB LEAD DRAW,R,L,,
+2,O,2,7,-37,L,DUCES,READ POWER,BAL,L,,
+10,O,1,10,28,R,ACES OFF,QB B power,BAL,R,,
+21,O,1,10,25,R,TRIO,SPEED OPTION,L,R,EVEN,7 - ALL LBS
+35,O,1,10,-35,L,TRIO,,L,R,ODD,4 - 2 OLB
+`;
+    it("uses OFF STR and PLAY DIR and the staff's terms", () => {
+      const cards = parseHudlCsvText(csv).cards;
+      expect(
+        cards.map((c) => [c.playNumber, c.formationKey, c.formationSide, c.concept, c.playDirection, c.frontKey]),
+      ).toEqual([
+        [1, "trips", "right", "qb-run", "left", "unknown"],
+        [2, "spread", "right", "power", "left", "unknown"],
+        [10, "spread", "right", "qb-run", "right", "unknown"],
+        [21, "trips", "left", "sweep", "right", "4-3"],
+        [35, "trips", "left", "unknown", "right", "3-4"],
+      ]);
     });
   });
 

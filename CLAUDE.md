@@ -83,9 +83,16 @@ then matched against `COLUMN_ALIASES` in priority order. Headers still unmatched
 | Play type   | `PLAY TYPE` when a better play-call column exists (Run/Pass)        |
 | Def front   | `DEF FRONT`, `FRONT`, `DEF ALIGN`, `DEF FORM`, `DEF FORMATION`      |
 | Result      | `RESULT`, `PLAY RESULT`, `GN/LS`, `GAIN/LOSS` (kept on the card data) |
+| Off strength| `OFF STR`, `OFF STRENGTH`, `STRENGTH`, `STR`; `L`/`R` set the formation side (`BAL` = default) |
+| Play dir    | `PLAY DIR`, `PLAY DIRECTION`, `DIR`, `DIRECTION`; `L`/`R` set the arrow direction (`N` = none) |
 | ODK         | `ODK`: rows tagged `K` are skipped                                  |
 
 Parsing pipeline (`parseHudlCsvText`, never throws):
+
+0. `detectUnsupportedFile` catches uploads that aren't text at all: Apple Numbers files,
+   Excel `.xlsx` files and other binary files saved with a `.csv` name (zip archives start with
+   `PK`). The dialog shows "Save this as a CSV first" with the menu path, instead of trying
+   to parse binary data. This was the real cause of "1618 rows read, no columns matched".
 
 1. `sanitizeCsvInput` normalizes newlines to `\n`, straightens curly quotes, turns
    non-breaking spaces into spaces, and strips BOM/zero-width/control characters.

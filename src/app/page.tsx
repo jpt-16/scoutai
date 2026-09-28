@@ -18,7 +18,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { MOCK_HUDL_CSV, DEMO_FILE_NAME } from "@/lib/demoScript";
-import { parseHudlCsv, parseHudlCsvText, type HudlField, type HudlParseResult } from "@/lib/hudlParser";
+import { parseHudlCsv, parseHudlCsvText, type HudlField, type HudlParseResult, type UnsupportedFileKind } from "@/lib/hudlParser";
 import { saveScript } from "@/lib/scriptStore";
 
 const PREVIEW_CARD = parseHudlCsvText(
@@ -36,7 +36,15 @@ const FIELD_LABELS: Record<HudlField, string> = {
   playType: "Play type",
   defFront: "Def front",
   result: "Result",
+  offStrength: "Off strength",
+  playDir: "Play direction",
   odk: "ODK",
+};
+
+const UNSUPPORTED_LABELS: Record<UnsupportedFileKind, string> = {
+  numbers: "Apple Numbers file",
+  excel: "Excel workbook",
+  binary: "not a text file",
 };
 
 const REPORT_FIELDS: HudlField[] = [
@@ -146,49 +154,59 @@ export default function UploadPage() {
             <>
               <DialogHeader>
                 <DialogTitle className="font-display text-3xl font-bold">
-                  No plays found
+                  {report.result.unsupportedFile ? "Save this as a CSV first" : "No plays found"}
                 </DialogTitle>
                 <DialogDescription className="text-base">
-                  {report.fileName} · {report.result.rowCount} rows read
+                  {report.result.unsupportedFile
+                    ? `${report.fileName} · ${UNSUPPORTED_LABELS[report.result.unsupportedFile.kind]}`
+                    : `${report.fileName} · ${report.result.rowCount} rows read`}
                 </DialogDescription>
               </DialogHeader>
 
-              <div className="flex flex-col gap-2">
-                <p className="text-xs font-bold tracking-[0.12em] text-muted-foreground">
-                  COLUMNS MATCHED
+              {report.result.unsupportedFile ? (
+                <p className="rounded-lg border bg-card p-4 text-base leading-relaxed">
+                  {report.result.unsupportedFile.message}
                 </p>
-                <div className="flex flex-wrap gap-2">
-                  {REPORT_FIELDS.map((field) => {
-                    const column = report.result.columns[field];
-                    return (
-                      <Badge
-                        key={field}
-                        variant={column ? "secondary" : "outline"}
-                        className="h-8 gap-1.5 px-2.5 text-sm"
-                      >
-                        {column ? (
-                          <Check className="text-primary" aria-hidden="true" />
-                        ) : (
-                          <X className="text-muted-foreground" aria-hidden="true" />
-                        )}
-                        {FIELD_LABELS[field]}
-                        {column && <span className="text-muted-foreground">← {column}</span>}
-                        {!column && <span className="sr-only">(not found)</span>}
-                      </Badge>
-                    );
-                  })}
-                </div>
-              </div>
+              ) : (
+                <>
+                  <div className="flex flex-col gap-2">
+                    <p className="text-xs font-bold tracking-[0.12em] text-muted-foreground">
+                      COLUMNS MATCHED
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {REPORT_FIELDS.map((field) => {
+                        const column = report.result.columns[field];
+                        return (
+                          <Badge
+                            key={field}
+                            variant={column ? "secondary" : "outline"}
+                            className="h-8 gap-1.5 px-2.5 text-sm"
+                          >
+                            {column ? (
+                              <Check className="text-primary" aria-hidden="true" />
+                            ) : (
+                              <X className="text-muted-foreground" aria-hidden="true" />
+                            )}
+                            {FIELD_LABELS[field]}
+                            {column && <span className="text-muted-foreground">← {column}</span>}
+                            {!column && <span className="sr-only">(not found)</span>}
+                          </Badge>
+                        );
+                      })}
+                    </div>
+                  </div>
 
-              {report.result.warnings.length > 0 && (
-                <ul className="flex flex-col gap-1.5 rounded-lg border bg-card p-3 text-sm">
-                  {report.result.warnings.map((w) => (
-                    <li key={w} className="flex gap-2">
-                      <AlertTriangle className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden="true" />
-                      {w}
-                    </li>
-                  ))}
-                </ul>
+                  {report.result.warnings.length > 0 && (
+                    <ul className="flex flex-col gap-1.5 rounded-lg border bg-card p-3 text-sm">
+                      {report.result.warnings.map((w) => (
+                        <li key={w} className="flex gap-2">
+                          <AlertTriangle className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden="true" />
+                          {w}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </>
               )}
 
               <DialogFooter>
