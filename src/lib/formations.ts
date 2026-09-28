@@ -479,10 +479,12 @@ export const ROUTE_CHOICES: { value: string; label: string }[] = [
   { value: "none", label: "No route" },
 ];
 
-/** True when a coach gave any letter an actual route. */
+/** True when a coach (or AI video detection) gave any letter an actual route. */
 export function hasCoachRoutes(card: Pick<HudlPlayCard, "routeOverrides">): boolean {
   return Object.values(card.routeOverrides ?? {}).some(
-    (o) => o.route && o.route !== "none" && o.route !== "stalk" && o.route !== "protect",
+    (o) =>
+      (o.path && o.path.length > 0) ||
+      (o.route && o.route !== "none" && o.route !== "stalk" && o.route !== "protect"),
   );
 }
 
@@ -522,6 +524,12 @@ export interface Diagram {
   routes: Point[][];
   /** Label per route (same order): its route-tree number, or its name off the tree. */
   routeLabels: string[];
+  /**
+   * Player label per route (same order) when that route came from AI video
+   * detection (`routeOverrides[label].source === "video"`), else null. Lets
+   * `ScoutCard` know which routes to draw draggable correction handles on.
+   */
+  routeVideoLetters: (string | null)[];
   /** Scout offense: what each skill player and the QB does ("9 Fade", "Stalk", "Lead"). */
   jobs: Record<string, string>;
   /** Run blocking scheme when the play is a run. */
@@ -562,7 +570,7 @@ export interface Diagram {
 }
 
 type Placed = Player & { at: Pt };
-type LabeledPath = { path: Pt[]; label: string };
+type LabeledPath = { path: Pt[]; label: string; videoLetter?: string };
 /** What each skill player does on the play, by label: "9 Fade", "Stalk", "Block LB". */
 type Jobs = Record<string, string>;
 
@@ -1038,7 +1046,16 @@ export function buildDiagram(
       if (!own) continue;
       const mine = startsAt(pl);
       const o = pl.x > 250 ? 1 : pl.x < 250 ? -1 : d;
-      if (own.route) {
+      if (own.path && own.path.length > 0) {
+        // A literal detected shape wins over any named route kind: draw it
+        // from the player's own spot, same as a hand-picked route would be.
+        routes = routes.filter((r) => !mine(r.path));
+        blocks.splice(0, blocks.length, ...blocks.filter((b) => !mine(b)));
+        targetBlocks.splice(0, targetBlocks.length, ...targetBlocks.filter((t) => !mine(t.path)));
+        const path: Pt[] = [pl.at, ...own.path.map(([dx, dy]) => [pl.at[0] + dx, pl.at[1] + dy] as Pt)];
+        routes.push({ path, label: "", videoLetter: own.source === "video" ? pl.label : undefined });
+        jobs[pl.label] = "Route";
+      } else if (own.route) {
         routes = routes.filter((r) => !mine(r.path));
         blocks.splice(0, blocks.length, ...blocks.filter((b) => !mine(b)));
         targetBlocks.splice(0, targetBlocks.length, ...targetBlocks.filter((t) => !mine(t.path)));
@@ -1094,6 +1111,7 @@ export function buildDiagram(
     carrier: carrier ? carrier.map(toPoint).map(turn) : null,
     routes: turnAll(points(keptRoutes.map((r) => r.path))),
     routeLabels: keptRoutes.map((r) => r.label),
+    routeVideoLetters: keptRoutes.map((r) => r.videoLetter ?? null),
     jobs,
     scheme,
     blocks: turnAll(points(blocks)),
