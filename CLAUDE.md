@@ -188,7 +188,7 @@ Card look (`ScoutCard.tsx`, PlayIQ-style):
 - **Header:** card #, a centered play title (formation · play call, or formation vs front),
   the hash and period, and a RUN / PASS / RPO / PLAY ACTION / DEF tag.
 - **Field:** white, with light gray 5-yard lines, left/middle/right hash ticks, field numbers
-  and a **blue LOS bar**.
+  (turned 90° to face their own sideline, like a real field) and a **blue LOS bar**.
 - **Symbols:** the center is a square, other linemen are unlabeled circles, and skill players
   are circles with black letters (Q/F/H/X/Y/Z; the staff's own convention, kept over a generic
   X/T/QB/RB set).

@@ -305,7 +305,16 @@ export function ScoutCard({
             .filter((l) => l.label)
             .flatMap(({ y, label }) =>
               [NUMBERS_X.left, NUMBERS_X.right].map((x) => (
-                <text key={`${x}-${y}`} x={x} y={y} dy="0.36em" letterSpacing={6}>
+                // Turned 90° to face their own sideline, like a real field: the
+                // yard line runs between the two digits.
+                <text
+                  key={`${x}-${y}`}
+                  x={x}
+                  y={y}
+                  dy="0.36em"
+                  letterSpacing={6}
+                  transform={`rotate(${x < FIELD.center.x ? 90 : -90} ${x} ${y})`}
+                >
                   {label}
                 </text>
               )),
