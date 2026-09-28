@@ -92,6 +92,8 @@ export interface HudlPlayCard {
    * by defender id ("FS1", "C2"), in un-flipped card coordinates.
    */
   defenseOverrides?: Record<string, { x: number; y: number }>;
+  /** A coach's own text for assignment-table boxes, by key ("PST", "Y", "FRONT"). */
+  assignmentNotes?: Record<string, string>;
 
   /** Every column of the original row, keyed by the normalized header. */
   raw: Record<string, string>;

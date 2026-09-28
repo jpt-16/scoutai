@@ -1,8 +1,9 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 import type { HudlPlayCard } from "@/lib/hudlParser";
 import {
+  buildAssignments,
   buildDiagram,
   FIELD,
   fromCardPoint,
@@ -18,7 +19,7 @@ export type ScoutCardVariant = "field" | "print";
 
 interface ScoutCardProps {
   card: HudlPlayCard;
-  /** `field` = dark, high-contrast iPad card. `print` = black ink on white. */
+  /** `field` = the iPad card (color). `print` = tuned for paper and grayscale. */
   variant?: ScoutCardVariant;
   /** `team` = all 11; `7v7` = skeleton, no linemen on either side. */
   mode?: DiagramMode;
@@ -29,58 +30,73 @@ interface ScoutCardProps {
    * film. Called on release with the defender id and its saved position.
    */
   onMoveDefender?: (id: string, at: Point) => void;
+  /**
+   * Makes the assignment table editable: tap a box and type. Called on blur
+   * with the box key ("PST", "Y", "NOTES") and the new text ("" = back to auto).
+   */
+  onAssignmentChange?: (key: string, text: string) => void;
   className?: string;
 }
 
+/** White-field diagram palettes (PlayIQ-style): black players, blue LOS, red routes. */
 const PALETTES = {
   field: {
-    bg: "#0d1210",
-    ink: "#f4f1e8",
-    muted: "#a3ada7",
-    field: "#10261c",
-    grid: "#2f4a3d",
-    los: "#f4f1e8",
-    offense: "#f4f1e8",
-    offenseFill: "#10261c",
-    block: "#d9d4c7",
-    route: "#5ab8ff",
-    ball: "#ff8a3d",
-    defense: "#ff8a3d",
-    rule: "#2a3530",
-    badgeBg: "#ff8a3d",
-    badgeInk: "#0d1210",
-  },
-  print: {
-    bg: "#ffffff",
+    card: "#ffffff",
     ink: "#111111",
-    muted: "#4a4a4a",
+    muted: "#52525b",
+    rule: "#d4d4d8",
+    box: "#f4f4f5",
     field: "#ffffff",
-    grid: "#b5b5b5",
-    los: "#111111",
+    grid: "#d4d4d8",
+    hash: "#a1a1aa",
+    numbers: "#b8b8c0",
+    los: "#2563eb",
     offense: "#111111",
     offenseFill: "#ffffff",
     block: "#111111",
-    route: "#1d4ed8",
-    ball: "#b3410e",
-    defense: "#b3410e",
+    route: "#dc2626",
+    ball: "#ea580c",
+    defense: "#dc2626",
+    badgeBg: "#111111",
+    badgeInk: "#ffffff",
+  },
+  print: {
+    card: "#ffffff",
+    ink: "#111111",
+    muted: "#3f3f46",
     rule: "#111111",
+    box: "#ffffff",
+    field: "#ffffff",
+    grid: "#c8c8cc",
+    hash: "#8a8a93",
+    numbers: "#a8a8b0",
+    los: "#1d4ed8",
+    offense: "#111111",
+    offenseFill: "#ffffff",
+    block: "#111111",
+    route: "#b91c1c",
+    ball: "#c2410c",
+    defense: "#b91c1c",
     badgeBg: "#111111",
     badgeInk: "#ffffff",
   },
 } as const;
 
 /** Card aspect ratio (width / height) shared with layouts that size cards. */
-export const SCOUT_CARD_ASPECT = 760 / 556;
+export const SCOUT_CARD_ASPECT = 760 / 600;
 
 const f = (n: number) => n.toFixed(1);
 
-/** Unit vector of a segment and its angle. */
+/** Unit vector of a segment. */
 function heading(from: Point, to: Point) {
   const a = Math.atan2(to.y - from.y, to.x - from.x);
-  return { a, cos: Math.cos(a), sin: Math.sin(a) };
+  return { cos: Math.cos(a), sin: Math.sin(a) };
 }
 
-/** Polyline starting at the player's circle edge and ending `endInset` short of the last point. */
+/**
+ * Straight segments with sharp corners, starting at the player's circle edge
+ * and ending `endInset` short of the last point (room for an arrow marker).
+ */
 function linePath(path: Point[], endInset: number): string {
   const [first, second] = path;
   const tip = path[path.length - 1];
@@ -90,60 +106,30 @@ function linePath(path: Point[], endInset: number): string {
   const end = { x: tip.x - endInset * e.cos, y: tip.y - endInset * e.sin };
   const middle = path
     .slice(1, -1)
-    .map((p) => `L${f(p.x)} ${f(p.y)}`)
+    .map((p) => ` L ${f(p.x)} ${f(p.y)}`)
     .join("");
-  return `M${f(start.x)} ${f(start.y)}${middle}L${f(end.x)} ${f(end.y)}`;
+  return `M ${f(start.x)} ${f(start.y)}${middle} L ${f(end.x)} ${f(end.y)}`;
 }
 
-function arrowHead(path: Point[]): string {
-  const tip = path[path.length - 1];
-  const { cos, sin } = heading(path[path.length - 2], tip);
-  const base = { x: tip.x - 14 * cos, y: tip.y - 14 * sin };
-  const px = -sin * 7;
-  const py = cos * 7;
-  return `M${f(tip.x)} ${f(tip.y)}L${f(base.x + px)} ${f(base.y + py)}L${f(base.x - px)} ${f(base.y - py)}Z`;
-}
-
-/** Block symbol: the line, then a bar across its end. */
-function blockPaths(path: Point[]): { line: string; bar: string } {
+/** Block symbol: the line, then a T-bar across its end. */
+function blockPath(path: Point[]): string {
   const tip = path[path.length - 1];
   const { cos, sin } = heading(path[path.length - 2], tip);
   const px = -sin * 7;
   const py = cos * 7;
-  return {
-    line: linePath(path, 0),
-    bar: `M${f(tip.x + px)} ${f(tip.y + py)}L${f(tip.x - px)} ${f(tip.y - py)}`,
-  };
+  return `${linePath(path, 0)} M ${f(tip.x + px)} ${f(tip.y + py)} L ${f(tip.x - px)} ${f(tip.y - py)}`;
 }
 
-function HeaderStat({
-  label,
-  value,
-  className,
-}: {
-  label: string;
-  value: string;
-  className?: string;
-}) {
-  return (
-    <div className={cn("flex min-w-0 flex-col", className)}>
-      <span
-        className="text-[max(10px,1.6cqw)] font-semibold tracking-[0.08em]"
-        style={{ color: "var(--sc-muted)" }}
-      >
-        {label}
-      </span>
-      <span className="font-display truncate text-[max(17px,3.95cqw)] leading-[1.05] font-bold">
-        {value}
-      </span>
-    </div>
-  );
-}
+/** Keeps a label on the field when a route ends near an edge. */
+const onField = (p: Point) => ({
+  x: Math.min(FIELD.width - 14, Math.max(14, p.x)),
+  y: Math.min(FIELD.height - 10, Math.max(12, p.y)),
+});
 
 /**
- * A single scout card for the scout offense: header (card #, down & distance,
- * hash, formation, run/pass tag), an SVG of the offense with blocking or
- * routes, and the play call. Scales with its container via container-query units.
+ * A scout card: title header, a white-field SVG diagram (offense with blocking
+ * and routes, or the formation plus defensive alignment), and an assignment
+ * table. Scales with its container width via container-query units.
  */
 export function ScoutCard({
   card,
@@ -151,13 +137,31 @@ export function ScoutCard({
   mode = "team",
   unit = "offense",
   onMoveDefender,
+  onAssignmentChange,
   className,
 }: ScoutCardProps) {
   const c = PALETTES[variant];
   const diagram = buildDiagram(card, mode, unit);
+  const rows = buildAssignments(card, diagram);
+  const uid = useId().replace(/[^a-zA-Z0-9]/g, "");
   const svgRef = useRef<SVGSVGElement>(null);
   const [drag, setDrag] = useState<{ id: string; x: number; y: number } | null>(null);
   const movable = Boolean(onMoveDefender) && unit === "defense";
+  const isDefense = unit === "defense";
+  const cardNumber = String(card.playNumber).padStart(2, "0");
+  const title = isDefense
+    ? `${card.formation || "—"} vs ${card.defFront || "4-3"}`
+    : `${card.formation || "—"} · ${card.playCall || "—"}`;
+  const subtitle = [
+    card.hash ? `${card.hash} hash` : null,
+    mode === "7v7" ? "7v7" : "Team",
+    isDefense ? "Scout defense" : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  const tag = isDefense ? "DEF" : PLAY_KIND_LABELS[diagram.kind];
+  const tagColor = isDefense ? c.defense : diagram.kind === "run" ? c.ball : c.los;
+  const marker = (name: string) => `url(#${uid}-${name})`;
 
   /** Pointer position in SVG coordinates, kept on the field and on the defense's side. */
   const svgPoint = (e: React.PointerEvent): Point | null => {
@@ -173,97 +177,62 @@ export function ScoutCard({
       y: Math.min(maxY, Math.max(minY, p.y)),
     };
   };
-  const isDefense = unit === "defense";
-  const cardNumber = String(card.playNumber).padStart(2, "0");
-  const note = [
-    diagram.formationFallback
-      ? card.formation
-        ? "formation not recognized, drawn as Spread"
-        : "no formation tagged, drawn as Spread"
-      : null,
-    diagram.frontFallback
-      ? card.defFront
-        ? "front drawn as 4-3"
-        : "no front tagged, drawn as 4-3"
-      : null,
-    !isDefense &&
-    diagram.kind !== "run" &&
-    diagram.routes.length === 0 &&
-    diagram.targetBlocks.length === 0
-      ? "no routes tagged"
-      : null,
-  ]
-    .filter(Boolean)
-    .join(" · ");
+
+  // Assignment grid: 4 columns (3 for scout defense); NOTES fills the last row.
+  const columns = rows.length <= 3 ? 3 : 4;
+  const notesSpan = columns - ((rows.length - 1) % columns);
 
   return (
     <article
-      aria-label={`Card ${cardNumber}: ${card.formation || "unknown formation"}, ${isDefense ? card.defFront || "no front" : card.playCall || "no play call"}`}
+      aria-label={`Card ${cardNumber}: ${title}`}
       className={cn(
-        "@container flex aspect-[760/556] w-full flex-col overflow-hidden border-2",
+        "@container flex aspect-[760/600] w-full flex-col overflow-hidden border-2",
         variant === "print" ? "rounded-md" : "rounded-[14px]",
         className,
       )}
       style={
         {
-          background: c.bg,
+          background: c.card,
           color: c.ink,
           borderColor: variant === "print" ? c.ink : c.rule,
           "--sc-muted": c.muted,
         } as React.CSSProperties
       }
     >
+      {/* Header: card number, centered play title, run/pass tag. */}
       <header
-        className="flex h-[max(50px,10cqw)] shrink-0 items-stretch border-b-2"
+        className="grid h-[max(46px,8.5cqw)] shrink-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-[max(8px,1.6cqw)] border-b-2 px-[max(8px,1.6cqw)]"
         style={{ borderColor: c.rule }}
       >
         <div
-          className="flex flex-col items-center justify-center px-[max(10px,2.4cqw)]"
+          className="flex flex-col items-center justify-center rounded-md px-[max(6px,1.2cqw)] py-[max(2px,0.4cqw)]"
           style={{ background: c.badgeBg, color: c.badgeInk }}
         >
-          <span className="text-[max(10px,1.6cqw)] font-bold tracking-[0.12em]">CARD</span>
-          <span className="font-display text-[max(24px,5.8cqw)] leading-[0.95] font-extrabold">
+          <span className="text-[max(8px,1.25cqw)] leading-none font-bold tracking-[0.12em]">
+            CARD
+          </span>
+          <span className="font-display text-[max(18px,3.6cqw)] leading-[0.95] font-extrabold">
             {cardNumber}
           </span>
         </div>
-        <div className="flex min-w-0 flex-1 items-center gap-[max(12px,4cqw)] px-[max(10px,2.4cqw)]">
-          <HeaderStat label="HASH" value={card.hash ?? "—"} className="shrink-0" />
-          <HeaderStat label="FORMATION" value={card.formation.toUpperCase() || "—"} />
-        </div>
-        <div
-          className="flex flex-col items-end justify-center border-l-2 px-[max(10px,2.4cqw)]"
-          style={{ borderColor: c.rule }}
-        >
+        <div className="flex min-w-0 flex-col items-center text-center">
+          <h3 className="font-display w-full truncate text-[max(16px,3.7cqw)] leading-tight font-extrabold uppercase">
+            {title}
+          </h3>
           <span
-            className="text-[max(10px,1.6cqw)] font-semibold tracking-[0.08em]"
+            className="text-[max(9px,1.45cqw)] font-semibold tracking-[0.06em] uppercase"
             style={{ color: c.muted }}
           >
-            {isDefense
-              ? `DEF FRONT · ${mode === "7v7" ? "7v7" : "TEAM"}`
-              : mode === "7v7"
-                ? "7v7"
-                : "TEAM"}
-          </span>
-          <span
-            className="font-display max-w-[30cqw] truncate text-[max(17px,3.95cqw)] leading-[1.05] font-bold whitespace-nowrap"
-            style={{ color: isDefense ? c.defense : diagram.kind === "run" ? c.ball : c.route }}
-          >
-            {isDefense ? card.defFront.toUpperCase() || "—" : PLAY_KIND_LABELS[diagram.kind]}
+            {subtitle}
           </span>
         </div>
-      </header>
-
-      {card.notes && (
-        <div
-          className="flex shrink-0 items-baseline gap-2 border-b-2 px-[max(10px,2.4cqw)] py-[max(3px,0.6cqw)] text-[max(12px,1.9cqw)] leading-snug"
-          style={{ borderColor: c.rule }}
+        <span
+          className="font-display rounded-md border-2 px-[max(6px,1.1cqw)] py-[max(1px,0.3cqw)] text-[max(12px,2.2cqw)] font-extrabold whitespace-nowrap"
+          style={{ color: tagColor, borderColor: tagColor }}
         >
-          <span className="font-bold tracking-[0.08em]" style={{ color: c.muted }}>
-            NOTE
-          </span>
-          <span className="line-clamp-2 min-w-0 font-semibold">{card.notes}</span>
-        </div>
-      )}
+          {tag}
+        </span>
+      </header>
 
       <svg
         ref={svgRef}
@@ -272,22 +241,57 @@ export function ScoutCard({
         className="block min-h-0 w-full flex-1"
         style={{ background: c.field }}
         role="img"
-        aria-label="Offensive formation and assignments"
+        aria-label={
+          isDefense ? "Formation and defensive alignment" : "Offensive formation and assignments"
+        }
       >
-        <g stroke={c.grid} fill="none">
-          {diagram.yardLines.map(({ y }) => (
-            <line key={y} x1={0} x2={FIELD.width} y1={y} y2={y} strokeWidth={1.5} />
+        <defs>
+          {(
+            [
+              ["route", c.route],
+              ["ball", c.ball],
+              ["block", c.block],
+            ] as const
+          ).map(([name, color]) => (
+            <marker
+              key={name}
+              id={`${uid}-${name}`}
+              viewBox="0 0 10 10"
+              refX={8}
+              refY={5}
+              markerWidth={4}
+              markerHeight={4}
+              orient="auto-start-reverse"
+            >
+              <path d="M 0 0 L 10 5 L 0 10 Z" fill={color} />
+            </marker>
           ))}
+        </defs>
+
+        {/* Field: 5-yard lines, hash marks (left, middle, right), field numbers. */}
+        <rect x={0} y={0} width={FIELD.width} height={FIELD.height} fill={c.field} />
+        <g stroke={c.grid} strokeWidth={1.5}>
+          {diagram.yardLines.map(({ y }) => (
+            <line key={y} x1={0} x2={FIELD.width} y1={y} y2={y} />
+          ))}
+        </g>
+        <g stroke={c.hash} strokeWidth={1.5}>
           {diagram.hashTicks.map((y) => (
-            <g key={y} strokeWidth={2}>
-              <line x1={FIELD.hashX.L - 4} x2={FIELD.hashX.L + 4} y1={y} y2={y} />
-              <line x1={FIELD.hashX.R - 4} x2={FIELD.hashX.R + 4} y1={y} y2={y} />
+            <g key={y}>
+              <line x1={FIELD.hashX.L - 5} x2={FIELD.hashX.L + 5} y1={y} y2={y} />
+              <line
+                x1={FIELD.hashX.M - 3}
+                x2={FIELD.hashX.M + 3}
+                y1={y}
+                y2={y}
+                strokeOpacity={0.5}
+              />
+              <line x1={FIELD.hashX.R - 5} x2={FIELD.hashX.R + 5} y1={y} y2={y} />
             </g>
           ))}
         </g>
-        {/* Field numbers on both sides, so receivers can see their splits. */}
         <g
-          fill={c.grid}
+          fill={c.numbers}
           fontSize={22}
           fontWeight={800}
           fontFamily="'Barlow Condensed', sans-serif"
@@ -308,122 +312,100 @@ export function ScoutCard({
             )}
         </g>
 
-        <line
-          x1={0}
-          x2={FIELD.width}
-          y1={diagram.losY}
-          y2={diagram.losY}
-          stroke={c.los}
-          strokeWidth={2}
-          strokeDasharray="8 6"
-        />
-        {diagram.ballHashX != null && (
-          <path
-            d={`M${diagram.ballHashX - 8} 0L${diagram.ballHashX + 8} 0L${diagram.ballHashX} 12Z`}
-            fill={c.los}
-          />
-        )}
+        {/* Line of scrimmage. */}
+        <rect x={0} y={diagram.losY - 2.5} width={FIELD.width} height={5} fill={c.los} />
 
-        <g
-          fill="none"
-          stroke={c.block}
-          strokeWidth={3}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          {diagram.blocks.map((b, i) => {
-            const { line, bar } = blockPaths(b);
-            return <path key={i} d={line + bar} />;
-          })}
+        {/* Blocks, pulls, fakes, routes, ball carrier. */}
+        <g fill="none" stroke={c.block} strokeWidth={3} strokeLinecap="butt" strokeLinejoin="miter">
+          {diagram.blocks.map((b, i) => (
+            <path key={i} d={blockPath(b)} />
+          ))}
+          {diagram.targetBlocks.map(({ path }, i) => (
+            <path key={`t${i}`} d={blockPath(path)} strokeWidth={3.5} />
+          ))}
+          {diagram.pulls.map((p, i) => (
+            <path key={`p${i}`} d={linePath(p, 3)} markerEnd={marker("block")} />
+          ))}
         </g>
         {diagram.targetBlocks.map(({ path, target }, i) => {
-          const { line, bar } = blockPaths(path);
           const tip = path[path.length - 1];
           const { cos, sin } = heading(path[path.length - 2], tip);
           return (
-            <g key={`t${i}`}>
-              <path
-                d={line + bar}
-                fill="none"
-                stroke={c.block}
-                strokeWidth={3.5}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-              <text
-                x={tip.x + cos * 15}
-                y={tip.y + sin * 15}
-                dy="0.36em"
-                textAnchor="middle"
-                fontSize={12}
-                fontWeight={800}
-                fontFamily="'Barlow Condensed', sans-serif"
-                fill={c.ink}
-                stroke={c.field}
-                strokeWidth={3}
-                paintOrder="stroke"
-              >
-                {target}
-              </text>
-            </g>
+            <text
+              key={`tl${i}`}
+              x={tip.x + cos * 15}
+              y={tip.y + sin * 15}
+              dy="0.36em"
+              textAnchor="middle"
+              fontSize={12}
+              fontWeight={800}
+              fontFamily="'Barlow Condensed', sans-serif"
+              fill={c.ink}
+              stroke={c.field}
+              strokeWidth={3}
+              paintOrder="stroke"
+            >
+              {target}
+            </text>
           );
         })}
-        {diagram.pulls.map((p, i) => (
-          <g key={i}>
+        <g fill="none" strokeLinejoin="miter" strokeLinecap="butt">
+          {diagram.fakes.map((p, i) => (
             <path
-              d={linePath(p, 12)}
-              fill="none"
-              stroke={c.block}
-              strokeWidth={3}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-            <path d={arrowHead(p)} fill={c.block} />
-          </g>
-        ))}
-        {diagram.fakes.map((p, i) => (
-          <g key={i}>
-            <path
-              d={linePath(p, 12)}
-              fill="none"
+              key={`f${i}`}
+              d={linePath(p, 3)}
               stroke={c.ball}
               strokeWidth={3}
               strokeDasharray="7 6"
-              strokeLinecap="round"
+              markerEnd={marker("ball")}
             />
-            <path d={arrowHead(p)} fill={c.ball} />
-          </g>
-        ))}
-        {diagram.routes.map((p, i) => (
-          <g key={i}>
+          ))}
+          {diagram.routes.map((p, i) => (
             <path
-              d={linePath(p, 12)}
-              fill="none"
+              key={`r${i}`}
+              d={linePath(p, 3)}
               stroke={c.route}
-              strokeWidth={4}
-              strokeLinecap="round"
-              strokeLinejoin="round"
+              strokeWidth={3.5}
+              markerEnd={marker("route")}
             />
-            <path d={arrowHead(p)} fill={c.route} />
-          </g>
-        ))}
+          ))}
+          {diagram.carrier && (
+            <path
+              d={linePath(diagram.carrier, 3)}
+              stroke={c.ball}
+              strokeWidth={4}
+              markerEnd={marker("ball")}
+            />
+          )}
+        </g>
         {diagram.routes.map((p, i) => {
           const label = diagram.routeLabels[i];
           if (!label) return null;
           const tip = p[p.length - 1];
           const { cos, sin } = heading(p[p.length - 2], tip);
-          const isNumber = /^\d$/.test(label);
-          // Keep labels on the field even when a route ends near the edge.
-          const x = Math.min(FIELD.width - 14, Math.max(14, tip.x + cos * 16));
-          const y = Math.min(FIELD.height - 10, Math.max(12, tip.y + sin * 16));
+          // Past the arrow tip, unless that sits on a player: then above, below,
+          // or beside the last leg of the route, whichever is clear.
+          const before = p[p.length - 2];
+          const clear = (q: Point) =>
+            !diagram.players.some((pl) => Math.hypot(pl.x - q.x, pl.y - q.y) < 20);
+          const at =
+            [
+              { x: tip.x + cos * 16, y: tip.y + sin * 16 },
+              { x: tip.x, y: tip.y - 18 },
+              { x: tip.x, y: tip.y + 18 },
+              { x: (tip.x + before.x) / 2, y: (tip.y + before.y) / 2 - 14 },
+              { x: (tip.x + before.x) / 2, y: (tip.y + before.y) / 2 + 14 },
+            ]
+              .map(onField)
+              .find(clear) ?? onField({ x: tip.x + cos * 16, y: tip.y + sin * 16 });
           return (
             <text
               key={`l${i}`}
-              x={x}
-              y={y}
+              x={at.x}
+              y={at.y}
               dy="0.36em"
               textAnchor="middle"
-              fontSize={isNumber ? 17 : 11}
+              fontSize={/^\d$/.test(label) ? 17 : 11}
               fontWeight={800}
               fontFamily="'Barlow Condensed', sans-serif"
               fill={c.route}
@@ -435,20 +417,8 @@ export function ScoutCard({
             </text>
           );
         })}
-        {diagram.carrier && (
-          <g>
-            <path
-              d={linePath(diagram.carrier, 12)}
-              fill="none"
-              stroke={c.ball}
-              strokeWidth={4.5}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-            <path d={arrowHead(diagram.carrier)} fill={c.ball} />
-          </g>
-        )}
 
+        {/* Scout defense: X's (draggable while adjusting). */}
         {diagram.defense.map((d) => {
           const p = drag?.id === d.id ? { ...d, x: drag.x, y: drag.y } : d;
           return (
@@ -484,14 +454,14 @@ export function ScoutCard({
                   cy={p.y}
                   r={17}
                   fill={c.defense}
-                  fillOpacity={drag?.id === d.id ? 0.3 : 0.12}
+                  fillOpacity={drag?.id === d.id ? 0.25 : 0.1}
                   stroke={c.defense}
                   strokeOpacity={0.6}
                   strokeDasharray="3 3"
                 />
               )}
               <path
-                d={`M${p.x - 7} ${p.y - 7}L${p.x + 7} ${p.y + 7}M${p.x + 7} ${p.y - 7}L${p.x - 7} ${p.y + 7}`}
+                d={`M ${p.x - 7} ${p.y - 7} L ${p.x + 7} ${p.y + 7} M ${p.x + 7} ${p.y - 7} L ${p.x - 7} ${p.y + 7}`}
                 stroke={c.defense}
                 strokeWidth={3.5}
                 strokeLinecap="round"
@@ -511,17 +481,28 @@ export function ScoutCard({
           );
         })}
 
-        {diagram.players.map((p, i) => {
-          const center = Boolean(p.ball);
-          return (
+        {/* Offense: square center, circles for everyone else, letters on skill players. */}
+        {diagram.players.map((p, i) =>
+          p.ball ? (
+            <rect
+              key={i}
+              x={p.x - 9}
+              y={p.y - 9}
+              width={18}
+              height={18}
+              fill={c.offenseFill}
+              stroke={c.offense}
+              strokeWidth={2.5}
+            />
+          ) : (
             <g key={i}>
               <circle
                 cx={p.x}
                 cy={p.y}
-                r={p.label ? 10.5 : 9}
-                fill={center ? c.offense : c.offenseFill}
+                r={p.label ? 11 : 9}
+                fill={c.offenseFill}
                 stroke={c.offense}
-                strokeWidth={3}
+                strokeWidth={2.5}
               />
               {p.label && (
                 <text
@@ -529,7 +510,7 @@ export function ScoutCard({
                   y={p.y}
                   dy="0.36em"
                   textAnchor="middle"
-                  fontSize={12}
+                  fontSize={13}
                   fontWeight={800}
                   fontFamily="'Barlow Condensed', sans-serif"
                   fill={c.offense}
@@ -538,85 +519,67 @@ export function ScoutCard({
                 </text>
               )}
             </g>
-          );
-        })}
+          ),
+        )}
       </svg>
 
-      <footer
-        className="flex h-[max(26px,5cqw)] shrink-0 items-center justify-between gap-3 border-t-2 px-[max(10px,2.4cqw)] text-[max(11px,1.85cqw)]"
-        style={{ borderColor: c.rule }}
+      {/* Assignment table: generated from the play, or the coach's own words. */}
+      <div
+        className="grid shrink-0 gap-px border-t-2"
+        style={{
+          gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
+          background: c.rule,
+          borderColor: c.rule,
+        }}
       >
-        <span className="min-w-0 truncate font-bold tracking-[0.04em]">
-          {isDefense ? (
-            <>
-              COVERAGE:{" "}
-              <span style={{ color: c.defense }}>{card.coverage.toUpperCase() || "—"}</span>
-            </>
-          ) : (
-            <>
-              PLAY:{" "}
-              <span style={{ color: diagram.kind === "run" ? c.ball : c.route }}>
-                {card.playCall.toUpperCase() || "—"}
+        {rows.map((row, i) => {
+          const isNotes = i === rows.length - 1;
+          return (
+            <label
+              key={row.key}
+              className="flex min-w-0 items-baseline gap-[max(4px,0.8cqw)] px-[max(6px,1.2cqw)] py-[max(3px,0.7cqw)]"
+              style={{ background: c.box, gridColumn: isNotes ? `span ${notesSpan}` : undefined }}
+            >
+              <span
+                className="shrink-0 text-[max(9px,1.45cqw)] font-extrabold tracking-[0.06em]"
+                style={{ color: c.muted }}
+              >
+                {row.label}
               </span>
-            </>
-          )}
-          {note && (
-            <span className="ml-2 font-medium" style={{ color: c.muted }}>
-              ({note})
-            </span>
-          )}
-        </span>
-        <span
-          className="flex shrink-0 items-center gap-3 font-semibold"
-          style={{ color: c.muted }}
-          aria-hidden="true"
-        >
-          {isDefense ? (
-            <>
-              <span className="flex items-center gap-1">
-                <svg width="12" height="12" viewBox="0 0 12 12">
-                  <circle cx="6" cy="6" r="4.5" fill="none" stroke={c.offense} strokeWidth={1.8} />
-                </svg>
-                OFF
-              </span>
-              <span className="flex items-center gap-1">
-                <svg width="12" height="12" viewBox="0 0 12 12">
-                  <path d="M2 2L10 10M10 2L2 10" stroke={c.defense} strokeWidth={2} />
-                </svg>
-                DEF
-              </span>
-            </>
-          ) : (
-            <>
-              <span className="flex items-center gap-1">
-                <svg width="16" height="12" viewBox="0 0 16 12">
-                  <path
-                    d="M1 10L12 3M9.5 0.5L14.5 7.5"
-                    stroke={c.block}
-                    strokeWidth={2}
-                    fill="none"
-                  />
-                </svg>
-                BLOCK
-              </span>
-              <span className="flex items-center gap-1">
-                <svg width="16" height="12" viewBox="0 0 16 12">
-                  <path d="M1 6H10" stroke={c.ball} strokeWidth={2.5} />
-                  <path d="M15 6L9 2.5V9.5Z" fill={c.ball} />
-                </svg>
-                BALL
-              </span>
-              <span className="flex items-center gap-1">
-                <svg width="16" height="12" viewBox="0 0 16 12">
-                  <path d="M1 6H10" stroke={c.route} strokeWidth={2.5} />
-                  <path d="M15 6L9 2.5V9.5Z" fill={c.route} />
-                </svg>
-                ROUTE
-              </span>
-            </>
-          )}
-        </span>
-      </footer>
+              {onAssignmentChange && variant === "field" ? (
+                <input
+                  key={`${card.id}-${row.key}-${row.text}`}
+                  defaultValue={row.text}
+                  aria-label={`${row.label} assignment`}
+                  className={cn(
+                    "min-w-0 flex-1 bg-transparent text-[max(11px,1.75cqw)] font-semibold outline-none",
+                    "rounded-sm focus-visible:ring-2 focus-visible:ring-[#2563eb]",
+                    row.custom ? "italic" : "",
+                  )}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") e.currentTarget.blur();
+                  }}
+                  onBlur={(e) => {
+                    const text = e.currentTarget.value.trim();
+                    if (text !== row.text) onAssignmentChange(row.key, text);
+                  }}
+                />
+              ) : (
+                <span
+                  className={cn(
+                    "min-w-0 text-[max(11px,1.75cqw)] leading-tight font-semibold",
+                    // Paper can't scroll or tap: wrap to two lines instead of cutting off.
+                    variant === "print" ? "line-clamp-2 break-words" : "truncate",
+                    row.custom ? "italic" : "",
+                  )}
+                >
+                  {row.text || "—"}
+                </span>
+              )}
+            </label>
+          );
+        })}
+      </div>
     </article>
   );
 }

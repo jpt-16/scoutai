@@ -40,7 +40,7 @@ src/
     page.tsx               Upload landing: dropzone, demo button, parse-report dialog
     script/page.tsx        iPad reader: Scout O/D + All/7v7/Team toggles, filters, swiper, Print Grid
   components/
-    ScoutCard.tsx          SVG scout card: unit offense/defense, mode team/7v7, variant field/print
+    ScoutCard.tsx          PlayIQ-style card: title header, white-field SVG, assignment table
     PrintGrid.tsx          Letter-size sheets, 2-up portrait / 4-up landscape, window.print()
     FilterBar.tsx          Down / formation toggle pills
     UploadDropzone.tsx     Drag-and-drop + file picker (multiple films), .csv validation
@@ -182,6 +182,37 @@ Free-text tags are classified by keyword (`classifyFormation`, `classifyFront`,
 - Positions: linemen are unlabeled, and skill players are **Q, F, H, X, Y, Z** only.
 - Formations: Spread, Trips, I-Form, Double Eagle, **Pro** (Q under center, F behind him, H behind
   the F) and **Split Pro** (backs side by side, used only when the tag says SPLIT).
+
+Card look (`ScoutCard.tsx`, PlayIQ-style):
+
+- **Header:** card #, a centered play title (formation · play call, or formation vs front),
+  the hash and period, and a RUN / PASS / RPO / PLAY ACTION / DEF tag.
+- **Field:** white, with light gray 5-yard lines, left/middle/right hash ticks, field numbers
+  and a **blue LOS bar**.
+- **Symbols:** the center is a square, other linemen are unlabeled circles, and skill players
+  are circles with black letters (Q/F/H/X/Y/Z; the staff's own convention, kept over a generic
+  X/T/QB/RB set).
+- **Lines:** routes are red, the ball carrier and fakes orange, blocks black. Every path is
+  straight segments with sharp breaks and `marker-end` arrows (ids from `useId`). Route labels
+  move to a clear spot when they'd land on a player.
+- **Route angles:** true field angles (`YARD_X` across, `YARD_PX` up).
+  - Slant: 5-yard stem, 45° inside.
+  - Out: 10-yard stem, 90° to the sideline.
+  - Post: 11-yard stem, 45° to the middle.
+  - Corner: 10-yard stem, 45° to the pylon.
+  - Go straight; fade with a slight outside release.
+- **Pass pro:** on passes and play action in Team, the line takes short angle-back sets, and
+  any TE or back without a route protects (T-bars).
+- **Assignment table** (`buildAssignments`), with text generated from the diagram's `jobs` and
+  the run scheme:
+  - Runs: `Y, PST, PSG, C, BSG, BST, NOTES`.
+  - Passes: `X, H, Y, Z, F, OL, NOTES` (OL in Team only).
+  - Scout D: `FRONT, COVERAGE, NOTES`.
+
+  On the iPad, tap a box and type (`onAssignmentChange`). The text is saved in
+  `card.assignmentNotes` and shown in italics; NOTES is the coach note, and an empty box goes
+  back to the generated text. Printed boxes wrap to two lines.
+- Card aspect is 760 × 600. Print sheets use 4.3" cards at 4-up and 5.9" at 2-up.
 
 Coordinates:
 

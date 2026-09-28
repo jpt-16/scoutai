@@ -317,6 +317,33 @@ export const ROUTE_TREE: RouteKind[] = [
   "fade",
 ];
 
+const ROUTE_NAMES: Record<RouteKind, string> = {
+  slide: "Slide",
+  "speed-out": "Speed out",
+  slant: "Slant",
+  out: "Out",
+  curl: "Curl",
+  comeback: "Comeback",
+  shallow: "Shallow",
+  corner: "Corner",
+  post: "Post",
+  fade: "Fade",
+  go: "Go",
+  hitch: "Hitch",
+  dig: "Dig",
+  wheel: "Wheel",
+  flat: "Flat",
+  swing: "Swing",
+  bubble: "Bubble",
+  leak: "Leak",
+};
+
+/** Assignment-table text for a route: "9 Fade", or the name off the tree ("Wheel"). */
+export function routeText(kind: RouteKind): string {
+  const n = ROUTE_TREE.indexOf(kind);
+  return n >= 0 ? `${n} ${ROUTE_NAMES[kind]}` : ROUTE_NAMES[kind];
+}
+
 /** What the card writes at the end of a route: its tree number, or its name. */
 export function routeLabel(kind: RouteKind): string {
   const n = ROUTE_TREE.indexOf(kind);
@@ -476,6 +503,10 @@ export interface Diagram {
   routes: Point[][];
   /** Label per route (same order): its route-tree number, or its name off the tree. */
   routeLabels: string[];
+  /** Scout offense: what each skill player and the QB does ("9 Fade", "Stalk", "Lead"). */
+  jobs: Record<string, string>;
+  /** Run blocking scheme when the play is a run. */
+  scheme: RunScheme | null;
   /** Blocks: a line ending in a T-bar. */
   blocks: Point[][];
   /**
@@ -513,6 +544,8 @@ export interface Diagram {
 
 type Placed = Player & { at: Pt };
 type LabeledPath = { path: Pt[]; label: string };
+/** What each skill player does on the play, by label: "9 Fade", "Stalk", "Block LB". */
+type Jobs = Record<string, string>;
 
 const clampX = (x: number) => Math.min(488, Math.max(12, x));
 const clampY = (y: number) => Math.max(22, y);
@@ -528,7 +561,6 @@ function place(slot: Slot, side: Side): Placed {
   return { label: slot.label, role: slot.role, x: at[0], y: at[1], at, ...(ball ? { ball } : {}) };
 }
 
-/** Route shape for one receiver. `o` = +1 toward the right sideline for this player, -1 left. */
 /** Pixels per yard, vertically. 7 keeps deep routes on the card; yard lines use the same scale. */
 export const YARD_PX = 7;
 
@@ -581,7 +613,8 @@ function fieldMarkings(yardLine: number | null): {
     const y = yFor(g);
     if (y < 0 || y > FIELD.height) continue;
     if (g % 5 === 0) {
-      const label = g === 0 || g === 100 ? "G" : g % 10 === 0 ? String(g <= 50 ? g : 100 - g) : null;
+      const label =
+        g === 0 || g === 100 ? "G" : g % 10 === 0 ? String(g <= 50 ? g : 100 - g) : null;
       yardLines.push({ y, label });
     } else {
       hashTicks.push(y);
@@ -590,36 +623,56 @@ function fieldMarkings(yardLine: number | null): {
   return { yardLines, hashTicks };
 }
 
-/** Route shape for one receiver. `o` = +1 toward the right sideline for this player, -1 left. */
+/** Horizontal pixels per yard (the field is 53⅓ yards wide). */
+const YARD_X = FIELD.width / (160 / 3);
+/** A break of `yards` at 45° on the field (x and y scales differ on the card). */
+const diag = (yards: number) => [yards * YARD_X, yards * YARD_PX] as const;
+/** Just inside the sideline on this receiver's side. */
+const sideline = (o: number) => (o > 0 ? FIELD.width - 18 : 18);
+
+/**
+ * Route shape for one receiver: straight stems with sharp breaks.
+ * `o` = +1 toward the right sideline for this player, -1 left; `d` = play side.
+ */
 function routePath(kind: RouteKind, p: Pt, o: number, d: number): Pt[] {
   const [x, y] = p;
+  const inside = -o;
   switch (kind) {
-    case "slide": // 0
+    case "slide": // 0: flat to the sideline, right off the line
       return [p, [x + o * 20, y - 8], [x + o * 64, y - 14]];
     case "speed-out": // 1: rounded 5-yard out
       return [p, [x, yd(4)], [x + o * 10, yd(5)], [x + o * 50, yd(5)]];
-    case "slant": // 2
-      return [p, [x, yd(1.5)], [x - o * 58, yd(7)]];
-    case "out": // 3: 10-yard out
-      return [p, [x, yd(10)], [x + o * 48, yd(10)]];
+    case "slant": {
+      // 2: 5-yard stem, sharp 45° break inside toward the middle
+      const [bx, by] = diag(6);
+      return [p, [x, yd(5)], [x + inside * bx, yd(5) - by]];
+    }
+    case "out": // 3: stem to 10, 90° break to the sideline
+      return [p, [x, yd(10)], [sideline(o), yd(10)]];
     case "curl": // 4
-      return [p, [x, yd(12)], [x - o * 10, yd(10.5)]];
+      return [p, [x, yd(12)], [x + inside * 10, yd(10.5)]];
     case "comeback": // 5
       return [p, [x, yd(14)], [x + o * 14, yd(12)]];
     case "shallow": // 6
-      return [p, [x, yd(1.5)], [x - o * 160, yd(3.5)]];
-    case "corner": // 7
-      return [p, [x, yd(8)], [x + o * 50, yd(15)]];
-    case "post": // 8
-      return [p, [x, yd(8)], [x - o * 50, yd(16)]];
-    case "fade": // 9
-      return [p, [x, yd(4)], [x + o * 14, yd(16)]];
+      return [p, [x, yd(1.5)], [x + inside * 160, yd(3.5)]];
+    case "corner": {
+      // 7: stem to 10, 45° break toward the pylon
+      const [bx, by] = diag(6);
+      return [p, [x, yd(10)], [x + o * bx, yd(10) - by]];
+    }
+    case "post": {
+      // 8: stem to 11, 45° break toward the goalpost (middle of the field)
+      const [bx, by] = diag(6);
+      return [p, [x, yd(11)], [x + inside * bx, yd(11) - by]];
+    }
+    case "fade": // 9: vertical with a slight outside release
+      return [p, [x, yd(3)], [x + o * 1.5 * YARD_X, yd(17)]];
     case "go":
-      return [p, [x, yd(16)]];
+      return [p, [x, yd(17)]];
     case "hitch":
-      return [p, [x, yd(5)], [x - o * 6, yd(4)]];
+      return [p, [x, yd(5)], [x + inside * 6, yd(4)]];
     case "dig":
-      return [p, [x, yd(10)], [x - o * 70, yd(10)]];
+      return [p, [x, yd(10)], [x + inside * 70, yd(10)]];
     case "wheel":
       return [p, [x + o * 30, y + 4], [x + o * 48, 118], [x + o * 48, yd(15)]];
     case "flat":
@@ -629,7 +682,7 @@ function routePath(kind: RouteKind, p: Pt, o: number, d: number): Pt[] {
     case "bubble":
       return [p, [x + o * 22, y + 16], [x + o * 56, y + 12]];
     case "leak":
-      return [p, [x, 132], [x - o * 50, 120], [x - o * 150, 108]];
+      return [p, [x, 132], [x + inside * 50, 120], [x + inside * 150, 108]];
   }
 }
 
@@ -639,15 +692,22 @@ function buildRoutes(
   skill: Placed[],
   backs: Placed[],
   d: number,
-): { routes: LabeledPath[]; stalks: Pt[][]; targeted: { path: Pt[]; target: string }[] } {
+): {
+  routes: LabeledPath[];
+  stalks: Pt[][];
+  targeted: { path: Pt[]; target: string }[];
+  jobs: Jobs;
+} {
   const side = (x: number) => (x > 250 ? 1 : x < 250 ? -1 : d);
   const { tokens, numbered } = routeCall(playCall);
   const routes: LabeledPath[] = [];
   const stalks: Pt[][] = [];
   const targeted: { path: Pt[]; target: string }[] = [];
+  const jobs: Jobs = {};
   const assigned = new Set<Placed>();
   const run = (pl: Placed, kind: RouteKind) => {
     routes.push({ path: routePath(kind, pl.at, side(pl.x), d), label: routeLabel(kind) });
+    jobs[pl.label] = routeText(kind);
     assigned.add(pl);
   };
 
@@ -679,10 +739,14 @@ function buildRoutes(
         } else {
           targeted.push({ path: [p.at, [x, 114]], target: "C" }); // lone blocker: the corner
         }
+        jobs[p.label] = `Block ${targeted[targeted.length - 1].target}`;
         assigned.add(p);
       });
       for (const p of receivers) {
-        if (!assigned.has(p) && p.role === "WR") stalks.push([p.at, [p.x, 124]]);
+        if (!assigned.has(p) && p.role === "WR") {
+          stalks.push([p.at, [p.x, 124]]);
+          jobs[p.label] = "Stalk";
+        }
       }
     } else {
       // "SLANT", "VERTS", "FADE": every wide receiver runs it (TEs too on verticals).
@@ -714,7 +778,7 @@ function buildRoutes(
         : receivers;
     others.slice(0, eligible.length).forEach((kind, i) => run(eligible[i], kind));
   }
-  return { routes, stalks, targeted };
+  return { routes, stalks, targeted, jobs };
 }
 
 /** Offensive line (and tight end / fullback) assignments for a run scheme. */
@@ -850,6 +914,8 @@ export function buildDiagram(
   const fakes: Pt[][] = [];
   let routes: LabeledPath[] = [];
   let carrier: Pt[] | null = null;
+  let scheme: RunScheme | null = null;
+  const jobs: Jobs = {};
   const ballCarrier = card.concept === "qb-run" ? qb : backs[backs.length - 1];
 
   const frontFallback = unit === "defense" && card.frontKey === "unknown";
@@ -867,7 +933,7 @@ export function buildDiagram(
   if (unit === "defense") {
     // The scout defense only needs the formation it's lining up against.
   } else if (kind === "run") {
-    const scheme = runScheme(card);
+    scheme = runScheme(card);
     const blocking = buildBlocking(
       scheme,
       [...line, ...tightEndsOnLine],
@@ -881,17 +947,50 @@ export function buildDiagram(
     carrier = ballCarrier ? carrierPath(scheme, ballCarrier.at, d) : null;
     // Receivers stalk-block the perimeter instead of running routes.
     for (const p of skill) {
-      if (p.role === "WR") blocks.push([p.at, [p.x, 124]]);
+      if (p.role === "WR") {
+        blocks.push([p.at, [p.x, 124]]);
+        jobs[p.label] = "Stalk";
+      } else {
+        jobs[p.label] = RUN_LINE_JOBS[scheme].PST;
+      }
     }
+    for (const b of backs) {
+      jobs[b.label] =
+        b === ballCarrier
+          ? "Ball carrier"
+          : scheme === "power"
+            ? "Kick out the end"
+            : scheme === "iso" || scheme === "draw"
+              ? "Lead up the hole"
+              : scheme === "counter" || scheme === "sneak"
+                ? "Fake"
+                : "Lead / arc";
+    }
+    jobs.Q = ballCarrier === qb ? "Ball carrier" : "Hand off";
   } else if (kind !== "none") {
     const passing = buildRoutes(card.playCall, skill, backs, d);
     routes = passing.routes;
     blocks.push(...passing.stalks);
     targetBlocks.push(...passing.targeted);
+    Object.assign(jobs, passing.jobs);
+    jobs.Q =
+      kind === "rpo" ? "Read: give or throw" : kind === "pa" ? "Fake, then throw" : "Drop, throw";
+    if (kind !== "rpo" && mode === "team") {
+      // Pass protection: short angle-back sets for the line, and any TE or back
+      // without a route steps up to protect.
+      for (const l of line) blocks.push([l.at, [l.x + (l.x - 250) * 0.2, 162]]);
+      for (const p of [...skill, ...backs]) {
+        if (jobs[p.label] || (p.role !== "TE" && p.role !== "RB" && p.role !== "FB")) continue;
+        const o = p.x >= 250 ? 1 : -1;
+        blocks.push(p.y === 150 ? [p.at, [p.x + o * 8, 162]] : [p.at, [p.x + o * 14, p.y - 12]]);
+        jobs[p.label] = "Pass pro";
+      }
+    }
     const rb = backs[backs.length - 1];
     if ((kind === "rpo" || kind === "pa") && rb) {
       // The mesh / run fake: the back's run path, dashed.
       fakes.push([rb.at, [250 + d * 12, 150], [250 + d * 20, 110]]);
+      jobs[rb.label] ??= kind === "rpo" ? "Mesh: run it if given" : "Run fake";
       if (kind === "rpo" && mode === "team") {
         // RPO: the line blocks it like a run (zone).
         const zone = buildBlocking("zone", [...line, ...tightEndsOnLine], [], undefined, d);
@@ -939,6 +1038,8 @@ export function buildDiagram(
     carrier: carrier ? carrier.map(toPoint).map(turn) : null,
     routes: turnAll(points(keptRoutes.map((r) => r.path))),
     routeLabels: keptRoutes.map((r) => r.label),
+    jobs,
+    scheme,
     blocks: turnAll(points(blocks)),
     targetBlocks: targetBlocks.map(({ path, target }) => ({
       path: path.map(toPoint).map(turn),
@@ -967,4 +1068,118 @@ export function fromCardPoint(diagram: Pick<Diagram, "flipped" | "hashDx">, p: P
   const x = diagram.flipped ? FIELD.width - p.x : p.x;
   const y = diagram.flipped ? FIELD.height - p.y : p.y;
   return { x: Math.round(unmapFromHash(x, diagram.hashDx)), y: Math.round(y) };
+}
+
+/** Offensive line keys for the assignment table, playside to backside. */
+export const LINE_KEYS = ["PST", "PSG", "C", "BSG", "BST"] as const;
+type LineKey = (typeof LINE_KEYS)[number];
+
+/** Default line assignments per run scheme (a tight end on the line gets the PST's). */
+const RUN_LINE_JOBS: Record<RunScheme, Record<LineKey, string>> = {
+  zone: {
+    PST: "Reach",
+    PSG: "Reach",
+    C: "Reach / combo",
+    BSG: "Zone step, cut off",
+    BST: "Cut off",
+  },
+  "outside-zone": { PST: "Reach", PSG: "Reach", C: "Reach", BSG: "Overtake", BST: "Cut off" },
+  power: {
+    PST: "Down",
+    PSG: "Down / double",
+    C: "Back block",
+    BSG: "Pull, wrap to LB",
+    BST: "Hinge",
+  },
+  counter: {
+    PST: "Down",
+    PSG: "Down",
+    C: "Back block",
+    BSG: "Pull, kick out end",
+    BST: "Pull, wrap to LB",
+  },
+  iso: { PST: "Base", PSG: "Climb to LB", C: "Climb to MLB", BSG: "Climb to LB", BST: "Base" },
+  draw: {
+    PST: "Pass set, drive",
+    PSG: "Pass set, drive",
+    C: "Pass set, drive",
+    BSG: "Pass set, drive",
+    BST: "Pass set, drive",
+  },
+  sneak: { PST: "Wedge", PSG: "Wedge", C: "Wedge", BSG: "Wedge", BST: "Wedge" },
+};
+
+export interface AssignmentRow {
+  /** Stable key for saving a coach's text ("PST", "Y", "NOTES"). */
+  key: string;
+  /** Box label ("PST:", "Y:"). */
+  label: string;
+  /** Text to show: the coach's own words if set, else the auto-generated assignment. */
+  text: string;
+  /** True when the coach typed this text. */
+  custom: boolean;
+}
+
+/**
+ * The card's assignment table.
+ * - Scout offense runs: Y, PST, PSG, C, BSG, BST, NOTES.
+ * - Scout offense passes: X, H, Y, Z, F, OL (Team only), NOTES.
+ * - Scout defense: FRONT, COVERAGE, NOTES.
+ * Coach text (`assignmentNotes`, `notes`) wins over the generated text.
+ */
+export function buildAssignments(
+  card: Pick<HudlPlayCard, "defFront" | "coverage" | "notes" | "assignmentNotes">,
+  diagram: Pick<
+    Diagram,
+    "unit" | "mode" | "kind" | "jobs" | "scheme" | "formationFallback" | "frontFallback"
+  >,
+): AssignmentRow[] {
+  const own = card.assignmentNotes ?? {};
+  const row = (key: string, auto: string): AssignmentRow => ({
+    key,
+    label: `${key}:`,
+    text: own[key] ?? auto,
+    custom: own[key] != null,
+  });
+  const autoNote = [
+    diagram.formationFallback ? "Formation not recognized, drawn as Spread." : "",
+    diagram.frontFallback ? "No front tagged, drawn as 4-3." : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const notes: AssignmentRow = {
+    key: "NOTES",
+    label: "NOTES:",
+    text: card.notes || autoNote,
+    custom: Boolean(card.notes),
+  };
+
+  if (diagram.unit === "defense") {
+    return [
+      row("FRONT", card.defFront || "4-3 (default)"),
+      row("COVERAGE", card.coverage || "—"),
+      notes,
+    ];
+  }
+  const job = (label: string) => diagram.jobs[label] ?? "—";
+  if (diagram.kind === "run" && diagram.scheme && diagram.mode === "team") {
+    const line = RUN_LINE_JOBS[diagram.scheme];
+    return [row("Y", job("Y")), ...LINE_KEYS.map((k) => row(k, line[k])), notes];
+  }
+  const receivers = ["X", "H", "Y", "Z", "F"].map((k) => row(k, job(k)));
+  if (diagram.kind === "none") return [...receivers, notes];
+  const ol =
+    diagram.mode === "team"
+      ? [
+          row(
+            "OL",
+            diagram.kind === "rpo"
+              ? "Zone (run look)"
+              : diagram.kind === "run"
+                ? "Run block"
+                : "Pass pro",
+          ),
+        ]
+      : [];
+  return [...receivers, ...ol, notes];
 }

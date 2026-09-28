@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { MOCK_HUDL_CSV } from "./demoScript";
-import { buildDiagram, fromCardPoint, inPeriod, isPassPlay, routeTokens, runScheme } from "./formations";
+import {
+  buildAssignments,
+  buildDiagram,
+  fromCardPoint,
+  inPeriod,
+  isPassPlay,
+  routeTokens,
+  runScheme,
+} from "./formations";
 import {
   classifyConcept,
   type FormationKey,
@@ -581,7 +589,9 @@ describe("buildDiagram (offense only)", () => {
   it("reads route words left to right across the receivers", () => {
     const d = buildDiagram(card("spread", "FADE OUT OUT FADE"));
     expect(routesBy(d)).toEqual({ X: "9", H: "3", Y: "3", Z: "9" });
-    expect(d.blocks).toEqual([]); // no run blocking on a pass
+    // A pass gets pass protection, never run blocking: every block steps back, not upfield.
+    expect(d.blocks.length).toBeGreaterThan(0);
+    expect(d.blocks.every((b) => b[b.length - 1].y > b[0].y - 1 || b[0].y > 150)).toBe(true);
   });
 
   it("route-tree numbers, one per receiver, read right to left", () => {
@@ -609,6 +619,68 @@ describe("buildDiagram (offense only)", () => {
     const d = buildDiagram(card("spread", "SLANT CORNER WHEEL ACROSS"));
     expect(routesBy(d)).toEqual({ X: "2", H: "7", Y: "WHEEL", Z: "6" });
     expect(routeTokens("SPEED OUT")).toEqual(["speed-out"]);
+  });
+
+  it("draws routes with sharp breaks at true field angles", () => {
+    const d = buildDiagram(card("spread", "SLANT"));
+    const z = d.routes.find((r) => r[0].x === 464)!; // Z, right side
+    // 5-yard stem straight up, then 45° inside: equal yards across and up.
+    expect(z[1].x).toBe(464);
+    expect(z[1].y).toBe(140 - 5 * 7);
+    const yardsAcross = (z[1].x - z[2].x) / (500 / (160 / 3));
+    const yardsUp = (z[1].y - z[2].y) / 7;
+    expect(yardsAcross).toBeCloseTo(yardsUp, 5);
+    // OUT: 90° to the sideline at 10 yards.
+    const out = buildDiagram(card("spread", "OUT")).routes.find((r) => r[0].x === 464)!;
+    expect(out[1].y).toBe(out[2].y);
+    expect(out[2].x).toBeGreaterThan(470);
+    // POST breaks inside, CORNER breaks outside.
+    const post = buildDiagram(card("spread", "POST")).routes.find((r) => r[0].x === 464)!;
+    const corner = buildDiagram(card("spread", "CORNER")).routes.find((r) => r[0].x === 464)!;
+    expect(post[2].x).toBeLessThan(post[1].x);
+    expect(corner[2].x).toBeGreaterThan(corner[1].x - 0.001);
+  });
+
+  it("pass protection only in team: backs and TEs without a route protect", () => {
+    const team = buildDiagram(card("pro", "FADE"));
+    expect(team.jobs.F).toBe("Pass pro");
+    expect(team.jobs.Y).toBe("Pass pro");
+    const seven = buildDiagram(card("pro", "FADE"), "7v7");
+    expect(seven.blocks).toEqual([]);
+  });
+
+  it("builds the assignment table for runs, passes, and scout defense", () => {
+    const power = buildDiagram(card("pro", "POWER"));
+    const runRows = buildAssignments({ defFront: "", coverage: "", notes: "" }, power);
+    expect(runRows.map((r) => r.key)).toEqual(["Y", "PST", "PSG", "C", "BSG", "BST", "NOTES"]);
+    expect(runRows.find((r) => r.key === "BSG")!.text).toMatch(/Pull/);
+    expect(runRows.find((r) => r.key === "Y")!.text).toBe("Down");
+
+    const pass = buildDiagram(card("spread", "81"));
+    const passRows = buildAssignments({ defFront: "", coverage: "", notes: "Hot vs blitz" }, pass);
+    expect(passRows.map((r) => [r.key, r.text])).toEqual([
+      ["X", "8 Post"],
+      ["H", "1 Speed out"],
+      ["Y", "1 Speed out"],
+      ["Z", "8 Post"],
+      ["F", "Pass pro"],
+      ["OL", "Pass pro"],
+      ["NOTES", "Hot vs blitz"],
+    ]);
+
+    // A coach's own words win over the generated text.
+    const custom = buildAssignments(
+      { defFront: "", coverage: "", notes: "", assignmentNotes: { PST: "Down on 3-tech" } },
+      power,
+    );
+    expect(custom.find((r) => r.key === "PST")).toMatchObject({ text: "Down on 3-tech", custom: true });
+
+    const def = buildDiagram({ ...card("trips", ""), frontKey: "4-3" as const }, "team", "defense");
+    expect(buildAssignments({ defFront: "EVEN", coverage: "COVER 3", notes: "" }, def).map((r) => r.text)).toEqual([
+      "EVEN",
+      "COVER 3",
+      "",
+    ]);
   });
 
   it("RPO and play action draw the mesh fake plus routes", () => {

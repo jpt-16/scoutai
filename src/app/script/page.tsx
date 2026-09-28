@@ -507,6 +507,19 @@ export default function ScriptPage() {
                             )
                         : undefined
                     }
+                    onAssignmentChange={(key, text) =>
+                      saveCards(
+                        cards.map((c) => {
+                          if (c.id !== current.id) return c;
+                          if (key === "NOTES") return { ...c, notes: text, edited: true };
+                          // An empty box goes back to the generated assignment.
+                          const own = { ...c.assignmentNotes };
+                          if (text) own[key] = text;
+                          else delete own[key];
+                          return { ...c, assignmentNotes: own, edited: true };
+                        }),
+                      )
+                    }
                   />
                 </div>
               ) : (

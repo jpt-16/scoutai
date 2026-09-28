@@ -15,13 +15,13 @@ const LAYOUTS: Record<PerPage, { orientation: string; sheet: string; grid: strin
   4: {
     orientation: "landscape",
     sheet: "w-[11in] h-[8.45in]",
-    grid: "grid-cols-[4.5in_4.5in]",
+    grid: "grid-cols-[4.3in_4.3in]",
   },
   // Letter portrait, stacked.
   2: {
     orientation: "portrait",
     sheet: "w-[8.5in] h-[10.95in]",
-    grid: "grid-cols-[6.3in]",
+    grid: "grid-cols-[5.9in]",
   },
 };
 
