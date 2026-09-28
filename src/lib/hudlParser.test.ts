@@ -110,12 +110,14 @@ describe("parseHudlCsvText", () => {
     expect(card.frontKey).toBe("5-2");
   });
 
-  it("skips special teams and blank rows and reports it", () => {
-    const csv = "PLAY #,ODK,DN,DIST,OFF FORM,OFF PLAY,DEF FRONT\n1,K,,,,,\n2,O,1,10,I,ISO,4-3\n3,O,,,,,\n";
+  it("skips special teams and fully blank rows, but keeps a row with just a play #", () => {
+    const csv =
+      "PLAY #,ODK,DN,DIST,OFF FORM,OFF PLAY,DEF FRONT\n1,K,,,,,\n2,O,1,10,I,ISO,4-3\n3,O,,,,,\n,O,,5,,,\n";
     const result = parseHudlCsvText(csv);
-    expect(result.cards.map((c) => c.playNumber)).toEqual([2]);
-    expect(result.rowCount).toBe(3);
-    expect(result.warnings.some((w) => w.includes("Skipped 2 rows"))).toBe(true);
+    expect(result.cards.map((c) => c.playNumber)).toEqual([2, 3]);
+    expect(result.rowCount).toBe(4);
+    expect(result.warnings).toContain("Skipped 1 special teams row (ODK = K).");
+    expect(result.warnings).toContain("Skipped 1 row with no play #, down, formation, play call, or result.");
     expect(result.missingColumns).toContain("hash");
   });
 
@@ -233,7 +235,7 @@ describe("parseHudlCsvText", () => {
       expect(result.cards.map((c) => c.playNumber)).toEqual([1, 3]);
       // The all-whitespace row never reaches us: skipEmptyLines "greedy" drops it.
       expect(result.warnings).toContain(
-        "Skipped 1 row with no formation, play, or front (special teams or blank).",
+        "Skipped 1 row with no play #, down, formation, play call, or result.",
       );
     });
 
@@ -301,6 +303,62 @@ describe("parseHudlCsvText", () => {
       const csv = `${header}\n" 07 ",3rd,6 yds, -35 ,L,Spread,IZ,4-3\n`.replace('" 07 ",', '" 07 ",O,');
       const [card] = parseHudlCsvText(csv).cards;
       expect(card).toMatchObject({ playNumber: 7, down: 3, distance: 6, yardLine: -35, yardLineLabel: "-35" });
+    });
+  });
+
+  describe("relaxed validation", () => {
+    it("keeps plays with a blank DEF FRONT or OFF PLAY", () => {
+      const csv = "PLAY #,DN,DIST,OFF FORM,OFF PLAY,DEF FRONT\n1,3,6,Trips Rt,,\n2,1,10,,IZ,\n";
+      const cards = parseHudlCsvText(csv).cards;
+      expect(cards.map((c) => [c.formation, c.playCall, c.defFront])).toEqual([
+        ["Trips Rt", "", ""],
+        ["", "IZ", ""],
+      ]);
+    });
+
+    it("keeps rows that only have a play # and down", () => {
+      const csv = "PLAY #,DN,DIST,OFF FORM,OFF PLAY,DEF FRONT\n1,3,6,,,\n2,1,10,,,\n";
+      expect(parseHudlCsvText(csv).cards.map((c) => c.downDistance)).toEqual(["3rd & 6", "1st & 10"]);
+    });
+
+    it("keeps a row whose only data is RESULT", () => {
+      const [card] = parseHudlCsvText("PLAY #,ODK,OFF FORM,OFF PLAY,RESULT\n,O,,,Gain 6\n").cards;
+      expect(card).toMatchObject({ playNumber: 1, result: "Gain 6" });
+    });
+  });
+
+  describe("short and messy header names", () => {
+    it("maps H, YARD, FORM, and FRONT", () => {
+      const result = parseHudlCsvText("DN,DIST,H,YARD,FORM,OFF_PLAY,FRONT\n3,6,L,-35,Trips Rt,Slant,4-3\n");
+      expect(result.cards[0]).toMatchObject({
+        hash: "L",
+        yardLine: -35,
+        formationKey: "trips",
+        concept: "slant",
+        frontKey: "4-3",
+      });
+    });
+
+    it("maps underscored and padded headers", () => {
+      const result = parseHudlCsvText("  play #  , dn ,OFF_FORM, off_play ,  DEF_FRONT \n1,3,Trips Rt,Slant,4-3\n");
+      expect(result.missingColumns).toEqual(["distance", "hash"]);
+      expect(result.cards[0]).toMatchObject({ formation: "Trips Rt", playCall: "Slant", defFront: "4-3" });
+    });
+
+    it("reads a bare PLAY column of names as the play call", () => {
+      const result = parseHudlCsvText("DN,FORM,PLAY,FRONT\n3,Trips Rt,Slant,4-3\n1,Spread,IZ,4-3\n");
+      expect(result.columns.playCall).toBe("PLAY");
+      expect(result.columns.playNumber).toBeUndefined();
+      expect(result.cards.map((c) => [c.playNumber, c.playCall])).toEqual([
+        [1, "Slant"],
+        [2, "IZ"],
+      ]);
+    });
+
+    it("reads a bare PLAY column of numbers as the play number", () => {
+      const result = parseHudlCsvText("PLAY,DN,OFF FORM,OFF PLAY\n12,3,Trips Rt,Slant\n13,1,Spread,IZ\n");
+      expect(result.columns.playNumber).toBe("PLAY");
+      expect(result.cards.map((c) => c.playNumber)).toEqual([12, 13]);
     });
   });
 

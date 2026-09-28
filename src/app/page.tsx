@@ -35,6 +35,7 @@ const FIELD_LABELS: Record<HudlField, string> = {
   playCall: "Play call",
   playType: "Play type",
   defFront: "Def front",
+  result: "Result",
   odk: "ODK",
 };
 

@@ -70,6 +70,9 @@ export interface HudlPlayCard {
   defFront: string;
   frontKey: FrontKey;
 
+  /** Hudl RESULT / GN/LS text ("Gain 6"), when the file has it. */
+  result: string;
+
   /** Every column of the original row, keyed by the normalized header. */
   raw: Record<string, string>;
 }
@@ -85,6 +88,7 @@ export type HudlField =
   | "playCall"
   | "playType"
   | "defFront"
+  | "result"
   | "odk";
 
 export interface HudlParseResult {
@@ -110,12 +114,15 @@ export const COLUMN_ALIASES: Record<HudlField, string[]> = {
   playNumber: ["PLAY #", "PLAY#", "PLAY NO", "PLAY NUMBER", "PLAY"],
   down: ["DN", "DOWN"],
   distance: ["DIST", "DISTANCE", "YDS TO GO", "TO GO"],
-  yardLine: ["YARD LN", "YARD LINE", "YARDLINE", "YD LN", "BALL ON", "FIELD POS"],
-  hash: ["HASH", "HASH MARK", "HASH MARKS"],
-  formation: ["OFF FORM", "OFF FORMATION", "FORMATION", "OFF FORM NAME"],
+  yardLine: ["YARD LN", "YARD LINE", "YARDLINE", "YD LN", "BALL ON", "FIELD POS", "YARD"],
+  hash: ["HASH", "HASH MARK", "HASH MARKS", "H"],
+  formation: ["OFF FORM", "OFF FORMATION", "FORMATION", "OFF FORM NAME", "FORM"],
+  // A bare "PLAY" column is the play number when it holds numbers and the play
+  // call when it holds names; `resolveBarePlayColumn` decides from the data.
   playCall: ["OFF PLAY", "PLAY CALL", "OFF PLAY CALL", "PLAY TYPE"],
   playType: ["PLAY TYPE", "PLAY TYP", "RUN/PASS"],
   defFront: ["DEF FRONT", "FRONT", "DEF ALIGN", "DEF FORM", "DEF FORMATION"],
+  result: ["RESULT", "PLAY RESULT", "GN/LS", "GAIN/LOSS"],
   odk: ["ODK"],
 };
 
@@ -155,6 +162,7 @@ const HEADER_PATTERNS: Record<HudlField, RegExp> = {
   playCall: /\b(OFF|OFFENSIVE|OFFENSE|O) ?PLAY\b|\bPLAY ?(CALL|NAME)\b/,
   playType: /^PLAY TYPE$|\bRUN ?\/? ?PASS\b/,
   defFront: /\b(DEF|DEFENSIVE|DEFENSE|D) ?(FRONT|FRONTS|ALIGN|ALIGNMENT|FORM|FORMATION)\b|^FRONTS?$/,
+  result: /\bRESULTS?\b|^(GN|GAIN) ?\/? ?(LS|LOSS)$/,
   odk: /^ODK$/,
 };
 
@@ -480,8 +488,30 @@ export function rowToCard(
     playDirection: parseSide(playCall) ?? formationSide,
     defFront,
     frontKey: classifyFront(defFront),
+    result: cell(row, columns.result),
     raw: row,
   };
+}
+
+/**
+ * A column headed just "PLAY" is ambiguous: some staffs number plays in it,
+ * others type the play call. Mostly-numeric values keep it as the play number;
+ * otherwise it becomes the play call (unless a better play-call column exists).
+ */
+export function resolveBarePlayColumn(
+  columns: Partial<Record<HudlField, string>>,
+  keys: string[],
+  dataRows: string[][],
+): Partial<Record<HudlField, string>> {
+  if (columns.playNumber !== "PLAY") return columns;
+  const index = keys.indexOf("PLAY");
+  const values = dataRows.map((r) => (r[index] ?? "").trim()).filter(Boolean);
+  const numeric = values.filter((v) => /^\d+$/.test(v)).length;
+  if (values.length === 0 || numeric >= values.length / 2) return columns;
+  const resolved = { ...columns };
+  delete resolved.playNumber;
+  if (!resolved.playCall) resolved.playCall = "PLAY";
+  return resolved;
 }
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
@@ -519,7 +549,7 @@ export function parseHudlCsvText(text: string): HudlParseResult {
   const headerIndex = Math.max(found, 0);
   const keys = headerKeys(rows[headerIndex] ?? []);
   const dataRows = rows.slice(headerIndex + 1);
-  const columns = mapColumns(keys);
+  const columns = resolveBarePlayColumn(mapColumns(keys), keys, dataRows);
 
   const warnings: string[] = [];
   if (found > 0) {
@@ -539,22 +569,32 @@ export function parseHudlCsvText(text: string): HudlParseResult {
     warnings.push("No formation, play, or front columns found. Is this a Hudl breakdown export?");
   }
 
-  // Rows with none of these filled in carry nothing to put on a card.
-  const criticalColumns = [columns.playNumber, columns.formation, columns.playCall, columns.down];
+  // Relaxed validation: a row is a play if ANY of these is filled in. Blank
+  // fronts, play calls, hashes, etc. just show as "—" on the card.
+  const identifyingColumns = [
+    columns.playNumber,
+    columns.down,
+    columns.formation,
+    columns.playCall,
+    columns.playType,
+    columns.result,
+  ];
   const cards: HudlPlayCard[] = [];
-  let skipped = 0;
+  let blankRows = 0;
+  let specialTeams = 0;
   let unreadable = 0;
   dataRows.forEach((values, rowIndex) => {
     try {
       const row = rowToRecord(keys, values);
-      const blank = criticalColumns.every((c) => !cell(row, c));
-      const card = rowToCard(row, rowIndex, columns);
-      const hasPlayData = Boolean(card.formation || card.playCall || card.defFront);
-      if (blank || !hasPlayData || cell(row, columns.odk).toUpperCase() === "K") {
-        skipped += 1;
+      if (cell(row, columns.odk).toUpperCase() === "K") {
+        specialTeams += 1;
         return;
       }
-      cards.push(card);
+      if (identifyingColumns.every((c) => !cell(row, c))) {
+        blankRows += 1;
+        return;
+      }
+      cards.push(rowToCard(row, rowIndex, columns));
     } catch {
       unreadable += 1;
     }
@@ -563,9 +603,12 @@ export function parseHudlCsvText(text: string): HudlParseResult {
   if (unreadable > 0) {
     warnings.push(`Couldn't read ${plural(unreadable, "row")}; the rest loaded normally.`);
   }
-  if (skipped > 0) {
+  if (specialTeams > 0) {
+    warnings.push(`Skipped ${plural(specialTeams, "special teams row")} (ODK = K).`);
+  }
+  if (blankRows > 0) {
     warnings.push(
-      `Skipped ${plural(skipped, "row")} with no formation, play, or front (special teams or blank).`,
+      `Skipped ${plural(blankRows, "row")} with no play #, down, formation, play call, or result.`,
     );
   }
 

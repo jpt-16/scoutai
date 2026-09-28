@@ -73,15 +73,16 @@ then matched against `COLUMN_ALIASES` in priority order. Headers still unmatched
 
 | Field       | Accepted headers                                                   |
 | ----------- | ------------------------------------------------------------------ |
-| Play #      | `PLAY #`, `PLAY#`, `PLAY NO`, `PLAY NUMBER`, `PLAY` → else row index |
+| Play #      | `PLAY #`, `PLAY#`, `PLAY NO`, `PLAY NUMBER`, `PLAY` (if numeric) → else row index |
 | Down        | `DN`, `DOWN`                                                        |
 | Distance    | `DIST`, `DISTANCE`, `YDS TO GO`, `TO GO` (`G` = goal to go)         |
-| Yard line   | `YARD LN`, `YARD LINE`, `YARDLINE`, `YD LN`, `BALL ON`, `FIELD POS`; values `Opp 45`/`+45`, `Own 35`/`-35`, `50`/`Mid` |
-| Hash        | `HASH`, `HASH MARK(S)`; values `L`/`R`/`M` (also Left, Rt, Mid…)    |
-| Formation   | `OFF FORM`, `OFF FORMATION`, `FORMATION`, `OFF FORM NAME`           |
-| Play call   | `OFF PLAY`, `PLAY CALL`, `OFF PLAY CALL`, then `PLAY TYPE`          |
+| Yard line   | `YARD LN`, `YARD LINE`, `YARDLINE`, `YD LN`, `BALL ON`, `FIELD POS`, `YARD`; values `Opp 45`/`+45`, `Own 35`/`-35`, `50`/`Mid` |
+| Hash        | `HASH`, `HASH MARK(S)`, `H`; values `L`/`R`/`M` (also Left, Rt, Mid…)    |
+| Formation   | `OFF FORM`, `OFF FORMATION`, `FORMATION`, `OFF FORM NAME`, `FORM`   |
+| Play call   | `OFF PLAY`, `PLAY CALL`, `OFF PLAY CALL`, then `PLAY TYPE`; a bare `PLAY` column of names |
 | Play type   | `PLAY TYPE` when a better play-call column exists (Run/Pass)        |
 | Def front   | `DEF FRONT`, `FRONT`, `DEF ALIGN`, `DEF FORM`, `DEF FORMATION`      |
+| Result      | `RESULT`, `PLAY RESULT`, `GN/LS`, `GAIN/LOSS` (kept on the card data) |
 | ODK         | `ODK`: rows tagged `K` are skipped                                  |
 
 Parsing pipeline (`parseHudlCsvText`, never throws):
@@ -99,9 +100,10 @@ Parsing pipeline (`parseHudlCsvText`, never throws):
    cells are ignored. Keys and values are trimmed.
 5. Parse problems become `warnings`. Valid rows always load.
 
-Rows are dropped as blank or special teams when `PLAY #`, `DN`, `OFF FORM`, and `OFF PLAY` are
-all empty, when there's no formation, play call, or front to draw, or when ODK is `K`. The
-result carries a warning when that happens.
+Validation is relaxed. A row is a play if **any** of play #, down, formation, play call, play
+type, or result is filled in. Blank fronts, play calls, hashes, and similar fields show as
+"—", and the card footer notes when a formation or front wasn't tagged. Only fully blank rows
+and ODK `K` (special teams) rows are skipped, with a warning.
 
 Free-text tags are classified by keyword (`classifyFormation`, `classifyFront`,
 `classifyConcept`, `parseSide`). Add new keywords there and a test case in

@@ -115,8 +115,12 @@ export function ScoutCard({ card, variant = "field", className }: ScoutCardProps
   const routes = diagram.routes.filter((r) => r.length >= 2).map(routePaths);
   const cardNumber = String(card.playNumber).padStart(2, "0");
   const note = [
-    diagram.formationFallback && card.formation ? "formation not recognized, drawn as Spread" : null,
-    diagram.frontFallback && card.defFront ? "front drawn as 4-3" : null,
+    diagram.formationFallback
+      ? card.formation
+        ? "formation not recognized, drawn as Spread"
+        : "no formation tagged, drawn as Spread"
+      : null,
+    diagram.frontFallback ? (card.defFront ? "front drawn as 4-3" : "no front tagged, drawn as 4-3") : null,
   ]
     .filter(Boolean)
     .join(" · ");
