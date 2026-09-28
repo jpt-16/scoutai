@@ -555,8 +555,14 @@ function buildBlocking(
   backs: Placed[],
   carrier: Placed | undefined,
   d: number,
+  qbY = 190,
 ): { blocks: Pt[][]; pulls: Pt[][] } {
   const at = (dx: number, y: number): Pt => [250 + d * dx, y];
+  // Pullers run flat behind the line: in front of a gun QB, just under an
+  // under-center QB. Two pullers get separate lanes so their paths never merge.
+  const underCenter = qbY < 180;
+  const lane1 = underCenter ? 178 : 163;
+  const lane2 = underCenter ? 186 : 173;
   const blocks: Pt[][] = [];
   const pulls: Pt[][] = [];
   // r > 0 is frontside (the side the play goes), r < 0 backside, 0 = center.
@@ -582,11 +588,11 @@ function buildBlocking(
         else if (p === backsideGuard)
           pulls.push(
             scheme === "power"
-              ? [p.at, [x, 170], at(44, 170), at(56, 126)] // wraps up through the hole
-              : [p.at, [x, 166], at(72, 166), at(84, 136)], // counter: kicks out the end
+              ? [p.at, [x, lane1], at(44, lane1), at(56, 124)] // wraps up through the hole
+              : [p.at, [x, lane1], at(80, lane1), at(96, 138)], // counter: kicks out the end, wide
           );
         else if (p === backsideTackle && scheme === "counter")
-          pulls.push([p.at, [x, 176], at(58, 178), at(64, 118)]); // counter: tackle wraps
+          pulls.push([p.at, [x, lane2], at(46, lane2), at(52, 106)]); // counter: tackle wraps inside, up to the LB
         else blocks.push([p.at, [x - d * 12, 160]]); // backside hinge
         break;
       case "iso":
@@ -625,7 +631,8 @@ function carrierPath(scheme: RunScheme, c: Pt, d: number): Pt[] {
     case "power":
       return [c, at(40, 172), at(56, 96)];
     case "counter":
-      return [c, [c[0] - d * 16, c[1] + 4], at(40, 176), at(58, 96)];
+      // Counter step away, cut behind the QB, then follow the pullers outside the tackle's wrap.
+      return [c, [c[0] - d * 14, c[1] + 6], [250 + d * 10, c[1] + 20], at(50, 180), at(70, 96)];
     case "iso":
     case "draw":
       return [c, at(8, 150), at(10, 92)];
@@ -689,7 +696,14 @@ export function buildDiagram(
     // The scout defense only needs the formation it's lining up against.
   } else if (kind === "run") {
     const scheme = runScheme(card);
-    const blocking = buildBlocking(scheme, [...line, ...tightEndsOnLine], backs, ballCarrier, d);
+    const blocking = buildBlocking(
+      scheme,
+      [...line, ...tightEndsOnLine],
+      backs,
+      ballCarrier,
+      d,
+      qb.y,
+    );
     blocks.push(...blocking.blocks);
     pulls.push(...blocking.pulls);
     carrier = ballCarrier ? carrierPath(scheme, ballCarrier.at, d) : null;

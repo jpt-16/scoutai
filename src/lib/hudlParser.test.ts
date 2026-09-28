@@ -541,6 +541,25 @@ describe("buildDiagram (offense only)", () => {
     expect(buildDiagram(card("i-form", "COUNTER", "left")).pulls).toHaveLength(2);
   });
 
+  it("reads TREY as counter trey: guard kicks out wide, tackle wraps inside, lanes apart", () => {
+    expect(runScheme({ playCall: "TREY", concept: "power" })).toBe("counter");
+    expect(parseHudlCsvText("OFF FORM,OFF PLAY\nDUCES,TREY\n").cards[0].concept).toBe("power");
+    expect(classifyFormation("TREY RT")).toBe("trips"); // as a formation, trey = trips
+    for (const key of ["spread", "pro"] as const) {
+      const d = buildDiagram(card(key, "TREY"));
+      expect(d.pulls).toHaveLength(2);
+      const guard = d.pulls.find((p) => p[0].x === 228)!; // left guard (play goes right)
+      const tackle = d.pulls.find((p) => p[0].x === 206)!; // left tackle
+      expect(guard).toBeDefined();
+      expect(tackle).toBeDefined();
+      expect(Math.abs(guard[1].y - tackle[1].y)).toBeGreaterThanOrEqual(8); // separate lanes
+      const gEnd = guard[guard.length - 1];
+      const tEnd = tackle[tackle.length - 1];
+      expect(gEnd.x - tEnd.x).toBeGreaterThanOrEqual(40); // kick-out wide, wrap inside
+      expect(tEnd.y).toBeLessThan(gEnd.y); // tackle climbs to the LB
+    }
+  });
+
   it("iso / lead: center and guards climb, fullback leads", () => {
     const d = buildDiagram(card("i-form", "ISO"));
     const climbs = d.blocks.filter((b) => b[0].y === 150 && Math.abs(b[0].x - 250) <= 22);
