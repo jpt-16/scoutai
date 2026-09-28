@@ -165,7 +165,7 @@ export function ScoutCard({
 
   return (
     <article
-      aria-label={`Card ${cardNumber}: ${card.downDistance}, ${card.formation || "unknown formation"}, ${card.playCall || "no play call"}`}
+      aria-label={`Card ${cardNumber}: ${card.formation || "unknown formation"}, ${isDefense ? card.defFront || "no front" : card.playCall || "no play call"}`}
       className={cn(
         "@container flex aspect-[760/556] w-full flex-col overflow-hidden border-2",
         variant === "print" ? "rounded-md" : "rounded-[14px]",
@@ -194,7 +194,6 @@ export function ScoutCard({
           </span>
         </div>
         <div className="flex min-w-0 flex-1 items-center gap-[max(12px,4cqw)] px-[max(10px,2.4cqw)]">
-          <HeaderStat label="DOWN & DIST" value={card.downDistance} className="shrink-0" />
           <HeaderStat label="HASH" value={card.hash ?? "—"} className="shrink-0" />
           <HeaderStat label="FORMATION" value={card.formation.toUpperCase() || "—"} />
         </div>
@@ -231,7 +230,14 @@ export function ScoutCard({
       >
         <g stroke={c.grid} fill="none">
           {YARD_LINES.map((y) => (
-            <line key={y} x1={0} x2={FIELD.width} y1={y} y2={y} strokeWidth={1.5} />
+            <line
+              key={y}
+              x1={0}
+              x2={FIELD.width}
+              y1={diagram.flipped ? FIELD.height - y : y}
+              y2={diagram.flipped ? FIELD.height - y : y}
+              strokeWidth={1.5}
+            />
           ))}
           {HASH_TICKS.map((y) => (
             <g key={y} strokeWidth={2}>
@@ -244,8 +250,8 @@ export function ScoutCard({
         <line
           x1={0}
           x2={FIELD.width}
-          y1={FIELD.los}
-          y2={FIELD.los}
+          y1={diagram.losY}
+          y2={diagram.losY}
           stroke={c.los}
           strokeWidth={2}
           strokeDasharray="8 6"
@@ -332,7 +338,7 @@ export function ScoutCard({
             />
             <text
               x={p.x}
-              y={p.y - 12}
+              y={diagram.flipped ? p.y + 20 : p.y - 12}
               textAnchor="middle"
               fontSize={11}
               fontWeight={800}

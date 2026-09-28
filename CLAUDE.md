@@ -145,6 +145,9 @@ Free-text tags are classified by keyword (`classifyFormation`, `classifyFront`,
   E/T/N/W/M/S/B/C/FS/SS. Corners go over the widest receivers and safeties shade to the
   receiver-heavy side. An unknown front draws as 4-3, and the card footer says so. `COVERAGE`
   shows in the footer.
+  Scout defense cards are **flipped 180°** (`Diagram.flipped`, `losY` = 160). The defense is at
+  the bottom and the offense on top, as the scout defense sees it, so the offense's right is on
+  their left. Text stays upright. The header's `HASH` stays as recorded in Hudl.
 - **7v7** drops the linemen on both sides. The script page's 7v7 period only lists
   pass/RPO/PA plays. Team lists runs and passes, or for scout defense anything with a
   formation or front.

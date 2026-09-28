@@ -374,6 +374,13 @@ export interface Diagram {
   defense: Defender[];
   /** X position of the hash the ball is on (null when unknown). */
   ballHashX: number | null;
+  /** Y of the line of scrimmage as drawn (moves when the card is flipped). */
+  losY: number;
+  /**
+   * Scout defense cards are turned 180° so the defense is at the bottom, the
+   * way the scout defense sees the offense (the offense's right is on their left).
+   */
+  flipped: boolean;
   /** True when the formation text wasn't recognized and Spread was drawn. */
   formationFallback: boolean;
   /** Scout defense cards only: true when the front wasn't recognized and 4-3 was drawn. */
@@ -663,18 +670,26 @@ export function buildDiagram(
   const keep = (path: Pt[]) => !skeleton || !onLine(path);
   const points = (paths: Pt[][]) => paths.filter(keep).map((p) => p.map(toPoint));
 
+  const flipped = unit === "defense";
+  const turn = <T extends { x: number; y: number }>(p: T): T =>
+    flipped ? { ...p, x: FIELD.width - p.x, y: FIELD.height - p.y } : p;
+  const turnAll = (paths: Point[][]) => paths.map((path) => path.map(turn));
+  const ballHashX = card.hash ? FIELD.hashX[card.hash] : null;
+
   return {
     mode,
     unit,
     kind,
-    players,
-    carrier: carrier ? carrier.map(toPoint) : null,
-    routes: points(routes),
-    blocks: points(blocks),
-    pulls: points(pulls),
-    fakes: points(fakes),
-    defense,
-    ballHashX: card.hash ? FIELD.hashX[card.hash] : null,
+    players: players.map(turn),
+    carrier: carrier ? carrier.map(toPoint).map(turn) : null,
+    routes: turnAll(points(routes)),
+    blocks: turnAll(points(blocks)),
+    pulls: turnAll(points(pulls)),
+    fakes: turnAll(points(fakes)),
+    defense: defense.map(turn),
+    ballHashX: ballHashX != null && flipped ? FIELD.width - ballHashX : ballHashX,
+    losY: flipped ? FIELD.height - FIELD.los : FIELD.los,
+    flipped,
     formationFallback,
     frontFallback,
   };

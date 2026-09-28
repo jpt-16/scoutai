@@ -620,6 +620,19 @@ describe("buildDiagram (offense only)", () => {
       }
     });
 
+    it("flips the card so the defense is on the bottom, seen from the defense", () => {
+      const d = buildDiagram(withFront("trips", "EVEN"), "team", "defense");
+      expect(d.flipped).toBe(true);
+      expect(d.losY).toBe(160);
+      expect(d.defense.every((p) => p.y > d.losY)).toBe(true);
+      expect(d.players.every((p) => p.y < d.losY)).toBe(true);
+      // Trips to the offense's right shows up on the defense's left.
+      const receivers = d.players.filter((p) => ["H", "Y", "Z"].includes(p.label));
+      expect(receivers.every((p) => p.x < 250)).toBe(true);
+      // Scout offense cards are not flipped.
+      expect(buildDiagram(withFront("trips", "EVEN")).flipped).toBe(false);
+    });
+
     it("reads COVERAGE onto the card", () => {
       const [c] = parseHudlCsvText("OFF FORM,DEF FRONT,COVERAGE\nTRIO,EVEN,6 - DOUBLE FIRE\n").cards;
       expect(c.coverage).toBe("6 - DOUBLE FIRE");

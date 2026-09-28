@@ -384,11 +384,11 @@ export default function ScriptPage() {
                       </span>
                       <span className="flex min-w-0 flex-col">
                         <span className="truncate text-base font-bold">
-                          {card.downDistance}
+                          {card.formation || "—"}
                           {card.hash && ` · ${card.hash} hash`}
                         </span>
                         <span className="truncate text-sm text-muted-foreground">
-                          {card.formation || "—"} · {card.playCall || "—"}
+                          {unit === "defense" ? card.defFront || "—" : card.playCall || "—"}
                         </span>
                       </span>
                     </button>
