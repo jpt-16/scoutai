@@ -117,6 +117,53 @@ describe("parseHudlCsvText", () => {
     expect(result.missingColumns).toContain("hash");
   });
 
+  describe("messy exports", () => {
+    const header = "PLAY #,ODK,DN,DIST,YARD LN,HASH,OFF FORM,OFF PLAY,DEF FRONT,RESULT";
+    const row = "1,O,3,6,Opp 45,L,Trips Right,Quick Slant,4-3,Gain 6";
+    const expectOneCard = (csv: string) => {
+      const result = parseHudlCsvText(csv);
+      expect(result.cards).toHaveLength(1);
+      expect(result.cards[0]).toMatchObject({
+        playNumber: 1,
+        downDistance: "3rd & 6",
+        yardLine: 45,
+        hash: "L",
+        formation: "Trips Right",
+        formationKey: "trips",
+        playCall: "Quick Slant",
+        concept: "slant",
+        frontKey: "4-3",
+      });
+      expect(result.warnings.filter((w) => /Too many fields/.test(w))).toEqual([]);
+      return result;
+    };
+
+    it("skips a title line above the header (was: Too many fields: expected 1)", () => {
+      const result = expectOneCard(`Week 7 Breakdown - Central\n${header}\n${row}\n`);
+      expect(result.warnings).toContain("Skipped 1 line above the header row (title or notes).");
+    });
+
+    it("skips an Excel sep= line", () => {
+      expectOneCard(`sep=,\n${header}\n${row}\n`);
+    });
+
+    it("auto-detects semicolon, tab, and pipe delimiters", () => {
+      for (const d of [";", "\t", "|"]) {
+        expectOneCard(`${header.replaceAll(",", d)}\n${row.replaceAll(",", d)}\n`);
+      }
+    });
+
+    it("trims spaces around commas in headers and values", () => {
+      expectOneCard(`${header.replaceAll(",", " , ")}\r\n${row.replaceAll(",", " ,  ")}\r\n\r\n`);
+    });
+
+    it("keeps raw values as text even though numbers are typed", () => {
+      const result = expectOneCard(`${header}\n${row}\n`);
+      expect(result.cards[0].raw.DN).toBe("3");
+      expect(result.cards[0].raw["YARD LN"]).toBe("Opp 45");
+    });
+  });
+
   it("warns when the file doesn't look like a Hudl breakdown", () => {
     const result = parseHudlCsvText("NAME,EMAIL\nA,b@c.d\n");
     expect(result.cards).toHaveLength(0);

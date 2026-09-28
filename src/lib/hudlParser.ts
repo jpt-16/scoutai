@@ -263,15 +263,45 @@ export function parseSide(text: string): Side | null {
 /*                                   Parser                                   */
 /* -------------------------------------------------------------------------- */
 
-function cell(row: Record<string, string>, column: string | undefined): string {
+/** A parsed CSV row. `dynamicTyping` turns numeric cells into numbers. */
+export type CsvRow = Record<string, string | number | boolean | null | undefined>;
+
+function cell(row: CsvRow, column: string | undefined): string {
   if (!column) return "";
   const v = row[column];
   return v == null ? "" : String(v).trim();
 }
 
+function stringifyRow(row: CsvRow): Record<string, string> {
+  return Object.fromEntries(Object.entries(row).map(([k, v]) => [k, v == null ? "" : String(v)]));
+}
+
+const KNOWN_HEADERS = new Set(Object.values(COLUMN_ALIASES).flat());
+/** How far down the file to look for the header row. */
+const HEADER_SEARCH_LINES = 25;
+
+/**
+ * Finds the real header row. Exports edited in Excel or Sheets often have a
+ * title line ("Week 7 Breakdown") or an Excel `sep=,` line above the header.
+ * PapaParse would read that line as a 1-column header and then report every
+ * row as "Too many fields". Returns the text from the header row on, plus the
+ * number of lines dropped above it.
+ */
+export function locateHeaderRow(text: string): { body: string; skippedLines: number } {
+  const lines = text.replace(/^\uFEFF/, "").split(/\r\n|\n|\r/);
+  const limit = Math.min(lines.length, HEADER_SEARCH_LINES);
+  for (let i = 0; i < limit; i++) {
+    if (!lines[i].trim()) continue;
+    const fields = Papa.parse<string[]>(lines[i], { delimiter: "" }).data[0] ?? [];
+    const hits = fields.filter((f) => KNOWN_HEADERS.has(normalizeHeader(String(f)))).length;
+    if (hits >= 2) return { body: lines.slice(i).join("\n"), skippedLines: i };
+  }
+  return { body: text, skippedLines: 0 };
+}
+
 /** Turns one normalized CSV row into a card. Exposed for tests. */
 export function rowToCard(
-  row: Record<string, string>,
+  row: CsvRow,
   rowIndex: number,
   columns: Partial<Record<HudlField, string>>,
 ): HudlPlayCard {
@@ -309,25 +339,38 @@ export function rowToCard(
     playDirection: parseSide(playCall) ?? formationSide,
     defFront,
     frontKey: classifyFront(defFront),
-    raw: row,
+    raw: stringifyRow(row),
   };
 }
 
 /** Parses Hudl breakdown CSV text synchronously. */
 export function parseHudlCsvText(text: string): HudlParseResult {
-  const parsed = Papa.parse<Record<string, string>>(text, {
+  const { body, skippedLines } = locateHeaderRow(text);
+  const parsed = Papa.parse<CsvRow>(body, {
     header: true,
+    // Auto-detect comma, tab, semicolon, or pipe (European Excel saves with ";").
+    delimiter: "",
     skipEmptyLines: "greedy",
+    // Numeric cells become numbers; `cell()` turns everything back into trimmed text.
+    dynamicTyping: true,
+    // Trims header keys ("  OFF FORM ", "OFF  PLAY"), strips a BOM, normalizes case.
     transformHeader: normalizeHeader,
+    // Trims spaces around commas before dynamicTyping sees the value.
+    transform: (value) => value.trim(),
   });
 
   const headers = parsed.meta.fields ?? [];
   const columns = mapColumns(headers);
   const warnings: string[] = [];
+  if (skippedLines > 0) {
+    warnings.push(
+      `Skipped ${skippedLines} line${skippedLines === 1 ? "" : "s"} above the header row (title or notes).`,
+    );
+  }
 
   for (const error of parsed.errors.slice(0, 5)) {
     // Row numbers from Papa are 0-based data rows; show 1-based spreadsheet rows.
-    const where = error.row != null ? ` (row ${error.row + 2})` : "";
+    const where = error.row != null ? ` (row ${error.row + 2 + skippedLines})` : "";
     warnings.push(`${error.message}${where}`);
   }
   if (parsed.errors.length > 5) {

@@ -81,6 +81,11 @@ then matched against `COLUMN_ALIASES` in priority order:
 | Def front   | `DEF FRONT`, `FRONT`, `DEF ALIGN`, `DEF FORM`, `DEF FORMATION`      |
 | ODK         | `ODK`: rows tagged `K` are skipped                                  |
 
+The parser also handles hand-edited files. It auto-detects the delimiter (comma, tab, `;`,
+`|`), trims spaces around cells, and types numeric cells (`dynamicTyping`). `locateHeaderRow`
+skips title or `sep=,` lines above the header. Without that step, PapaParse reads the title
+as a 1-column header and reports "Too many fields" on every row.
+
 Rows with no formation, play call, **and** front are dropped as special teams/blank rows,
 and the result carries a warning when that happens.
 
