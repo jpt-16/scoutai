@@ -87,6 +87,11 @@ export interface HudlPlayCard {
   source: string;
   /** True once a coach has changed the play in the app. */
   edited?: boolean;
+  /**
+   * Scout defense: defenders a coach dragged to where they lined up on film,
+   * by defender id ("FS1", "C2"), in un-flipped card coordinates.
+   */
+  defenseOverrides?: Record<string, { x: number; y: number }>;
 
   /** Every column of the original row, keyed by the normalized header. */
   raw: Record<string, string>;

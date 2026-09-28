@@ -1,7 +1,12 @@
+"use client";
+
+import { useRef, useState } from "react";
 import type { HudlPlayCard } from "@/lib/hudlParser";
 import {
   buildDiagram,
   FIELD,
+  fromCardPoint,
+  NUMBERS_X,
   PLAY_KIND_LABELS,
   type DiagramMode,
   type Point,
@@ -19,6 +24,11 @@ interface ScoutCardProps {
   mode?: DiagramMode;
   /** `offense` = scout offense (blocking, routes); `defense` = formation + defensive alignment. */
   unit?: ScoutUnit;
+  /**
+   * Scout defense: lets a coach drag the X's to where the defense lined up on
+   * film. Called on release with the defender id and its saved position.
+   */
+  onMoveDefender?: (id: string, at: Point) => void;
   className?: string;
 }
 
@@ -62,8 +72,6 @@ const PALETTES = {
 /** Card aspect ratio (width / height) shared with layouts that size cards. */
 export const SCOUT_CARD_ASPECT = 760 / 556;
 
-const YARD_LINES = [15, 65, 115, 165, 215, 265];
-const HASH_TICKS = Array.from({ length: 30 }, (_, i) => 5 + i * 10);
 const f = (n: number) => n.toFixed(1);
 
 /** Unit vector of a segment and its angle. */
@@ -142,10 +150,29 @@ export function ScoutCard({
   variant = "field",
   mode = "team",
   unit = "offense",
+  onMoveDefender,
   className,
 }: ScoutCardProps) {
   const c = PALETTES[variant];
   const diagram = buildDiagram(card, mode, unit);
+  const svgRef = useRef<SVGSVGElement>(null);
+  const [drag, setDrag] = useState<{ id: string; x: number; y: number } | null>(null);
+  const movable = Boolean(onMoveDefender) && unit === "defense";
+
+  /** Pointer position in SVG coordinates, kept on the field and on the defense's side. */
+  const svgPoint = (e: React.PointerEvent): Point | null => {
+    const svg = svgRef.current;
+    const m = svg?.getScreenCTM();
+    if (!svg || !m) return null;
+    const p = new DOMPoint(e.clientX, e.clientY).matrixTransform(m.inverse());
+    const [minY, maxY] = diagram.flipped
+      ? [diagram.losY + 6, FIELD.height - 8]
+      : [8, diagram.losY - 6];
+    return {
+      x: Math.min(FIELD.width - 10, Math.max(10, p.x)),
+      y: Math.min(maxY, Math.max(minY, p.y)),
+    };
+  };
   const isDefense = unit === "defense";
   const cardNumber = String(card.playNumber).padStart(2, "0");
   const note = [
@@ -239,6 +266,7 @@ export function ScoutCard({
       )}
 
       <svg
+        ref={svgRef}
         viewBox={`0 0 ${FIELD.width} ${FIELD.height}`}
         preserveAspectRatio="xMidYMid meet"
         className="block min-h-0 w-full flex-1"
@@ -247,22 +275,37 @@ export function ScoutCard({
         aria-label="Offensive formation and assignments"
       >
         <g stroke={c.grid} fill="none">
-          {YARD_LINES.map((y) => (
-            <line
-              key={y}
-              x1={0}
-              x2={FIELD.width}
-              y1={diagram.flipped ? FIELD.height - y : y}
-              y2={diagram.flipped ? FIELD.height - y : y}
-              strokeWidth={1.5}
-            />
+          {diagram.yardLines.map(({ y }) => (
+            <line key={y} x1={0} x2={FIELD.width} y1={y} y2={y} strokeWidth={1.5} />
           ))}
-          {HASH_TICKS.map((y) => (
+          {diagram.hashTicks.map((y) => (
             <g key={y} strokeWidth={2}>
               <line x1={FIELD.hashX.L - 4} x2={FIELD.hashX.L + 4} y1={y} y2={y} />
               <line x1={FIELD.hashX.R - 4} x2={FIELD.hashX.R + 4} y1={y} y2={y} />
             </g>
           ))}
+        </g>
+        {/* Field numbers on both sides, so receivers can see their splits. */}
+        <g
+          fill={c.grid}
+          fontSize={22}
+          fontWeight={800}
+          fontFamily="'Barlow Condensed', sans-serif"
+          textAnchor="middle"
+          stroke={c.field}
+          strokeWidth={5}
+          paintOrder="stroke"
+          aria-hidden="true"
+        >
+          {diagram.yardLines
+            .filter((l) => l.label)
+            .flatMap(({ y, label }) =>
+              [NUMBERS_X.left, NUMBERS_X.right].map((x) => (
+                <text key={`${x}-${y}`} x={x} y={y} dy="0.36em" letterSpacing={6}>
+                  {label}
+                </text>
+              )),
+            )}
         </g>
 
         <line
@@ -406,30 +449,70 @@ export function ScoutCard({
           </g>
         )}
 
-        {diagram.defense.map((p, i) => (
-          <g key={`d${i}`}>
-            <path
-              d={`M${p.x - 7} ${p.y - 7}L${p.x + 7} ${p.y + 7}M${p.x + 7} ${p.y - 7}L${p.x - 7} ${p.y + 7}`}
-              stroke={c.defense}
-              strokeWidth={3.5}
-              strokeLinecap="round"
-            />
-            <text
-              x={p.x}
-              y={diagram.flipped ? p.y + 20 : p.y - 12}
-              textAnchor="middle"
-              fontSize={11}
-              fontWeight={800}
-              fontFamily="'Barlow Condensed', sans-serif"
-              fill={c.defense}
+        {diagram.defense.map((d) => {
+          const p = drag?.id === d.id ? { ...d, x: drag.x, y: drag.y } : d;
+          return (
+            <g
+              key={d.id}
+              {...(movable && {
+                role: "button",
+                "aria-label": `Move ${d.label}`,
+                style: { cursor: "grab", touchAction: "none" },
+                onPointerDown: (e: React.PointerEvent<SVGGElement>) => {
+                  // Keep the card's swipe from seeing this touch.
+                  e.stopPropagation();
+                  e.currentTarget.setPointerCapture(e.pointerId);
+                  const at = svgPoint(e);
+                  if (at) setDrag({ id: d.id, ...at });
+                },
+                onPointerMove: (e: React.PointerEvent<SVGGElement>) => {
+                  if (drag?.id !== d.id) return;
+                  const at = svgPoint(e);
+                  if (at) setDrag({ id: d.id, ...at });
+                },
+                onPointerUp: (e: React.PointerEvent<SVGGElement>) => {
+                  e.stopPropagation();
+                  if (drag?.id === d.id) onMoveDefender?.(d.id, fromCardPoint(diagram, drag));
+                  setDrag(null);
+                },
+                onPointerCancel: () => setDrag(null),
+              })}
             >
-              {p.label}
-            </text>
-          </g>
-        ))}
+              {movable && (
+                <circle
+                  cx={p.x}
+                  cy={p.y}
+                  r={17}
+                  fill={c.defense}
+                  fillOpacity={drag?.id === d.id ? 0.3 : 0.12}
+                  stroke={c.defense}
+                  strokeOpacity={0.6}
+                  strokeDasharray="3 3"
+                />
+              )}
+              <path
+                d={`M${p.x - 7} ${p.y - 7}L${p.x + 7} ${p.y + 7}M${p.x + 7} ${p.y - 7}L${p.x - 7} ${p.y + 7}`}
+                stroke={c.defense}
+                strokeWidth={3.5}
+                strokeLinecap="round"
+              />
+              <text
+                x={p.x}
+                y={diagram.flipped ? p.y + 20 : p.y - 12}
+                textAnchor="middle"
+                fontSize={11}
+                fontWeight={800}
+                fontFamily="'Barlow Condensed', sans-serif"
+                fill={c.defense}
+              >
+                {p.label}
+              </text>
+            </g>
+          );
+        })}
 
         {diagram.players.map((p, i) => {
-          const center = p.role === "OL" && p.x === FIELD.center.x;
+          const center = Boolean(p.ball);
           return (
             <g key={i}>
               <circle

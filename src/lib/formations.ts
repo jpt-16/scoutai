@@ -28,6 +28,8 @@ export interface Player {
   role: Role;
   x: number;
   y: number;
+  /** The center (drawn filled: he has the ball). */
+  ball?: boolean;
 }
 
 interface Slot {
@@ -213,6 +215,8 @@ export const FRONT_LABELS: Record<FrontKey, string> = {
 };
 
 export interface Defender {
+  /** Stable id: the label plus its count ("C1", "C2", "FS1"), used to save moved defenders. */
+  id: string;
   /** E, T, N (line), W, M, S, B (backers), C, FS, SS (secondary). */
   label: string;
   x: number;
@@ -229,6 +233,7 @@ function buildDefense(
   skill: Pt[],
   strength: Side,
   dropLine: boolean,
+  overrides: Record<string, { x: number; y: number }> = {},
 ): Defender[] {
   const front = FRONTS[frontKey];
   const xs = skill.map(([x]) => x);
@@ -256,7 +261,15 @@ function buildDefense(
     label: s.label,
     at: mirrorX(s.at, strength),
   }));
-  return [...box, ...secondary].map(({ label, at }) => ({ label, x: at[0], y: at[1] }));
+  // Ids count per label ("C1", "C2"). Line labels (E/T/N) never repeat among the
+  // backers or DBs, so dropping the line in 7v7 doesn't renumber anyone.
+  const seen: Record<string, number> = {};
+  return [...box, ...secondary].map(({ label, at }) => {
+    seen[label] = (seen[label] ?? 0) + 1;
+    const id = `${label}${seen[label]}`;
+    const moved = overrides[id];
+    return { id, label, x: moved?.x ?? at[0], y: moved?.y ?? at[1] };
+  });
 }
 
 /* -------------------------------------------------------------------------- */
@@ -481,6 +494,12 @@ export interface Diagram {
   ballHashX: number | null;
   /** Y of the line of scrimmage as drawn (moves when the card is flipped). */
   losY: number;
+  /** Yard lines as drawn, every 5 yards, with field numbers ("30", "G") every 10. */
+  yardLines: { y: number; label: string | null }[];
+  /** Y of each 1-yard hash tick as drawn. */
+  hashTicks: number[];
+  /** How far the formation moved sideways to put the ball on its hash. */
+  hashDx: number;
   /**
    * Scout defense cards are turned 180° so the defense is at the bottom, the
    * way the scout defense sees the offense (the offense's right is on their left).
@@ -505,12 +524,71 @@ function mirrorX(p: Pt, side: Side): Pt {
 
 function place(slot: Slot, side: Side): Placed {
   const at = mirrorX(slot.at, side);
-  return { label: slot.label, role: slot.role, x: at[0], y: at[1], at };
+  const ball = slot.role === "OL" && slot.at[0] === FIELD.center.x;
+  return { label: slot.label, role: slot.role, x: at[0], y: at[1], at, ...(ball ? { ball } : {}) };
 }
 
 /** Route shape for one receiver. `o` = +1 toward the right sideline for this player, -1 left. */
-/** Screen y for a depth in yards past the line (7 px a yard keeps deep routes on the card). */
-const yd = (yards: number) => FIELD.los - yards * 7;
+/** Pixels per yard, vertically. 7 keeps deep routes on the card; yard lines use the same scale. */
+export const YARD_PX = 7;
+
+/** Screen y for a depth in yards past the line. */
+const yd = (yards: number) => FIELD.los - yards * YARD_PX;
+
+/** Where the field numbers sit: about 8 yards in from each sideline, like a real HS field. */
+export const NUMBERS_X = { left: 75, right: 425 } as const;
+
+/**
+ * Moves the formation so the ball sits on its hash. Players within 70 px of the
+ * ball (the line, backs, tight ends, close slots) shift as a unit; wider players
+ * keep their room to the sideline, so the short side bunches and the wide side
+ * spreads. `dx` is the hash's offset from the middle of the field.
+ */
+export function mapToHash(x: number, dx: number): number {
+  if (dx === 0) return x;
+  const [inL, inR, L, R] = [180, 320, 14, 486];
+  if (x < inL) return L + ((x - L) * (inL + dx - L)) / (inL - L);
+  if (x > inR) return inR + dx + ((x - inR) * (R - inR - dx)) / (R - inR);
+  return x + dx;
+}
+
+/** Inverse of `mapToHash`: a point on the card back to the formation's own coordinates. */
+export function unmapFromHash(x: number, dx: number): number {
+  if (dx === 0) return x;
+  const [inL, inR, L, R] = [180, 320, 14, 486];
+  if (x < inL + dx) return L + ((x - L) * (inL - L)) / (inL + dx - L);
+  if (x > inR + dx) return inR + ((x - inR - dx) * (R - inR)) / (R - inR - dx);
+  return x - dx;
+}
+
+/** Yards from the line of scrimmage to the goal line the offense is attacking. */
+function yardsToGoal(yardLine: number | null): number {
+  if (yardLine == null) return 70; // unknown: assume the offense's own 30
+  if (yardLine < 0) return 100 + yardLine; // own territory (-35 → 65 to go)
+  return yardLine; // opponent territory or the 50
+}
+
+/** Yard lines every 5 yards (true to the ball's spot), with field numbers every 10. */
+function fieldMarkings(yardLine: number | null): {
+  yardLines: { y: number; label: string | null }[];
+  hashTicks: number[];
+} {
+  const toGo = yardsToGoal(yardLine);
+  const yFor = (g: number) => FIELD.los - (toGo - g) * YARD_PX;
+  const yardLines: { y: number; label: string | null }[] = [];
+  const hashTicks: number[] = [];
+  for (let g = 0; g <= 100; g++) {
+    const y = yFor(g);
+    if (y < 0 || y > FIELD.height) continue;
+    if (g % 5 === 0) {
+      const label = g === 0 || g === 100 ? "G" : g % 10 === 0 ? String(g <= 50 ? g : 100 - g) : null;
+      yardLines.push({ y, label });
+    } else {
+      hashTicks.push(y);
+    }
+  }
+  return { yardLines, hashTicks };
+}
 
 /** Route shape for one receiver. `o` = +1 toward the right sideline for this player, -1 left. */
 function routePath(kind: RouteKind, p: Pt, o: number, d: number): Pt[] {
@@ -747,6 +825,8 @@ export function buildDiagram(
     | "hash"
     | "playCall"
     | "frontKey"
+    | "defenseOverrides"
+    | "yardLine"
   >,
   mode: DiagramMode = "team",
   unit: ScoutUnit = "offense",
@@ -780,6 +860,7 @@ export function buildDiagram(
           skill.map((p) => p.at),
           side,
           mode === "7v7",
+          card.defenseOverrides,
         )
       : [];
 
@@ -830,7 +911,7 @@ export function buildDiagram(
 
   const skeleton = mode === "7v7";
   const players: Player[] = [...(skeleton ? [] : line), qb, ...backs, ...skill].map(
-    ({ label, role, x, y }) => ({ label, role, x, y }),
+    ({ label, role, x, y, ball }) => ({ label, role, x, y, ...(ball ? { ball } : {}) }),
   );
   // In 7v7 there are no linemen, so drop anything that starts on the line.
   const onLine = (path: Pt[]) => line.some((l) => l.at[0] === path[0][0] && l.at[1] === path[0][1]);
@@ -839,8 +920,14 @@ export function buildDiagram(
   const keptRoutes = routes.filter((r) => keep(r.path));
 
   const flipped = unit === "defense";
-  const turn = <T extends { x: number; y: number }>(p: T): T =>
-    flipped ? { ...p, x: FIELD.width - p.x, y: FIELD.height - p.y } : p;
+  const hashDx = card.hash ? FIELD.hashX[card.hash] - FIELD.center.x : 0;
+  // Ball onto its hash, then (scout defense) turn the card around.
+  const turn = <T extends { x: number; y: number }>(p: T): T => {
+    const x = mapToHash(p.x, hashDx);
+    return flipped ? { ...p, x: FIELD.width - x, y: FIELD.height - p.y } : { ...p, x };
+  };
+  const marks = fieldMarkings(card.yardLine ?? null);
+  const flipY = (y: number) => (flipped ? FIELD.height - y : y);
   const turnAll = (paths: Point[][]) => paths.map((path) => path.map(turn));
   const ballHashX = card.hash ? FIELD.hashX[card.hash] : null;
 
@@ -861,9 +948,23 @@ export function buildDiagram(
     fakes: turnAll(points(fakes)),
     defense: defense.map(turn),
     ballHashX: ballHashX != null && flipped ? FIELD.width - ballHashX : ballHashX,
-    losY: flipped ? FIELD.height - FIELD.los : FIELD.los,
+    losY: flipY(FIELD.los),
+    yardLines: marks.yardLines.map((l) => ({ ...l, y: flipY(l.y) })),
+    hashTicks: marks.hashTicks.map(flipY),
+    hashDx,
     flipped,
     formationFallback,
     frontFallback,
   };
+}
+
+/**
+ * A point on a drawn card back to the formation's own coordinates (un-flipped,
+ * before the hash shift): how moved defenders are saved, so they stay put if
+ * the hash or the card's orientation changes.
+ */
+export function fromCardPoint(diagram: Pick<Diagram, "flipped" | "hashDx">, p: Point): Point {
+  const x = diagram.flipped ? FIELD.width - p.x : p.x;
+  const y = diagram.flipped ? FIELD.height - p.y : p.y;
+  return { x: Math.round(unmapFromHash(x, diagram.hashDx)), y: Math.round(y) };
 }

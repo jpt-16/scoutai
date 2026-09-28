@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { MOCK_HUDL_CSV } from "./demoScript";
-import { buildDiagram, inPeriod, isPassPlay, routeTokens, runScheme } from "./formations";
+import { buildDiagram, fromCardPoint, inPeriod, isPassPlay, routeTokens, runScheme } from "./formations";
 import {
   classifyConcept,
   type FormationKey,
@@ -727,6 +727,30 @@ describe("buildDiagram (offense only)", () => {
       expect(buildDiagram(withFront("trips", "EVEN")).flipped).toBe(false);
     });
 
+    it("moved defenders stay where the coach put them, in team and 7v7", () => {
+      const base = withFront("trips", "EVEN");
+      const fs = buildDiagram(base, "team", "defense").defense.find((p) => p.label === "FS")!;
+      const moved = { ...base, defenseOverrides: { [fs.id]: { x: 200, y: 30 } } };
+      for (const mode of ["team", "7v7"] as const) {
+        const d = buildDiagram(moved, mode, "defense");
+        const again = d.defense.find((p) => p.id === fs.id)!;
+        // Drawn flipped, so convert back before comparing.
+        expect(fromCardPoint(d, again)).toEqual({ x: 200, y: 30 });
+      }
+    });
+
+    it("a dragged spot converts back to saved coordinates on a flipped, right-hash card", () => {
+      const card = { ...withFront("spread", "4-3"), hash: "R" as const };
+      const d = buildDiagram(card, "team", "defense");
+      const saved = { ...card, defenseOverrides: {} as Record<string, { x: number; y: number }> };
+      for (const p of d.defense) saved.defenseOverrides[p.id] = fromCardPoint(d, p);
+      const redrawn = buildDiagram(saved, "team", "defense");
+      redrawn.defense.forEach((p, i) => {
+        expect(Math.abs(p.x - d.defense[i].x)).toBeLessThanOrEqual(1);
+        expect(Math.abs(p.y - d.defense[i].y)).toBeLessThanOrEqual(1);
+      });
+    });
+
     it("reads COVERAGE onto the card", () => {
       const [c] = parseHudlCsvText("OFF FORM,DEF FRONT,COVERAGE\nTRIO,EVEN,6 - DOUBLE FIRE\n").cards;
       expect(c.coverage).toBe("6 - DOUBLE FIRE");
@@ -751,6 +775,43 @@ describe("buildDiagram (offense only)", () => {
     // Every team pass is also in 7v7.
     const team = cards.filter((c) => inPeriod(c, "team", "offense") && isPassPlay(c));
     expect(team.every((c) => inPeriod(c, "7v7", "offense"))).toBe(true);
+  });
+
+  it("puts the ball on its hash without pushing anyone off the field or into each other", () => {
+    for (const key of ["spread", "trips", "i-form", "double-eagle", "pro", "split-pro"] as const) {
+      for (const hash of ["L", "M", "R"] as const) {
+        for (const dir of ["left", "right"] as const) {
+          const d = buildDiagram({ ...card(key, "", dir), hash });
+          const ball = d.players.find((p) => p.ball)!;
+          expect(ball.x).toBe({ L: 167, M: 250, R: 333 }[hash]);
+          for (const p of d.players) expect(p.x).toBeGreaterThanOrEqual(12);
+          for (const p of d.players) expect(p.x).toBeLessThanOrEqual(488);
+          for (let i = 0; i < d.players.length; i++) {
+            for (let j = i + 1; j < d.players.length; j++) {
+              const a = d.players[i];
+              const b = d.players[j];
+              // A QB under center sits right behind the center on purpose.
+              if ((a.ball && b.role === "QB") || (b.ball && a.role === "QB")) continue;
+              expect(Math.hypot(a.x - b.x, a.y - b.y), `${key} ${hash} ${dir}`).toBeGreaterThan(18);
+            }
+          }
+        }
+      }
+    }
+  });
+
+  it("draws true yard lines with field numbers every 10 yards", () => {
+    const [own35] = parseHudlCsvText("YARD LN,OFF FORM\n-35,SPREAD\n").cards;
+    const d = buildDiagram(own35);
+    const labels = d.yardLines.filter((l) => l.label).map((l) => l.label);
+    expect(labels).toEqual(expect.arrayContaining(["40", "30"]));
+    // The ball is on the 35: halfway between the 30 and 40 lines.
+    const y30 = d.yardLines.find((l) => l.label === "30")!.y;
+    const y40 = d.yardLines.find((l) => l.label === "40")!.y;
+    expect(Math.abs(d.losY - (y30 + y40) / 2)).toBeLessThan(0.01);
+    // Opponent's 8: the goal line shows.
+    const [opp8] = parseHudlCsvText("YARD LN,OFF FORM\nOpp 8,SPREAD\n").cards;
+    expect(buildDiagram(opp8).yardLines.some((l) => l.label === "G")).toBe(true);
   });
 
   it("keeps plays with isPassPlay for 7v7", () => {

@@ -8,6 +8,8 @@ import {
   ChevronRight,
   FilePlus2,
   Grid2x2,
+  Move,
+  RotateCcw,
   Pencil,
   RectangleVertical,
   Upload,
@@ -72,6 +74,7 @@ export default function ScriptPage() {
   const [film, setFilm] = useState<string>("all");
   const [index, setIndex] = useState(0);
   const [editing, setEditing] = useState(false);
+  const [adjusting, setAdjusting] = useState(false);
   const [notice, setNotice] = useState({
     heading: "",
     detail: "",
@@ -361,6 +364,36 @@ export default function ScriptPage() {
           )}
         </div>
         <div className="flex shrink-0 gap-2 border-l pl-3">
+          {unit === "defense" && view === "field" && (
+            <>
+              <Button
+                size="lg"
+                variant={adjusting ? "default" : "outline"}
+                aria-pressed={adjusting}
+                onClick={() => setAdjusting((a) => !a)}
+                disabled={!current}
+              >
+                <Move aria-hidden="true" />
+                {adjusting ? "Done" : "Adjust X's"}
+              </Button>
+              {adjusting && current?.defenseOverrides && (
+                <Button
+                  size="lg"
+                  variant="outline"
+                  onClick={() =>
+                    saveCards(
+                      cards.map((c) =>
+                        c.id === current.id ? { ...c, defenseOverrides: undefined } : c,
+                      ),
+                    )
+                  }
+                >
+                  <RotateCcw aria-hidden="true" />
+                  Reset X&apos;s
+                </Button>
+              )}
+            </>
+          )}
           <Button size="lg" variant="outline" onClick={() => addFilmInput.current?.click()}>
             <FilePlus2 aria-hidden="true" />
             Add film
@@ -439,7 +472,8 @@ export default function ScriptPage() {
             onPointerUp={(e) => {
               const start = pointerStart.current;
               pointerStart.current = null;
-              if (!start) return;
+              // No swiping while dragging X's around.
+              if (!start || (adjusting && unit === "defense")) return;
               const dx = e.clientX - start.x;
               const dy = e.clientY - start.y;
               if (Math.abs(dx) < SWIPE_THRESHOLD || Math.abs(dx) < Math.abs(dy)) return;
@@ -453,7 +487,27 @@ export default function ScriptPage() {
             <div className="absolute inset-0 flex items-center justify-center">
               {current ? (
                 <div style={{ width: `min(100cqw, calc(100cqh * ${SCOUT_CARD_ASPECT}))` }}>
-                  <ScoutCard card={current} mode={cardMode} unit={unit} />
+                  <ScoutCard
+                    card={current}
+                    mode={cardMode}
+                    unit={unit}
+                    onMoveDefender={
+                      adjusting && unit === "defense"
+                        ? (id, at) =>
+                            saveCards(
+                              cards.map((c) =>
+                                c.id === current.id
+                                  ? {
+                                      ...c,
+                                      defenseOverrides: { ...c.defenseOverrides, [id]: at },
+                                      edited: true,
+                                    }
+                                  : c,
+                              ),
+                            )
+                        : undefined
+                    }
+                  />
                 </div>
               ) : (
                 <div className="flex h-full w-full flex-col items-center justify-center gap-3 rounded-[14px] border-2 border-dashed border-input">

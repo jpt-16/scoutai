@@ -165,6 +165,13 @@ Free-text tags are classified by keyword (`classifyFormation`, `classifyFront`,
   Scout defense cards are **flipped 180°** (`Diagram.flipped`, `losY` = 160). The defense is at
   the bottom and the offense on top, as the scout defense sees it, so the offense's right is on
   their left. Text stays upright. The header's `HASH` stays as recorded in Hudl.
+  **Adjust X's** (script page, Scout D) turns on dragging. Hudl doesn't record safety depth
+  and similar details, so a coach drags each defender to where he lined up on film.
+  - Positions save per play in `card.defenseOverrides`, keyed by defender id (`FS1`, `C2`).
+    They're stored in the formation's own coordinates, un-flipped and before the hash shift
+    (`fromCardPoint`), so they survive hash, 7v7/Team and orientation changes.
+  - **Reset X's** clears a play's moves.
+  - Swiping between cards is paused while adjusting.
 - **7v7** drops the linemen on both sides. `inPeriod` decides which plays each period lists:
   - Scout O 7v7: every pass/RPO/PA from team, plus untagged plays as formation reps (the card
     says "no routes tagged").
@@ -179,7 +186,12 @@ Free-text tags are classified by keyword (`classifyFormation`, `classifyFront`,
 Coordinates:
 
 - SVG viewBox `0 0 500 300`. Center/ball at **(250, 150)**, line of scrimmage at `y = 140`.
-- Hash marks at `x = 167` / `333`. The ball's hash is a triangle on the top edge.
+- Hash marks at `x = 167` / `333`. **The ball sits on its hash** (`mapToHash`). Players within
+  70 px of the ball shift as a unit, and wider players keep their room to the sideline, so the
+  short side bunches and the wide side spreads. The hash is also a triangle on the top edge.
+- Yard lines are true to the ball's spot (`Hudl YARD LN`; unknown = own 30) at `YARD_PX` = 7 px
+  a yard, the same scale as route depths. **Field numbers** sit on both sides (`NUMBERS_X`,
+  about 8 yards in from each sideline) so receivers can see their splits.
 - Formations and fronts are drawn **strength right**. `OFF STR` (or a side tag in the
   formation) mirrors them, and `PLAY DIR` (or a tag in the play call) sets the play side.
 - Unknown formations draw as Spread, and the footer says so.
