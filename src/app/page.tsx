@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, Check, Lock, Smartphone, X } from "lucide-react";
+import { AlertTriangle, Check, Film, Lock, Smartphone, X } from "lucide-react";
 import { BrandMark } from "@/components/BrandMark";
 import { ScoutCard } from "@/components/ScoutCard";
 import { UploadDropzone } from "@/components/UploadDropzone";
@@ -21,6 +21,7 @@ import { MOCK_HUDL_CSV, DEMO_FILE_NAME } from "@/lib/demoScript";
 import { parseHudlCsvText, type HudlField, type HudlParseResult, type UnsupportedFileKind } from "@/lib/hudlParser";
 import { importFilms } from "@/lib/importFilms";
 import { saveScript, storeScript } from "@/lib/scriptStore";
+import { buildCardFromDetection, type DetectedPlay } from "@/lib/videoImport";
 
 const PREVIEW_CARD = parseHudlCsvText(
   "PLAY #,DN,DIST,HASH,YARD LN,OFF FORM,OFF PLAY,DEF FRONT\n7,3,6,L,-35,TRIPS RT,4 VERTS,4-3\n",
@@ -71,6 +72,9 @@ export default function UploadPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [report, setReport] = useState<{ fileName: string; result: HudlParseResult } | null>(null);
+  const [videoBusy, setVideoBusy] = useState(false);
+  const [videoError, setVideoError] = useState<string | null>(null);
+  const videoInput = useRef<HTMLInputElement>(null);
 
   const handleFiles = async (files: File[]) => {
     setBusy(true);
@@ -107,6 +111,52 @@ export default function UploadPage() {
     router.push("/script");
   };
 
+  /**
+   * Beta: upload a game clip straight to blob storage, send its URL to
+   * `/api/parse-video` for AI route detection, and build a card from what
+   * comes back. This is a rough, unverified detection meant to be corrected
+   * on the card afterward — see `coordinateMapper.ts`'s doc comment.
+   */
+  const handleVideoFile = async (file: File) => {
+    setVideoBusy(true);
+    setVideoError(null);
+    try {
+      const { upload } = await import("@vercel/blob/client");
+      const blob = await upload(file.name, file, {
+        access: "public",
+        handleUploadUrl: "/api/blob-upload",
+      });
+
+      const res = await fetch("/api/parse-video", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ videoUrl: blob.url, fileName: file.name }),
+      });
+      const payload = (await res.json()) as { detection?: DetectedPlay; fileName?: string; error?: string };
+      if (!res.ok || !payload.detection) {
+        setVideoError(payload.error ?? "The vision model couldn't read this clip.");
+        return;
+      }
+
+      const card = buildCardFromDetection(payload.detection, payload.fileName ?? file.name);
+      storeScript({
+        fileName: "",
+        films: [payload.fileName ?? file.name],
+        savedAt: "",
+        cards: [card],
+        warnings: [
+          "AI-detected routes are a rough starting point — drag each route's break points on " +
+            "the card to correct them.",
+        ],
+      });
+      router.push("/script?loaded=1");
+    } catch {
+      setVideoError("Couldn't process that clip. Try again, or use a shorter one.");
+    } finally {
+      setVideoBusy(false);
+    }
+  };
+
 
   return (
     <div className="flex min-h-dvh flex-col">
@@ -139,6 +189,36 @@ export default function UploadPage() {
             <Lock className="size-4" aria-hidden="true" />
             Parsed on this device. Your film breakdown never leaves the iPad.
           </p>
+
+          <div className="flex flex-col gap-2 border-t pt-5">
+            <Button
+              variant="outline"
+              size="lg"
+              className="w-fit"
+              disabled={videoBusy}
+              onClick={() => videoInput.current?.click()}
+            >
+              <Film aria-hidden="true" />
+              {videoBusy ? "Reading the clip…" : "Upload game film (beta)"}
+            </Button>
+            <p className="max-w-[540px] text-sm text-muted-foreground">
+              AI-detected routes are a rough first pass — this clip is sent to a vision model for
+              analysis, unlike the CSV above. You&apos;ll drag each route into shape on the card.
+            </p>
+            {videoError && <p className="text-sm font-semibold text-destructive">{videoError}</p>}
+            <input
+              ref={videoInput}
+              type="file"
+              accept="video/mp4,video/quicktime,video/x-m4v"
+              className="sr-only"
+              aria-label="Upload a game clip"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                e.target.value = "";
+                if (file) void handleVideoFile(file);
+              }}
+            />
+          </div>
         </section>
 
         <aside className="flex flex-col gap-5">
