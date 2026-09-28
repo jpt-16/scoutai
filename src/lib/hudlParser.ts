@@ -77,6 +77,17 @@ export interface HudlPlayCard {
   /** Hudl COVERAGE text ("6 - DOUBLE FIRE"), shown on scout defense cards. */
   coverage: string;
 
+  /** Raw OFF STR tag (L / R / BAL). Drives `formationSide` when set. */
+  offStrength: string;
+  /** Raw PLAY DIR tag (L / R / N). Drives `playDirection` when set. */
+  playDir: string;
+  /** Coach's note added in the app ("Z cracks the S"), shown on the card. */
+  notes: string;
+  /** Film (file name) the play came from. */
+  source: string;
+  /** True once a coach has changed the play in the app. */
+  edited?: boolean;
+
   /** Every column of the original row, keyed by the normalized header. */
   raw: Record<string, string>;
 }
@@ -501,51 +512,105 @@ export function rowToRecord(keys: string[], values: string[]): CsvRow {
   return record;
 }
 
+/** The text a play is built from; everything else on a card is derived from it. */
+export type PlaySource = Omit<
+  HudlPlayCard,
+  "downDistance" | "formationKey" | "formationSide" | "concept" | "playDirection" | "frontKey"
+>;
+
+/** Fills in the classified fields (formation type, sides, concept, front) from the text. */
+export function deriveCard(base: PlaySource): HudlPlayCard {
+  // Older saved scripts predate some fields.
+  const formation = base.formation ?? "";
+  const playCall = base.playCall ?? "";
+  const playType = base.playType ?? "";
+  const offStrength = base.offStrength ?? "";
+  const playDir = base.playDir ?? "";
+  const defFront = base.defFront ?? "";
+  // Explicit Hudl OFF STR / PLAY DIR tags win over side tags inside the text.
+  const formationSide = parseSideTag(offStrength) ?? parseSide(formation) ?? "right";
+  return {
+    ...base,
+    formation,
+    playCall,
+    playType,
+    offStrength,
+    playDir,
+    defFront,
+    coverage: base.coverage ?? "",
+    result: base.result ?? "",
+    notes: base.notes ?? "",
+    source: base.source ?? "",
+    downDistance: formatDownDistance(base.down, base.distance, base.isGoalToGo),
+    formationKey: classifyFormation(formation),
+    formationSide,
+    concept: inferConcept(playCall, playType, playDir),
+    playDirection: parseSideTag(playDir) ?? parseSide(playCall) ?? formationSide,
+    frontKey: classifyFront(defFront),
+  };
+}
+
+/** Fields a coach can change from the app's Edit dialog. */
+export type CardEdits = Partial<
+  Pick<
+    HudlPlayCard,
+    "formation" | "offStrength" | "playCall" | "playDir" | "defFront" | "coverage" | "hash" | "notes"
+  >
+>;
+
+/** Applies edits and re-derives the card, so it draws exactly as a Hudl row would. */
+export function updateCard(card: HudlPlayCard, edits: CardEdits): HudlPlayCard {
+  return deriveCard({ ...card, ...edits, edited: true });
+}
+
 /** Turns one keyed CSV row into a card. Exposed for tests. */
 export function rowToCard(
   row: CsvRow,
   rowIndex: number,
   columns: Partial<Record<HudlField, string>>,
+  source = "",
 ): HudlPlayCard {
   const playNumberRaw = cell(row, columns.playNumber);
   const parsedPlayNumber = Number.parseInt(playNumberRaw, 10);
   const playNumber = Number.isFinite(parsedPlayNumber) ? parsedPlayNumber : rowIndex + 1;
-
   const down = parseDown(cell(row, columns.down));
   const { distance, isGoalToGo } = parseDistance(cell(row, columns.distance));
   const yardLineLabel = cell(row, columns.yardLine);
-  const formation = cell(row, columns.formation);
-  const playCall = cell(row, columns.playCall);
-  const playType = cell(row, columns.playType);
-  const defFront = cell(row, columns.defFront);
 
-  // Explicit Hudl OFF STR / PLAY DIR columns win over tags inside the text.
-  const formationSide = parseSideTag(cell(row, columns.offStrength)) ?? parseSide(formation) ?? "right";
-
-  return {
+  return deriveCard({
     id: `play-${playNumber}-${rowIndex}`,
     playNumber,
     rowIndex,
     down,
     distance,
     isGoalToGo,
-    downDistance: formatDownDistance(down, distance, isGoalToGo),
     yardLine: parseYardLine(yardLineLabel),
     yardLineLabel,
     hash: parseHash(cell(row, columns.hash)),
-    formation,
-    formationKey: classifyFormation(formation),
-    formationSide,
-    playCall,
-    playType,
-    concept: inferConcept(playCall, playType, cell(row, columns.playDir)),
-    playDirection: parseSideTag(cell(row, columns.playDir)) ?? parseSide(playCall) ?? formationSide,
-    defFront,
-    frontKey: classifyFront(defFront),
+    formation: cell(row, columns.formation),
+    offStrength: cell(row, columns.offStrength),
+    playCall: cell(row, columns.playCall),
+    playType: cell(row, columns.playType),
+    playDir: cell(row, columns.playDir),
+    defFront: cell(row, columns.defFront),
     result: cell(row, columns.result),
     coverage: cell(row, columns.coverage),
+    notes: "",
+    source,
     raw: row,
-  };
+  });
+}
+
+/**
+ * Combines plays from several films into one script. Each play is tagged with
+ * its film and gets an id that can't collide across files (play #1 exists in
+ * every game).
+ */
+export function combineFilms(films: { name: string; cards: HudlPlayCard[] }[]): HudlPlayCard[] {
+  const stamp = Date.now().toString(36);
+  return films.flatMap((film, f) =>
+    film.cards.map((card) => ({ ...card, source: film.name, id: `${stamp}-f${f}-${card.id}` })),
+  );
 }
 
 /**

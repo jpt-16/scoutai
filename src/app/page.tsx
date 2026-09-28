@@ -18,8 +18,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { MOCK_HUDL_CSV, DEMO_FILE_NAME } from "@/lib/demoScript";
-import { parseHudlCsv, parseHudlCsvText, type HudlField, type HudlParseResult, type UnsupportedFileKind } from "@/lib/hudlParser";
-import { saveScript } from "@/lib/scriptStore";
+import { parseHudlCsvText, type HudlField, type HudlParseResult, type UnsupportedFileKind } from "@/lib/hudlParser";
+import { importFilms } from "@/lib/importFilms";
+import { saveScript, storeScript } from "@/lib/scriptStore";
 
 const PREVIEW_CARD = parseHudlCsvText(
   "PLAY #,DN,DIST,HASH,YARD LN,OFF FORM,OFF PLAY,DEF FRONT\n7,3,6,L,-35,TRIPS RT,4 VERTS,4-3\n",
@@ -71,21 +72,31 @@ export default function UploadPage() {
   const [error, setError] = useState<string | null>(null);
   const [report, setReport] = useState<{ fileName: string; result: HudlParseResult } | null>(null);
 
-  const handleFile = async (file: File) => {
+  const handleFiles = async (files: File[]) => {
     setBusy(true);
     setError(null);
     try {
-      const result = await parseHudlCsv(file);
-      if (result.cards.length > 0) {
-        // At least one usable play: go straight to the cards. Parse warnings
-        // are shown there as a dismissible notice, not a blocking dialog.
-        saveScript(file.name, result);
+      const imported = await importFilms(files);
+      if (imported.cards.length > 0) {
+        // At least one usable play: go straight to the cards. Notes about the
+        // files (including any film that failed) show there, not in a blocking dialog.
+        storeScript({
+          fileName: "",
+          films: imported.films,
+          savedAt: "",
+          cards: imported.cards,
+          warnings: imported.warnings,
+        });
         router.push("/script?loaded=1");
         return;
       }
-      setReport({ fileName: file.name, result });
+      const [first] = imported.failed;
+      setReport({
+        fileName: files.length > 1 ? `${first.name} (and ${files.length - 1} more)` : first.name,
+        result: first.result,
+      });
     } catch {
-      setError(`Couldn't read "${file.name}". Try exporting it from Hudl again.`);
+      setError("Couldn't read those files. Try exporting them from Hudl again.");
     } finally {
       setBusy(false);
     }
@@ -122,7 +133,7 @@ export default function UploadPage() {
             through on the iPad at practice, or print 2 or 4 to a page.
           </p>
           <div className="mt-2">
-            <UploadDropzone onFile={handleFile} onDemo={handleDemo} busy={busy} error={error} />
+            <UploadDropzone onFiles={handleFiles} onDemo={handleDemo} busy={busy} error={error} />
           </div>
           <p className="flex items-center gap-2 text-sm text-muted-foreground">
             <Lock className="size-4" aria-hidden="true" />

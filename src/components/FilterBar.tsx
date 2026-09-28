@@ -23,7 +23,7 @@ export function FilterGroup<T extends string | number>({
   onChange,
 }: FilterGroupProps<T>) {
   return (
-    <div role="group" aria-label={`Filter by ${label.toLowerCase()}`} className="flex items-center gap-3">
+    <div role="group" aria-label={`Filter by ${label.toLowerCase()}`} className="flex shrink-0 items-center gap-3">
       <span className="text-xs font-bold tracking-[0.12em] text-muted-foreground">{label}</span>
       <div className="flex gap-1.5">
         {options.map((option) => {

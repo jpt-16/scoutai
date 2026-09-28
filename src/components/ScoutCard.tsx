@@ -226,6 +226,18 @@ export function ScoutCard({
         </div>
       </header>
 
+      {card.notes && (
+        <div
+          className="flex shrink-0 items-baseline gap-2 border-b-2 px-[max(10px,2.4cqw)] py-[max(3px,0.6cqw)] text-[max(12px,1.9cqw)] leading-snug"
+          style={{ borderColor: c.rule }}
+        >
+          <span className="font-bold tracking-[0.08em]" style={{ color: c.muted }}>
+            NOTE
+          </span>
+          <span className="line-clamp-2 min-w-0 font-semibold">{card.notes}</span>
+        </div>
+      )}
+
       <svg
         viewBox={`0 0 ${FIELD.width} ${FIELD.height}`}
         preserveAspectRatio="xMidYMid meet"
@@ -352,6 +364,34 @@ export function ScoutCard({
             <path d={arrowHead(p)} fill={c.route} />
           </g>
         ))}
+        {diagram.routes.map((p, i) => {
+          const label = diagram.routeLabels[i];
+          if (!label) return null;
+          const tip = p[p.length - 1];
+          const { cos, sin } = heading(p[p.length - 2], tip);
+          const isNumber = /^\d$/.test(label);
+          // Keep labels on the field even when a route ends near the edge.
+          const x = Math.min(FIELD.width - 14, Math.max(14, tip.x + cos * 16));
+          const y = Math.min(FIELD.height - 10, Math.max(12, tip.y + sin * 16));
+          return (
+            <text
+              key={`l${i}`}
+              x={x}
+              y={y}
+              dy="0.36em"
+              textAnchor="middle"
+              fontSize={isNumber ? 17 : 11}
+              fontWeight={800}
+              fontFamily="'Barlow Condensed', sans-serif"
+              fill={c.route}
+              stroke={c.field}
+              strokeWidth={3.5}
+              paintOrder="stroke"
+            >
+              {label}
+            </text>
+          );
+        })}
         {diagram.carrier && (
           <g>
             <path

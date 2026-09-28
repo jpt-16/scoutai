@@ -3,9 +3,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ChevronLeft, ChevronRight, Grid2x2, RectangleVertical, Upload } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  FilePlus2,
+  Grid2x2,
+  Pencil,
+  RectangleVertical,
+  Upload,
+} from "lucide-react";
 import { BrandMark } from "@/components/BrandMark";
 import { FilterGroup, type FilterOption } from "@/components/FilterBar";
+import { EditPlayDialog } from "@/components/EditPlayDialog";
 import { ImportNotice } from "@/components/ImportNotice";
 import { PrintGrid } from "@/components/PrintGrid";
 import { ScoutCard, SCOUT_CARD_ASPECT } from "@/components/ScoutCard";
@@ -14,7 +23,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MOCK_HUDL_CSV, DEMO_FILE_NAME } from "@/lib/demoScript";
 import { FORMATION_LABELS, inPeriod, type Period, type ScoutUnit } from "@/lib/formations";
 import { parseHudlCsvText, type FormationKey, type HudlPlayCard } from "@/lib/hudlParser";
-import { loadScript, saveScript, type StoredScript } from "@/lib/scriptStore";
+import { importFilms } from "@/lib/importFilms";
+import { loadScript, saveScript, storeScript, type StoredScript } from "@/lib/scriptStore";
 import { cn } from "@/lib/utils";
 
 type View = "field" | "print";
@@ -50,7 +60,6 @@ const UNITS: { value: ScoutUnit; label: string; short: string }[] = [
   { value: "defense", label: "SCOUT DEFENSE", short: "SCOUT D" },
 ];
 
-
 export default function ScriptPage() {
   const router = useRouter();
   // undefined while reading localStorage, null when nothing is loaded.
@@ -60,14 +69,27 @@ export default function ScriptPage() {
   const [unit, setUnit] = useState<ScoutUnit>("offense");
   const [down, setDown] = useState<DownFilter>("all");
   const [formation, setFormation] = useState<FormationFilter>("all");
+  const [film, setFilm] = useState<string>("all");
   const [index, setIndex] = useState(0);
+  const [editing, setEditing] = useState(false);
+  const [notice, setNotice] = useState({
+    heading: "",
+    detail: "",
+    warnings: [] as string[],
+    trigger: 0,
+  });
+  const addFilmInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setScript(loadScript());
   }, []);
 
   const cards = useMemo(() => script?.cards ?? [], [script]);
-  const modeCards = useMemo(() => cards.filter((c) => inPeriod(c, mode, unit)), [cards, mode, unit]);
+  const multiFilm = (script?.films.length ?? 0) > 1;
+  const modeCards = useMemo(
+    () => cards.filter((c) => inPeriod(c, mode, unit) && (film === "all" || c.source === film)),
+    [cards, mode, unit, film],
+  );
   const filtered = useMemo(
     () =>
       modeCards.filter(
@@ -94,6 +116,15 @@ export default function ScriptPage() {
       label: FORMATION_LABELS[key],
       count: modeCards.filter((c) => c.formationKey === key).length,
     })).filter((o) => o.count > 0),
+  ];
+
+  const filmOptions: FilterOption<string>[] = [
+    { value: "all", label: "All", count: cards.filter((c) => inPeriod(c, mode, unit)).length },
+    ...(script?.films ?? []).map((name) => ({
+      value: name,
+      label: name.replace(/\.csv$/i, ""),
+      count: cards.filter((c) => c.source === name && inPeriod(c, mode, unit)).length,
+    })),
   ];
 
   const position = Math.min(index, Math.max(filtered.length - 1, 0));
@@ -137,6 +168,35 @@ export default function ScriptPage() {
       setter(value);
       setIndex(0);
     };
+
+  const saveCards = (nextCards: HudlPlayCard[]) => {
+    if (!script) return;
+    setScript(storeScript({ ...script, cards: nextCards }));
+  };
+
+  const addFilms = async (files: File[]) => {
+    if (!script || files.length === 0) return;
+    const imported = await importFilms(files);
+    const heading = imported.cards.length
+      ? `Added ${imported.cards.length} ${imported.cards.length === 1 ? "play" : "plays"}`
+      : "No plays added";
+    if (imported.cards.length) {
+      setScript(
+        storeScript({
+          ...script,
+          films: [...script.films, ...imported.films],
+          cards: [...script.cards, ...imported.cards],
+          warnings: [...script.warnings, ...imported.warnings],
+        }),
+      );
+    }
+    setNotice((n) => ({
+      heading,
+      detail: files.map((f) => f.name).join(", "),
+      warnings: imported.warnings,
+      trigger: n.trigger + 1,
+    }));
+  };
 
   const loadDemo = () => {
     setScript(saveScript(DEMO_FILE_NAME, parseHudlCsvText(MOCK_HUDL_CSV)));
@@ -273,27 +333,101 @@ export default function ScriptPage() {
         </TabsList>
       </header>
 
-      <div className="no-print flex h-16 shrink-0 items-center gap-5 overflow-x-auto border-b px-4 sm:px-6">
-        <FilterGroup
-          label="DOWN"
-          options={downOptions}
-          value={down}
-          onChange={setFilter(setDown)}
-        />
-        <span className="h-7 w-px shrink-0 bg-border" aria-hidden="true" />
-        <FilterGroup
-          label="FORMATION"
-          options={formationOptions}
-          value={formation}
-          onChange={setFilter(setFormation)}
-        />
+      <div className="no-print flex h-16 shrink-0 items-center gap-3 border-b px-4 sm:px-6">
+        <div className="flex min-w-0 flex-1 items-center gap-5 overflow-x-auto">
+          <FilterGroup
+            label="DOWN"
+            options={downOptions}
+            value={down}
+            onChange={setFilter(setDown)}
+          />
+          <span className="h-7 w-px shrink-0 bg-border" aria-hidden="true" />
+          <FilterGroup
+            label="FORMATION"
+            options={formationOptions}
+            value={formation}
+            onChange={setFilter(setFormation)}
+          />
+          {multiFilm && (
+            <>
+              <span className="h-7 w-px shrink-0 bg-border" aria-hidden="true" />
+              <FilterGroup
+                label="FILM"
+                options={filmOptions}
+                value={film}
+                onChange={setFilter(setFilm)}
+              />
+            </>
+          )}
+        </div>
+        <div className="flex shrink-0 gap-2 border-l pl-3">
+          <Button size="lg" variant="outline" onClick={() => addFilmInput.current?.click()}>
+            <FilePlus2 aria-hidden="true" />
+            Add film
+          </Button>
+          <Button
+            size="lg"
+            onClick={() => setEditing(true)}
+            disabled={!current || view !== "field"}
+          >
+            <Pencil aria-hidden="true" />
+            Edit play
+          </Button>
+          <input
+            ref={addFilmInput}
+            type="file"
+            accept=".csv,text/csv"
+            multiple
+            className="sr-only"
+            aria-label="Add Hudl CSV files"
+            onChange={(e) => {
+              void addFilms(Array.from(e.target.files ?? []));
+              e.target.value = "";
+            }}
+          />
+        </div>
       </div>
 
       <ImportNotice
-        fileName={script.fileName}
-        playCount={cards.length}
-        warnings={script.warnings}
+        heading={
+          notice.trigger
+            ? notice.heading
+            : `Loaded ${cards.length} ${cards.length === 1 ? "play" : "plays"}`
+        }
+        detail={notice.trigger ? notice.detail : script.films.join(", ")}
+        warnings={notice.trigger ? notice.warnings : script.warnings}
+        trigger={notice.trigger}
       />
+
+      {current && editing && (
+        <EditPlayDialog
+          key={current.id}
+          card={current}
+          unit={unit}
+          mode={cardMode}
+          open={editing}
+          onOpenChange={setEditing}
+          onSave={(updated) => {
+            saveCards(cards.map((c) => (c.id === updated.id ? updated : c)));
+            setEditing(false);
+          }}
+          onDuplicate={(copy) => {
+            const at = cards.findIndex((c) => c.id === current.id);
+            const dup = {
+              ...copy,
+              id: `${current.id}-copy-${Date.now().toString(36)}`,
+              edited: true,
+            };
+            saveCards([...cards.slice(0, at + 1), dup, ...cards.slice(at + 1)]);
+            setIndex(position + 1);
+            setEditing(false);
+          }}
+          onDelete={(card) => {
+            saveCards(cards.filter((c) => c.id !== card.id));
+            setEditing(false);
+          }}
+        />
+      )}
 
       <TabsContent value="field" className="flex min-h-0 flex-col">
         <main className="flex min-h-0 flex-1 gap-6 px-4 py-3.5 sm:px-6">
@@ -378,7 +512,9 @@ export default function ScriptPage() {
                           {card.hash && ` · ${card.hash} hash`}
                         </span>
                         <span className="truncate text-sm text-muted-foreground">
+                          {multiFilm && `${card.source.replace(/\.csv$/i, "")} · `}
                           {unit === "defense" ? card.defFront || "—" : card.playCall || "—"}
+                          {card.edited && " · edited"}
                         </span>
                       </span>
                     </button>

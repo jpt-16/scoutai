@@ -269,20 +269,46 @@ export type PlayKind = "run" | "pass" | "rpo" | "pa" | "none";
 export type RunScheme = "zone" | "outside-zone" | "power" | "counter" | "iso" | "draw" | "sneak";
 
 export type RouteKind =
-  | "go"
-  | "fade"
+  // The route tree, 0-9.
+  | "slide"
+  | "speed-out"
   | "slant"
   | "out"
+  | "curl"
+  | "comeback"
+  | "shallow"
   | "corner"
   | "post"
-  | "curl"
+  | "fade"
+  // Off the tree: called out by name on the card.
+  | "go"
+  | "hitch"
   | "dig"
   | "wheel"
-  | "cross"
   | "flat"
   | "swing"
   | "bubble"
   | "leak";
+
+/** The staff's route tree: 0 slide, 1 speed out, 2 slant … 9 fade. */
+export const ROUTE_TREE: RouteKind[] = [
+  "slide",
+  "speed-out",
+  "slant",
+  "out",
+  "curl",
+  "comeback",
+  "shallow",
+  "corner",
+  "post",
+  "fade",
+];
+
+/** What the card writes at the end of a route: its tree number, or its name. */
+export function routeLabel(kind: RouteKind): string {
+  const n = ROUTE_TREE.indexOf(kind);
+  return n >= 0 ? String(n) : kind.toUpperCase();
+}
 
 export const PLAY_KIND_LABELS: Record<PlayKind, string> = {
   run: "RUN",
@@ -307,24 +333,58 @@ const ROUTE_WORDS: [RegExp, RouteKind][] = [
   [/^OUTS?$/, "out"],
   [/^CORNERS?$/, "corner"],
   [/^POSTS?$/, "post"],
-  [/^(CURLS?|HITCH|HITCHES|STICK|HOOKS?|STOP)$/, "curl"],
+  [/^(CURLS?|HOOKS?)$/, "curl"],
+  [/^(COMEBACKS?|COMEBACK)$/, "comeback"],
+  [/^(HITCH|HITCHES|STICK|STOP)$/, "hitch"],
   [/^(DIGS?|SQUARE)$/, "dig"],
   [/^WHEELS?$/, "wheel"],
-  [/^(ACROSS|CROSS|CROSSERS?|CROSSING|MESH|SHALLOW|DRAGS?)$/, "cross"],
+  [/^(ACROSS|CROSS|CROSSERS?|CROSSING|MESH|SHALLOWS?|DRAGS?)$/, "shallow"],
+  [/^SLIDES?$/, "slide"],
   [/^FLATS?$/, "flat"],
   [/^SWING$/, "swing"],
   [/^(BUBBLE|SCREEN|TUNNEL|NOW)$/, "bubble"],
   [/^LEAK$/, "leak"],
 ];
 
-/** Route names in the order they appear in the play call ("FADE OUT OUT FADE"). */
-export function routeTokens(playCall: string): RouteKind[] {
+/** Words after a number that make it a count ("4 VERTS"), not a route-tree call. */
+const COUNT_WORDS = /^(VERTS?|VERTICALS?|GO|GOES|SEAMS?|STREAKS?|WIDE|MAN|BACK|BACKS)$/;
+
+export interface RouteCall {
+  tokens: RouteKind[];
+  /** True when the call used route-tree numbers ("81", "2 9 6 0"). */
+  numbered: boolean;
+}
+
+/**
+ * Reads the routes out of a play call, in order: route words ("FADE OUT OUT
+ * FADE", "SPEED OUT") and route-tree numbers ("81" = 8 then 1).
+ */
+export function routeCall(playCall: string): RouteCall {
+  const ws = words(playCall).trim().split(" ").filter(Boolean);
   const tokens: RouteKind[] = [];
-  for (const word of words(playCall).trim().split(" ")) {
-    const hit = ROUTE_WORDS.find(([re]) => re.test(word));
+  let numbered = false;
+  for (let i = 0; i < ws.length; i++) {
+    const w = ws[i];
+    if (/^\d+$/.test(w)) {
+      if (COUNT_WORDS.test(ws[i + 1] ?? "")) continue; // "4 VERTS"
+      numbered = true;
+      for (const digit of w) tokens.push(ROUTE_TREE[Number(digit)]);
+      continue;
+    }
+    if (w === "SPEED" && /^OUTS?$/.test(ws[i + 1] ?? "")) {
+      tokens.push("speed-out");
+      i++;
+      continue;
+    }
+    const hit = ROUTE_WORDS.find(([re]) => re.test(w));
     if (hit) tokens.push(hit[1]);
   }
-  return tokens;
+  return { tokens, numbered };
+}
+
+/** Route kinds in the order they appear in the play call. */
+export function routeTokens(playCall: string): RouteKind[] {
+  return routeCall(playCall).tokens;
 }
 
 const RUN_CONCEPTS = new Set(["inside-zone", "outside-zone", "power", "sweep", "qb-run"]);
@@ -401,6 +461,8 @@ export interface Diagram {
   carrier: Point[] | null;
   /** Receiver routes (arrows). */
   routes: Point[][];
+  /** Label per route (same order): its route-tree number, or its name off the tree. */
+  routeLabels: string[];
   /** Blocks: a line ending in a T-bar. */
   blocks: Point[][];
   /**
@@ -431,6 +493,7 @@ export interface Diagram {
 }
 
 type Placed = Player & { at: Pt };
+type LabeledPath = { path: Pt[]; label: string };
 
 const clampX = (x: number) => Math.min(488, Math.max(12, x));
 const clampY = (y: number) => Math.max(22, y);
@@ -446,29 +509,41 @@ function place(slot: Slot, side: Side): Placed {
 }
 
 /** Route shape for one receiver. `o` = +1 toward the right sideline for this player, -1 left. */
+/** Screen y for a depth in yards past the line (7 px a yard keeps deep routes on the card). */
+const yd = (yards: number) => FIELD.los - yards * 7;
+
+/** Route shape for one receiver. `o` = +1 toward the right sideline for this player, -1 left. */
 function routePath(kind: RouteKind, p: Pt, o: number, d: number): Pt[] {
   const [x, y] = p;
   switch (kind) {
+    case "slide": // 0
+      return [p, [x + o * 20, y - 8], [x + o * 64, y - 14]];
+    case "speed-out": // 1: rounded 5-yard out
+      return [p, [x, yd(4)], [x + o * 10, yd(5)], [x + o * 50, yd(5)]];
+    case "slant": // 2
+      return [p, [x, yd(1.5)], [x - o * 58, yd(7)]];
+    case "out": // 3: 10-yard out
+      return [p, [x, yd(10)], [x + o * 48, yd(10)]];
+    case "curl": // 4
+      return [p, [x, yd(12)], [x - o * 10, yd(10.5)]];
+    case "comeback": // 5
+      return [p, [x, yd(14)], [x + o * 14, yd(12)]];
+    case "shallow": // 6
+      return [p, [x, yd(1.5)], [x - o * 160, yd(3.5)]];
+    case "corner": // 7
+      return [p, [x, yd(8)], [x + o * 50, yd(15)]];
+    case "post": // 8
+      return [p, [x, yd(8)], [x - o * 50, yd(16)]];
+    case "fade": // 9
+      return [p, [x, yd(4)], [x + o * 14, yd(16)]];
     case "go":
-      return [p, [x, 34]];
-    case "fade":
-      return [p, [x, 110], [x + o * 14, 34]];
-    case "slant":
-      return [p, [x, 130], [x - o * 58, 90]];
-    case "out":
-      return [p, [x, 104], [x + o * 44, 104]];
-    case "corner":
-      return [p, [x, 100], [x + o * 46, 60]];
-    case "post":
-      return [p, [x, 100], [x - o * 46, 50]];
-    case "curl":
-      return [p, [x, 104], [x - o * 8, 114]];
+      return [p, [x, yd(16)]];
+    case "hitch":
+      return [p, [x, yd(5)], [x - o * 6, yd(4)]];
     case "dig":
-      return [p, [x, 96], [x - o * 70, 96]];
+      return [p, [x, yd(10)], [x - o * 70, yd(10)]];
     case "wheel":
-      return [p, [x + o * 30, y + 4], [x + o * 48, 118], [x + o * 48, 40]];
-    case "cross":
-      return [p, [x, 128], [x - o * 160, 116]];
+      return [p, [x + o * 30, y + 4], [x + o * 48, 118], [x + o * 48, yd(15)]];
     case "flat":
       return [p, [x + o * 18, y - 14], [x + o * 60, y - 18]];
     case "swing":
@@ -486,15 +561,15 @@ function buildRoutes(
   skill: Placed[],
   backs: Placed[],
   d: number,
-): { routes: Pt[][]; stalks: Pt[][]; targeted: { path: Pt[]; target: string }[] } {
+): { routes: LabeledPath[]; stalks: Pt[][]; targeted: { path: Pt[]; target: string }[] } {
   const side = (x: number) => (x > 250 ? 1 : x < 250 ? -1 : d);
-  const tokens = routeTokens(playCall);
-  const routes: Pt[][] = [];
+  const { tokens, numbered } = routeCall(playCall);
+  const routes: LabeledPath[] = [];
   const stalks: Pt[][] = [];
   const targeted: { path: Pt[]; target: string }[] = [];
   const assigned = new Set<Placed>();
   const run = (pl: Placed, kind: RouteKind) => {
-    routes.push(routePath(kind, pl.at, side(pl.x), d));
+    routes.push({ path: routePath(kind, pl.at, side(pl.x), d), label: routeLabel(kind) });
     assigned.add(pl);
   };
 
@@ -537,8 +612,24 @@ function buildRoutes(
         if (p.role === "WR" || only === "go") run(p, only);
       }
     }
+  } else if (numbered && others.length < receivers.length) {
+    // Route-tree numbers, fewer than receivers ("81"): the same on both sides,
+    // outside in: #1 runs the first number, #2 the second, #3 the third.
+    const right = receivers.filter((p) => p.x > 250).sort((a, b) => b.x - a.x);
+    const left = receivers.filter((p) => p.x < 250).sort((a, b) => a.x - b.x);
+    for (const sideList of [right, left]) {
+      others.slice(0, sideList.length).forEach((kind, i) => run(sideList[i], kind));
+    }
+  } else if (numbered) {
+    // One number per receiver ("2960"): read right to left across the formation.
+    const eligible = (
+      others.length > receivers.length
+        ? [...receivers, ...backs.filter((b) => !assigned.has(b))]
+        : receivers
+    ).sort((a, b) => b.x - a.x);
+    others.slice(0, eligible.length).forEach((kind, i) => run(eligible[i], kind));
   } else if (others.length > 1) {
-    // Several routes read left to right across the formation ("FADE OUT OUT FADE").
+    // Several route words read left to right across the formation ("FADE OUT OUT FADE").
     const eligible =
       others.length > receivers.length
         ? [...receivers, ...backs.filter((b) => !assigned.has(b))].sort((a, b) => a.x - b.x)
@@ -677,7 +768,7 @@ export function buildDiagram(
   const targetBlocks: { path: Pt[]; target: string }[] = [];
   const pulls: Pt[][] = [];
   const fakes: Pt[][] = [];
-  let routes: Pt[][] = [];
+  let routes: LabeledPath[] = [];
   let carrier: Pt[] | null = null;
   const ballCarrier = card.concept === "qb-run" ? qb : backs[backs.length - 1];
 
@@ -745,6 +836,7 @@ export function buildDiagram(
   const onLine = (path: Pt[]) => line.some((l) => l.at[0] === path[0][0] && l.at[1] === path[0][1]);
   const keep = (path: Pt[]) => !skeleton || !onLine(path);
   const points = (paths: Pt[][]) => paths.filter(keep).map((p) => p.map(toPoint));
+  const keptRoutes = routes.filter((r) => keep(r.path));
 
   const flipped = unit === "defense";
   const turn = <T extends { x: number; y: number }>(p: T): T =>
@@ -758,7 +850,8 @@ export function buildDiagram(
     kind,
     players: players.map(turn),
     carrier: carrier ? carrier.map(toPoint).map(turn) : null,
-    routes: turnAll(points(routes)),
+    routes: turnAll(points(keptRoutes.map((r) => r.path))),
+    routeLabels: keptRoutes.map((r) => r.label),
     blocks: turnAll(points(blocks)),
     targetBlocks: targetBlocks.map(({ path, target }) => ({
       path: path.map(toPoint).map(turn),

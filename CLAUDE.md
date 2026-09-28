@@ -43,12 +43,15 @@ src/
     ScoutCard.tsx          SVG scout card: unit offense/defense, mode team/7v7, variant field/print
     PrintGrid.tsx          Letter-size sheets, 2-up portrait / 4-up landscape, window.print()
     FilterBar.tsx          Down / formation toggle pills
-    UploadDropzone.tsx     Drag-and-drop + file picker, .csv validation
+    UploadDropzone.tsx     Drag-and-drop + file picker (multiple films), .csv validation
+    EditPlayDialog.tsx     Edit a play (formation, strength, play, direction, hash, front, coverage, note)
+    ImportNotice.tsx       Non-blocking "Loaded / Added N plays" notice with file notes
     BrandMark.tsx, ServiceWorkerRegister.tsx
     ui/                    shadcn primitives: button, card, badge, tabs, dialog
   lib/
     hudlParser.ts          CSV → HudlPlayCard[] (column mapping + normalization + classifiers)
-    formations.ts          Formations, fronts, run schemes, routes → buildDiagram()
+    formations.ts          Formations, fronts, run schemes, route tree → buildDiagram()
+    importFilms.ts         Parses several CSVs (one per film) into one script
     demoScript.ts          MOCK_HUDL_CSV: 5-play sample used by the "Demo Script" button
     scriptStore.ts         Persists the loaded script in localStorage (offline on the field)
     hudlParser.test.ts     Vitest suite
@@ -133,6 +136,17 @@ Free-text tags are classified by keyword (`classifyFormation`, `classifyFront`,
     - `draw` and `sneak`.
 
     Receivers stalk-block, and the ball carrier's path is orange.
+  - **Route tree** (`ROUTE_TREE`): 0 slide, 1 speed out, 2 slant, 3 10-yd out, 4 curl,
+    5 comeback, 6 shallow, 7 corner, 8 post, 9 fade. Numbers in a play call are tree calls
+    (`routeCall`):
+    - One number per receiver ("2960") reads **right to left** across the formation.
+    - Fewer numbers than receivers ("81") mean the same on both sides, outside in
+      (#1 runs 8, #2 runs 1).
+    - A single number means every WR runs it.
+    - "4 VERTS" is a count, not a tree call, and "24 DIVE" stays a run.
+
+    Cards write each tree route's number at its arrow tip. Routes off the tree (GO, WHEEL,
+    BUBBLE, FLAT, LEAK, HITCH, DIG, SWING) are written by name.
   - **Passes:** `routeTokens` reads route words (SLANT, BUBBLE, CORNER, WHEEL, ACROSS/CROSS,
     OUT, FADE, LEAK, GO, POST, CURL, DIG, FLAT, SWING). One word goes to every WR
     ("SLANT" = all slants). BUBBLE or SCREEN goes to the play-side slot. The other ball-side
@@ -190,6 +204,15 @@ defender-overlap tests cover new combinations.
    **Print / Save PDF**.
 
 No Hudl file handy? Use **Load demo script · 5 plays**.
+
+**Several films:** drop or pick several CSVs at once, or use **Add film** on the script page.
+Each play keeps its film (`card.source`), ids never collide across films, and a **Film**
+filter appears once there's more than one.
+
+**Editing:** **Edit play** opens `EditPlayDialog`, with a live card preview and quick-pick
+buttons. It can **Duplicate** or **Delete** the play. Edits go through `updateCard`, which
+re-derives the card with `deriveCard` so it draws exactly like a Hudl row. They're saved to
+localStorage and marked "edited" in the play list, and coach notes show on the card.
 
 ## Offline / iPad install
 

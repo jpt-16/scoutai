@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { MOCK_HUDL_CSV } from "./demoScript";
-import { buildDiagram, inPeriod, isPassPlay, runScheme } from "./formations";
+import { buildDiagram, inPeriod, isPassPlay, routeTokens, runScheme } from "./formations";
 import {
   classifyConcept,
   type FormationKey,
@@ -568,13 +568,47 @@ describe("buildDiagram (offense only)", () => {
     expect(d.blocks.some((b) => b[0].x === 250 && b[0].y === 198)).toBe(true); // F leads
   });
 
-  it("reads a multi-route call left to right across the receivers", () => {
+  /** Route label per receiver letter, e.g. { X: "9", H: "3" }. */
+  const routesBy = (d: ReturnType<typeof buildDiagram>) => {
+    const out: Record<string, string> = {};
+    d.routes.forEach((r, i) => {
+      const who = d.players.find((p) => p.x === r[0].x && p.y === r[0].y);
+      if (who) out[who.label] = d.routeLabels[i];
+    });
+    return out;
+  };
+
+  it("reads route words left to right across the receivers", () => {
     const d = buildDiagram(card("spread", "FADE OUT OUT FADE"));
-    expect(d.routes).toHaveLength(4);
-    const byStart = [...d.routes].sort((a, b) => a[0].x - b[0].x);
-    expect(byStart[0][byStart[0].length - 1].y).toBeLessThan(40); // X fades
-    expect(byStart[1][2].y).toBe(104); // H out
+    expect(routesBy(d)).toEqual({ X: "9", H: "3", Y: "3", Z: "9" });
     expect(d.blocks).toEqual([]); // no run blocking on a pass
+  });
+
+  it("route-tree numbers, one per receiver, read right to left", () => {
+    // Spread, left to right: X H | Y Z. "2960" = Z 2, Y 9, H 6, X 0.
+    expect(routesBy(buildDiagram(card("spread", "2960")))).toEqual({ Z: "2", Y: "9", H: "6", X: "0" });
+    expect(routesBy(buildDiagram(card("spread", "2 9 6 0")))).toEqual({ Z: "2", Y: "9", H: "6", X: "0" });
+  });
+
+  it("fewer numbers than receivers are the same on both sides, outside in (81 = post / speed out)", () => {
+    expect(routesBy(buildDiagram(card("spread", "81")))).toEqual({ X: "8", H: "1", Y: "1", Z: "8" });
+    // Trips right: Z #1, Y #2, H #3 on the right; X #1 on the left.
+    expect(routesBy(buildDiagram(card("trips", "964")))).toEqual({ Z: "9", Y: "6", H: "4", X: "9" });
+  });
+
+  it("a single number is run by every receiver, like a single route word", () => {
+    expect(routesBy(buildDiagram(card("spread", "2")))).toEqual({ X: "2", H: "2", Y: "2", Z: "2" });
+  });
+
+  it("counts are not route numbers, and run numbers stay runs", () => {
+    expect(routesBy(buildDiagram(card("spread", "4 VERTS")))).toEqual({ X: "GO", H: "GO", Y: "GO", Z: "GO" });
+    expect(buildDiagram(card("i-form", "24 DIVE")).kind).toBe("run");
+  });
+
+  it("labels tree routes by number and calls out the rest by name", () => {
+    const d = buildDiagram(card("spread", "SLANT CORNER WHEEL ACROSS"));
+    expect(routesBy(d)).toEqual({ X: "2", H: "7", Y: "WHEEL", Z: "6" });
+    expect(routeTokens("SPEED OUT")).toEqual(["speed-out"]);
   });
 
   it("RPO and play action draw the mesh fake plus routes", () => {

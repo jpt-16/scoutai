@@ -5,9 +5,13 @@ import { AlertTriangle, CheckCircle2, ChevronDown, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface ImportNoticeProps {
-  fileName: string;
-  playCount: number;
+  /** "Loaded 33 plays" / "Added 12 plays". */
+  heading: string;
+  /** File name(s) the plays came from. */
+  detail: string;
   warnings: string[];
+  /** Bump to show the notice again (e.g. after adding a film on this page). */
+  trigger?: number;
 }
 
 /** How long a clean import's confirmation stays up. Notices with warnings stay until dismissed. */
@@ -18,7 +22,7 @@ const AUTO_DISMISS_MS = 6000;
  * (`/script?loaded=1`). Parse warnings are tucked behind a toggle so the
  * cards stay usable. The query flag is removed so a reload doesn't re-show it.
  */
-export function ImportNotice({ fileName, playCount, warnings }: ImportNoticeProps) {
+export function ImportNotice({ heading, detail, warnings, trigger = 0 }: ImportNoticeProps) {
   const [open, setOpen] = useState(false);
   const [expanded, setExpanded] = useState(false);
 
@@ -30,6 +34,13 @@ export function ImportNotice({ fileName, playCount, warnings }: ImportNoticeProp
     const query = params.toString();
     window.history.replaceState(null, "", `${window.location.pathname}${query ? `?${query}` : ""}`);
   }, []);
+
+  useEffect(() => {
+    if (trigger > 0) {
+      setOpen(true);
+      setExpanded(false);
+    }
+  }, [trigger]);
 
   useEffect(() => {
     if (!open || warnings.length > 0) return;
@@ -49,9 +60,9 @@ export function ImportNotice({ fileName, playCount, warnings }: ImportNoticeProp
         <CheckCircle2 className="mt-0.5 size-5 shrink-0 text-primary" aria-hidden="true" />
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <p className="font-bold">
-            Loaded {playCount} {playCount === 1 ? "play" : "plays"}
+            {heading}
           </p>
-          <p className="truncate text-sm text-muted-foreground">{fileName}</p>
+          <p className="truncate text-sm text-muted-foreground">{detail}</p>
           {warnings.length > 0 && (
             <button
               type="button"
