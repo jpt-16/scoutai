@@ -1,46 +1,46 @@
 import type Stripe from "stripe";
 import { describe, expect, it } from "vitest";
-import { mapStripeEventToTeamPatch } from "./stripeWebhook";
+import { mapStripeEventToOrgPatch } from "./stripeWebhook";
 
 function fakeEvent(type: string, object: unknown): Stripe.Event {
   return { type, data: { object } } as unknown as Stripe.Event;
 }
 
-describe("mapStripeEventToTeamPatch", () => {
-  it("maps checkout.session.completed by team_id metadata (the team has no stripe_customer_id yet)", () => {
+describe("mapStripeEventToOrgPatch", () => {
+  it("maps checkout.session.completed to the customer/subscription ids, matched by org_id", () => {
     const event = fakeEvent("checkout.session.completed", {
       customer: "cus_123",
       subscription: "sub_456",
-      metadata: { team_id: "team-1" },
+      metadata: { org_id: "org_1" },
     });
 
-    expect(mapStripeEventToTeamPatch(event)).toEqual({
-      matchOn: { teamId: "team-1" },
-      patch: { stripe_customer_id: "cus_123", stripe_subscription_id: "sub_456" },
+    expect(mapStripeEventToOrgPatch(event)).toEqual({
+      orgId: "org_1",
+      publicMetadata: {},
+      privateMetadata: { stripeCustomerId: "cus_123", stripeSubscriptionId: "sub_456" },
     });
   });
 
-  it("falls back to client_reference_id when checkout metadata is missing", () => {
-    const event = fakeEvent("checkout.session.completed", {
-      customer: "cus_123",
-      subscription: "sub_456",
-      client_reference_id: "team-1",
-    });
-
-    expect(mapStripeEventToTeamPatch(event)?.matchOn).toEqual({ teamId: "team-1" });
-  });
-
-  it("ignores a checkout session with no team id at all", () => {
+  it("ignores a checkout session missing org_id metadata", () => {
     const event = fakeEvent("checkout.session.completed", { customer: "cus_123", subscription: "sub_456" });
-    expect(mapStripeEventToTeamPatch(event)).toBeNull();
+    expect(mapStripeEventToOrgPatch(event)).toBeNull();
   });
 
-  it("maps customer.subscription.updated by team_id metadata, with the full status patch", () => {
+  it("ignores a checkout session missing a subscription id", () => {
+    const event = fakeEvent("checkout.session.completed", {
+      customer: "cus_123",
+      subscription: null,
+      metadata: { org_id: "org_1" },
+    });
+    expect(mapStripeEventToOrgPatch(event)).toBeNull();
+  });
+
+  it("maps customer.subscription.updated to the full status patch", () => {
     const event = fakeEvent("customer.subscription.updated", {
       id: "sub_456",
       customer: "cus_123",
       status: "active",
-      metadata: { team_id: "team-1" },
+      metadata: { org_id: "org_1" },
       items: {
         data: [
           {
@@ -51,49 +51,43 @@ describe("mapStripeEventToTeamPatch", () => {
       },
     });
 
-    expect(mapStripeEventToTeamPatch(event)).toEqual({
-      matchOn: { teamId: "team-1" },
-      patch: {
-        stripe_customer_id: "cus_123",
-        stripe_subscription_id: "sub_456",
-        subscription_status: "active",
-        subscription_current_period_end: new Date(1_700_000_000 * 1000).toISOString(),
-        subscription_price_id: "price_abc",
+    expect(mapStripeEventToOrgPatch(event)).toEqual({
+      orgId: "org_1",
+      publicMetadata: {
+        subscriptionStatus: "active",
+        subscriptionCurrentPeriodEnd: new Date(1_700_000_000 * 1000).toISOString(),
+        subscriptionPriceId: "price_abc",
       },
+      privateMetadata: { stripeCustomerId: "cus_123", stripeSubscriptionId: "sub_456" },
     });
   });
 
-  it("falls back to customer id when subscription metadata has no team_id", () => {
+  it("ignores a subscription event missing org_id metadata", () => {
     const event = fakeEvent("customer.subscription.updated", {
       id: "sub_456",
       customer: "cus_123",
       status: "active",
       items: { data: [] },
     });
-
-    expect(mapStripeEventToTeamPatch(event)?.matchOn).toEqual({ stripeCustomerId: "cus_123" });
+    expect(mapStripeEventToOrgPatch(event)).toBeNull();
   });
 
-  it("maps customer.subscription.deleted to a canceled status, matched by team_id", () => {
+  it("maps customer.subscription.deleted to a canceled status", () => {
     const event = fakeEvent("customer.subscription.deleted", {
       id: "sub_456",
       customer: "cus_123",
-      metadata: { team_id: "team-1" },
+      metadata: { org_id: "org_1" },
     });
 
-    expect(mapStripeEventToTeamPatch(event)).toEqual({
-      matchOn: { teamId: "team-1" },
-      patch: { subscription_status: "canceled" },
+    expect(mapStripeEventToOrgPatch(event)).toEqual({
+      orgId: "org_1",
+      publicMetadata: { subscriptionStatus: "canceled" },
+      privateMetadata: {},
     });
-  });
-
-  it("falls back to subscription id when a deleted event has no team_id metadata", () => {
-    const event = fakeEvent("customer.subscription.deleted", { id: "sub_456", customer: "cus_123" });
-    expect(mapStripeEventToTeamPatch(event)?.matchOn).toEqual({ stripeSubscriptionId: "sub_456" });
   });
 
   it("ignores event types this app doesn't handle", () => {
     const event = fakeEvent("invoice.paid", {});
-    expect(mapStripeEventToTeamPatch(event)).toBeNull();
+    expect(mapStripeEventToOrgPatch(event)).toBeNull();
   });
 });

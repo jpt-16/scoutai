@@ -1,11 +1,16 @@
 /**
  * Gates the two video-analysis routes behind "signed in, on a team, team has
  * an active subscription." `evaluateEntitlement` is the pure decision (unit
- * tested without touching Supabase); `requireEntitlement` is the thin I/O
+ * tested without touching Clerk); `requireEntitlement` is the thin I/O
  * wrapper each route calls first, before any Blob/Gemini work.
+ *
+ * "Team" here is a Clerk Organization — `orgId` is only present in `auth()`
+ * once the signed-in user has an active org selected, which is exactly
+ * "on a team." Subscription state lives in the org's `publicMetadata`
+ * (written by the Stripe webhook via `clerkClient`), not a separate database.
  */
 
-import { createClient } from "./supabase/server";
+import { auth, clerkClient } from "@clerk/nextjs/server";
 
 export type EntitlementResult =
   | { ok: true; userId: string; teamId: string }
@@ -38,26 +43,16 @@ export function evaluateEntitlement(input: {
 }
 
 export async function requireEntitlement(): Promise<EntitlementResult> {
-  const supabase = await createClient();
+  const { userId, orgId } = await auth();
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return evaluateEntitlement({ userId: null, team: null });
+  if (!userId || !orgId) {
+    return evaluateEntitlement({ userId, team: null });
   }
 
-  const { data: membership } = await supabase
-    .from("team_members")
-    .select("team_id, teams (id, subscription_status)")
-    .eq("user_id", user.id)
-    .limit(1)
-    .maybeSingle<{ team_id: string; teams: { id: string; subscription_status: string | null } | null }>();
+  const clerk = await clerkClient();
+  const org = await clerk.organizations.getOrganization({ organizationId: orgId });
+  const subscriptionStatus = (org.publicMetadata as { subscriptionStatus?: string | null })
+    .subscriptionStatus ?? null;
 
-  const team = membership?.teams
-    ? { id: membership.teams.id, subscriptionStatus: membership.teams.subscription_status }
-    : null;
-
-  return evaluateEntitlement({ userId: user.id, team });
+  return evaluateEntitlement({ userId, team: { id: orgId, subscriptionStatus } });
 }

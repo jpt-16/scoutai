@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { ClerkProvider } from "@clerk/nextjs";
 import "@fontsource/barlow/400.css";
 import "@fontsource/barlow/500.css";
 import "@fontsource/barlow/600.css";
@@ -8,6 +9,7 @@ import "@fontsource/barlow-condensed/700.css";
 import "@fontsource/barlow-condensed/800.css";
 import "./globals.css";
 import { ServiceWorkerRegister } from "@/components/ServiceWorkerRegister";
+import { isClerkConfigured } from "@/lib/clerkConfig";
 
 export const metadata: Metadata = {
   title: "ScoutCard AI",
@@ -38,12 +40,19 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const body = (
+    <body className="antialiased">
+      {children}
+      <ServiceWorkerRegister />
+    </body>
+  );
+
   return (
     <html lang="en">
-      <body className="antialiased">
-        {children}
-        <ServiceWorkerRegister />
-      </body>
+      {/* Only the paid video feature uses Clerk — the free CSV path never
+          needs a signed-in user, so ClerkProvider (which throws without a
+          publishable key) is skipped entirely until one is configured. */}
+      {isClerkConfigured() ? <ClerkProvider>{body}</ClerkProvider> : body}
     </html>
   );
 }

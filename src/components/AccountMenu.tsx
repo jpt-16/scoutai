@@ -1,49 +1,25 @@
 "use client";
 
 import { useState } from "react";
+import { OrganizationSwitcher, SignInButton, UserButton, useUser } from "@clerk/nextjs";
 import { Button } from "@/components/ui/button";
-import { AuthDialog } from "@/components/AuthDialog";
-import { createClient } from "@/lib/supabase/client";
+import { isClerkConfigured } from "@/lib/clerkConfig";
 import { useTeamAccount } from "@/lib/useTeamAccount";
 
-/** Header sign-in/out control, only relevant to the paid video feature. */
+/**
+ * Header sign-in/out + organization control, only relevant to the paid
+ * video feature. Hidden entirely when Clerk isn't configured — nothing to
+ * sign into yet, and every hook here needs <ClerkProvider> (see layout.tsx).
+ */
 export function AccountMenu() {
-  const { loading, user, team, configured, refresh } = useTeamAccount();
-  const [authOpen, setAuthOpen] = useState(false);
+  if (!isClerkConfigured()) return null;
+  return <AccountMenuInner />;
+}
+
+function AccountMenuInner() {
+  const { isLoaded, isSignedIn } = useUser();
+  const account = useTeamAccount();
   const [busy, setBusy] = useState(false);
-  const [inviteStatus, setInviteStatus] = useState<"idle" | "copied" | "error">("idle");
-
-  async function handleSignOut() {
-    setBusy(true);
-    const supabase = createClient();
-    await supabase.auth.signOut();
-    setBusy(false);
-    refresh();
-  }
-
-  async function handleInvite() {
-    if (!team) return;
-    setBusy(true);
-    setInviteStatus("idle");
-    try {
-      const response = await fetch("/api/team/invite", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ teamId: team.id }),
-      });
-      const data = await response.json();
-      if (!response.ok || !data.url) {
-        setInviteStatus("error");
-        return;
-      }
-      await navigator.clipboard.writeText(data.url);
-      setInviteStatus("copied");
-    } catch {
-      setInviteStatus("error");
-    } finally {
-      setBusy(false);
-    }
-  }
 
   async function handleManageBilling() {
     setBusy(true);
@@ -56,39 +32,28 @@ export function AccountMenu() {
     }
   }
 
-  // Nothing to sign into yet — hide the control entirely rather than show a
-  // "Sign in" button that would crash on submit (see src/lib/supabase/client.ts).
-  if (!configured) return null;
+  if (!isLoaded) return null;
 
-  if (loading) return null;
-
-  if (!user) {
+  if (!isSignedIn) {
     return (
-      <>
-        <Button variant="outline" size="sm" onClick={() => setAuthOpen(true)}>
+      <SignInButton mode="modal">
+        <Button variant="outline" size="sm">
           Sign in
         </Button>
-        <AuthDialog open={authOpen} onOpenChange={setAuthOpen} />
-      </>
+      </SignInButton>
     );
   }
 
   return (
-    <div className="flex items-center gap-2 text-sm">
-      <span className="text-muted-foreground hidden sm:inline">{team?.name ?? user.email}</span>
-      {team && (
-        <Button variant="outline" size="sm" disabled={busy} onClick={handleInvite}>
-          {inviteStatus === "copied" ? "Link copied" : inviteStatus === "error" ? "Owners only" : "Invite"}
-        </Button>
-      )}
-      {team?.subscriptionStatus && (
+    <div className="flex items-center gap-2.5 text-sm">
+      {/* Create/switch/manage-members are all Clerk's own built-in UI — no custom team dialogs needed. */}
+      <OrganizationSwitcher hidePersonal afterCreateOrganizationUrl="/" afterSelectOrganizationUrl="/" />
+      {account.team?.subscriptionStatus && (
         <Button variant="outline" size="sm" disabled={busy} onClick={handleManageBilling}>
           Manage billing
         </Button>
       )}
-      <Button variant="ghost" size="sm" disabled={busy} onClick={handleSignOut}>
-        Sign out
-      </Button>
+      <UserButton />
     </div>
   );
 }

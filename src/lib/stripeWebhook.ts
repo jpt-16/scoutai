@@ -1,30 +1,31 @@
 /**
- * Pure mapping from a Stripe webhook event to the patch that should land on
- * a `teams` row. Kept separate from the webhook route's signature
- * verification and Supabase write so it's unit-testable with hand-built
- * fixture JSON — no live webhook secret or network call needed.
+ * Pure mapping from a Stripe webhook event to the metadata patch that should
+ * land on a Clerk Organization. Kept separate from the webhook route's
+ * signature verification and Clerk write so it's unit-testable with
+ * hand-built fixture JSON — no live webhook secret or network call needed.
  *
- * Matching prefers `team_id` (set as Checkout/subscription metadata by
- * `/api/stripe/checkout`) over `stripe_customer_id`: on the very first
- * `checkout.session.completed` event, the team's `stripe_customer_id` column
- * isn't populated yet, so customer-id matching would find nothing. Falling
- * back to customer/subscription id still covers events where metadata is
- * somehow missing.
+ * Every event this app cares about carries `org_id` (a Clerk organization
+ * id) in its Stripe metadata, set once at Checkout (`/api/stripe/checkout`)
+ * on both the session and the subscription — so matching is always by
+ * `org_id`, never by `stripe_customer_id`/`stripe_subscription_id` (which
+ * aren't written onto the org until the first `checkout.session.completed`
+ * actually lands).
  */
 
 import type Stripe from "stripe";
 
-export interface TeamBillingPatch {
-  matchOn:
-    | { teamId: string }
-    | { stripeCustomerId: string }
-    | { stripeSubscriptionId: string };
-  patch: {
-    stripe_customer_id?: string;
-    stripe_subscription_id?: string;
-    subscription_status?: string;
-    subscription_current_period_end?: string | null;
-    subscription_price_id?: string | null;
+export interface OrgBillingPatch {
+  orgId: string;
+  /** Client-readable via useOrganization() — drives src/lib/entitlement.ts and the UI. */
+  publicMetadata: {
+    subscriptionStatus?: string;
+    subscriptionCurrentPeriodEnd?: string | null;
+    subscriptionPriceId?: string | null;
+  };
+  /** Server-only — used by the Checkout/Portal routes to find the existing Stripe customer. */
+  privateMetadata: {
+    stripeCustomerId?: string;
+    stripeSubscriptionId?: string;
   };
 }
 
@@ -38,53 +39,50 @@ function priceIdOf(subscription: Stripe.Subscription): string | null {
   return subscription.items.data[0]?.price?.id ?? null;
 }
 
-/** Returns the `teams` patch for a Stripe event, or `null` for event types this app ignores. */
-export function mapStripeEventToTeamPatch(event: Stripe.Event): TeamBillingPatch | null {
+/** Returns the org patch for a Stripe event, or `null` for event types (or malformed events) this app ignores. */
+export function mapStripeEventToOrgPatch(event: Stripe.Event): OrgBillingPatch | null {
   switch (event.type) {
     case "checkout.session.completed": {
       const session = event.data.object as Stripe.Checkout.Session;
+      const orgId = session.metadata?.org_id;
       const customerId =
         typeof session.customer === "string" ? session.customer : session.customer?.id;
       const subscriptionId =
         typeof session.subscription === "string" ? session.subscription : session.subscription?.id;
-      const teamId = session.metadata?.team_id ?? session.client_reference_id ?? undefined;
-      if (!customerId || !subscriptionId || !teamId) return null;
+      if (!orgId || !customerId || !subscriptionId) return null;
 
       return {
-        matchOn: { teamId },
-        patch: {
-          stripe_customer_id: customerId,
-          stripe_subscription_id: subscriptionId,
-        },
+        orgId,
+        publicMetadata: {},
+        privateMetadata: { stripeCustomerId: customerId, stripeSubscriptionId: subscriptionId },
       };
     }
 
     case "customer.subscription.updated":
     case "customer.subscription.created": {
       const subscription = event.data.object as Stripe.Subscription;
+      const orgId = subscription.metadata?.org_id;
+      if (!orgId) return null;
       const customerId =
         typeof subscription.customer === "string" ? subscription.customer : subscription.customer.id;
-      const teamId = subscription.metadata?.team_id;
 
       return {
-        matchOn: teamId ? { teamId } : { stripeCustomerId: customerId },
-        patch: {
-          stripe_customer_id: customerId,
-          stripe_subscription_id: subscription.id,
-          subscription_status: subscription.status,
-          subscription_current_period_end: periodEndToIso(subscription),
-          subscription_price_id: priceIdOf(subscription),
+        orgId,
+        publicMetadata: {
+          subscriptionStatus: subscription.status,
+          subscriptionCurrentPeriodEnd: periodEndToIso(subscription),
+          subscriptionPriceId: priceIdOf(subscription),
         },
+        privateMetadata: { stripeCustomerId: customerId, stripeSubscriptionId: subscription.id },
       };
     }
 
     case "customer.subscription.deleted": {
       const subscription = event.data.object as Stripe.Subscription;
-      const teamId = subscription.metadata?.team_id;
-      return {
-        matchOn: teamId ? { teamId } : { stripeSubscriptionId: subscription.id },
-        patch: { subscription_status: "canceled" },
-      };
+      const orgId = subscription.metadata?.org_id;
+      if (!orgId) return null;
+
+      return { orgId, publicMetadata: { subscriptionStatus: "canceled" }, privateMetadata: {} };
     }
 
     default:
