@@ -36,6 +36,7 @@ const FIELD_LABELS: Record<HudlField, string> = {
   playType: "Play type",
   defFront: "Def front",
   result: "Result",
+  coverage: "Coverage",
   offStrength: "Off strength",
   playDir: "Play direction",
   odk: "ODK",

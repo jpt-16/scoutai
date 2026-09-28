@@ -12,24 +12,62 @@ import { ScoutCard, SCOUT_CARD_ASPECT } from "@/components/ScoutCard";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MOCK_HUDL_CSV, DEMO_FILE_NAME } from "@/lib/demoScript";
-import { FORMATION_LABELS } from "@/lib/formations";
+import { FORMATION_LABELS, isPassPlay, playKind, type ScoutUnit } from "@/lib/formations";
 import { parseHudlCsvText, type FormationKey, type HudlPlayCard } from "@/lib/hudlParser";
 import { loadScript, saveScript, type StoredScript } from "@/lib/scriptStore";
 import { cn } from "@/lib/utils";
 
 type View = "field" | "print";
+/** ALL = every play; 7v7 = pass/RPO/PA plays as a skeleton (no linemen); TEAM = runs and passes with all 11. */
+type Mode = "all" | "7v7" | "team";
 type DownFilter = "all" | 1 | 2 | 3 | 4;
 type FormationFilter = "all" | FormationKey;
 
-const DOWN_LABELS: Record<Exclude<DownFilter, "all">, string> = { 1: "1st", 2: "2nd", 3: "3rd", 4: "4th" };
-const FORMATION_ORDER: FormationKey[] = ["spread", "trips", "i-form", "pro", "double-eagle", "unknown"];
+const DOWN_LABELS: Record<Exclude<DownFilter, "all">, string> = {
+  1: "1st",
+  2: "2nd",
+  3: "3rd",
+  4: "4th",
+};
+const FORMATION_ORDER: FormationKey[] = [
+  "spread",
+  "trips",
+  "i-form",
+  "pro",
+  "double-eagle",
+  "unknown",
+];
 const SWIPE_THRESHOLD = 60;
+
+const MODES: { value: Mode; label: string; short: string }[] = [
+  { value: "all", label: "ALL PLAYS", short: "ALL" },
+  { value: "7v7", label: "7v7 / PASS SKEL", short: "7v7" },
+  { value: "team", label: "TEAM (11v11)", short: "TEAM" },
+];
+
+const UNITS: { value: ScoutUnit; label: string; short: string }[] = [
+  { value: "offense", label: "SCOUT OFFENSE", short: "SCOUT O" },
+  { value: "defense", label: "SCOUT DEFENSE", short: "SCOUT D" },
+];
+
+function inMode(card: HudlPlayCard, mode: Mode, unit: ScoutUnit): boolean {
+  if (mode === "7v7") return isPassPlay(card);
+  if (mode === "team") {
+    // Scout defense still needs the alignment when the play call is blank.
+    return unit === "defense"
+      ? Boolean(card.formation || card.defFront)
+      : playKind(card) !== "none";
+  }
+  return true;
+}
 
 export default function ScriptPage() {
   const router = useRouter();
   // undefined while reading localStorage, null when nothing is loaded.
   const [script, setScript] = useState<StoredScript | null | undefined>(undefined);
   const [view, setView] = useState<View>("field");
+  const [mode, setMode] = useState<Mode>("all");
+  const [unit, setUnit] = useState<ScoutUnit>("offense");
   const [down, setDown] = useState<DownFilter>("all");
   const [formation, setFormation] = useState<FormationFilter>("all");
   const [index, setIndex] = useState(0);
@@ -39,29 +77,32 @@ export default function ScriptPage() {
   }, []);
 
   const cards = useMemo(() => script?.cards ?? [], [script]);
+  const modeCards = useMemo(() => cards.filter((c) => inMode(c, mode, unit)), [cards, mode, unit]);
   const filtered = useMemo(
     () =>
-      cards.filter(
+      modeCards.filter(
         (c) =>
-          (down === "all" || c.down === down) && (formation === "all" || c.formationKey === formation),
+          (down === "all" || c.down === down) &&
+          (formation === "all" || c.formationKey === formation),
       ),
-    [cards, down, formation],
+    [modeCards, down, formation],
   );
+  const cardMode = mode === "7v7" ? "7v7" : "team";
 
   const downOptions: FilterOption<DownFilter>[] = [
-    { value: "all", label: "All", count: cards.length },
+    { value: "all", label: "All", count: modeCards.length },
     ...([1, 2, 3, 4] as const).map((d) => ({
       value: d,
       label: DOWN_LABELS[d],
-      count: cards.filter((c) => c.down === d).length,
+      count: modeCards.filter((c) => c.down === d).length,
     })),
   ];
   const formationOptions: FilterOption<FormationFilter>[] = [
-    { value: "all", label: "All", count: cards.length },
+    { value: "all", label: "All", count: modeCards.length },
     ...FORMATION_ORDER.map((key) => ({
       value: key,
       label: FORMATION_LABELS[key],
-      count: cards.filter((c) => c.formationKey === key).length,
+      count: modeCards.filter((c) => c.formationKey === key).length,
     })).filter((o) => o.count > 0),
   ];
 
@@ -70,7 +111,10 @@ export default function ScriptPage() {
   const canPrev = position > 0;
   const canNext = position < filtered.length - 1;
 
-  const prev = useCallback(() => setIndex((i) => Math.max(0, Math.min(i, filtered.length - 1) - 1)), [filtered.length]);
+  const prev = useCallback(
+    () => setIndex((i) => Math.max(0, Math.min(i, filtered.length - 1) - 1)),
+    [filtered.length],
+  );
   const next = useCallback(
     () => setIndex((i) => Math.min(filtered.length - 1, Math.min(i, filtered.length - 1) + 1)),
     [filtered.length],
@@ -97,10 +141,12 @@ export default function ScriptPage() {
       ?.scrollIntoView({ block: "nearest" });
   }, [position, filtered]);
 
-  const setFilter = <T,>(setter: (v: T) => void) => (value: T) => {
-    setter(value);
-    setIndex(0);
-  };
+  const setFilter =
+    <T,>(setter: (v: T) => void) =>
+    (value: T) => {
+      setter(value);
+      setIndex(0);
+    };
 
   const loadDemo = () => {
     setScript(saveScript(DEMO_FILE_NAME, parseHudlCsvText(MOCK_HUDL_CSV)));
@@ -150,6 +196,73 @@ export default function ScriptPage() {
             {script.fileName} · {cards.length} plays
           </span>
         </div>
+        <div
+          role="group"
+          aria-label="Scout team"
+          className="flex shrink-0 rounded-xl border bg-secondary p-1"
+        >
+          {UNITS.map((u) => {
+            const selected = unit === u.value;
+            return (
+              <button
+                key={u.value}
+                type="button"
+                aria-pressed={selected}
+                onClick={() => {
+                  setUnit(u.value);
+                  setIndex(0);
+                }}
+                className={cn(
+                  "flex h-11 items-center rounded-[9px] px-3 text-sm font-bold whitespace-nowrap transition-colors",
+                  "focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none",
+                  selected ? "bg-foreground text-background" : "text-foreground hover:bg-accent",
+                )}
+              >
+                <span className="hidden xl:inline">{u.label}</span>
+                <span className="xl:hidden">{u.short}</span>
+              </button>
+            );
+          })}
+        </div>
+        <div
+          role="group"
+          aria-label="Practice period"
+          className="flex shrink-0 rounded-xl border bg-secondary p-1"
+        >
+          {MODES.map((m) => {
+            const count = cards.filter((c) => inMode(c, m.value, unit)).length;
+            const selected = mode === m.value;
+            return (
+              <button
+                key={m.value}
+                type="button"
+                aria-pressed={selected}
+                onClick={() => {
+                  setMode(m.value);
+                  setIndex(0);
+                }}
+                className={cn(
+                  "flex h-11 items-center gap-1.5 rounded-[9px] px-3 text-sm font-bold whitespace-nowrap transition-colors",
+                  "focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none",
+                  selected
+                    ? "bg-primary text-primary-foreground"
+                    : "text-foreground hover:bg-accent",
+                )}
+              >
+                <span className="hidden xl:inline">{m.label}</span>
+                <span className="xl:hidden">{m.short}</span>
+                <span
+                  className={cn(
+                    "text-xs tabular-nums",
+                    selected ? "text-primary-foreground/75" : "text-muted-foreground",
+                  )}
+                >
+                  {count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
         <TabsList className="h-[54px] rounded-xl border bg-secondary p-1">
           <TabsTrigger
             value="field"
@@ -171,7 +284,12 @@ export default function ScriptPage() {
       </header>
 
       <div className="no-print flex h-16 shrink-0 items-center gap-5 overflow-x-auto border-b px-4 sm:px-6">
-        <FilterGroup label="DOWN" options={downOptions} value={down} onChange={setFilter(setDown)} />
+        <FilterGroup
+          label="DOWN"
+          options={downOptions}
+          value={down}
+          onChange={setFilter(setDown)}
+        />
         <span className="h-7 w-px shrink-0 bg-border" aria-hidden="true" />
         <FilterGroup
           label="FORMATION"
@@ -181,7 +299,11 @@ export default function ScriptPage() {
         />
       </div>
 
-      <ImportNotice fileName={script.fileName} playCount={cards.length} warnings={script.warnings} />
+      <ImportNotice
+        fileName={script.fileName}
+        playCount={cards.length}
+        warnings={script.warnings}
+      />
 
       <TabsContent value="field" className="flex min-h-0 flex-col">
         <main className="flex min-h-0 flex-1 gap-6 px-4 py-3.5 sm:px-6">
@@ -207,7 +329,7 @@ export default function ScriptPage() {
             <div className="absolute inset-0 flex items-center justify-center">
               {current ? (
                 <div style={{ width: `min(100cqw, calc(100cqh * ${SCOUT_CARD_ASPECT}))` }}>
-                  <ScoutCard card={current} />
+                  <ScoutCard card={current} mode={cardMode} unit={unit} />
                 </div>
               ) : (
                 <div className="flex h-full w-full flex-col items-center justify-center gap-3 rounded-[14px] border-2 border-dashed border-input">
@@ -230,7 +352,9 @@ export default function ScriptPage() {
 
           <aside className="hidden w-[330px] shrink-0 flex-col gap-2.5 lg:flex">
             <div className="flex items-baseline justify-between">
-              <span className="text-xs font-bold tracking-[0.12em] text-muted-foreground">SCRIPT</span>
+              <span className="text-xs font-bold tracking-[0.12em] text-muted-foreground">
+                SCRIPT
+              </span>
               <span className="font-display text-xl font-bold tabular-nums">
                 {filtered.length ? `${position + 1} / ${filtered.length}` : "0 / 0"}
               </span>
@@ -298,7 +422,7 @@ export default function ScriptPage() {
       </TabsContent>
 
       <TabsContent value="print" className="flex flex-col">
-        <PrintGrid cards={filtered} fileName={script.fileName} />
+        <PrintGrid cards={filtered} fileName={script.fileName} mode={cardMode} unit={unit} />
       </TabsContent>
     </Tabs>
   );

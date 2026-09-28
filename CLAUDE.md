@@ -38,9 +38,9 @@ src/
     layout.tsx             Fonts, metadata (manifest, apple web app), SW registration
     globals.css            Theme tokens (dark field palette) + print rules
     page.tsx               Upload landing: dropzone, demo button, parse-report dialog
-    script/page.tsx        iPad Practice Reader: filters, Field View swiper, Print Grid tab
+    script/page.tsx        iPad reader: Scout O/D + All/7v7/Team toggles, filters, swiper, Print Grid
   components/
-    ScoutCard.tsx          SVG scout card (variant "field" = dark iPad, "print" = black on white)
+    ScoutCard.tsx          SVG scout card: unit offense/defense, mode team/7v7, variant field/print
     PrintGrid.tsx          Letter-size sheets, 2-up portrait / 4-up landscape, window.print()
     FilterBar.tsx          Down / formation toggle pills
     UploadDropzone.tsx     Drag-and-drop + file picker, .csv validation
@@ -48,7 +48,7 @@ src/
     ui/                    shadcn primitives: button, card, badge, tabs, dialog
   lib/
     hudlParser.ts          CSV → HudlPlayCard[] (column mapping + normalization + classifiers)
-    formations.ts          Coordinate dictionaries + buildDiagram() (players, routes)
+    formations.ts          Formations, fronts, run schemes, routes → buildDiagram()
     demoScript.ts          MOCK_HUDL_CSV: 5-play sample used by the "Demo Script" button
     scriptStore.ts         Persists the loaded script in localStorage (offline on the field)
     hudlParser.test.ts     Vitest suite
@@ -116,23 +116,52 @@ Free-text tags are classified by keyword (`classifyFormation`, `classifyFront`,
 `classifyConcept`, `parseSide`). Add new keywords there and a test case in
 `hudlParser.test.ts`.
 
-### Diagram coordinate system (`src/lib/formations.ts`)
+### Scout cards: two units × two periods (`src/lib/formations.ts`)
+
+`buildDiagram(card, mode, unit)`: `mode` is `"team"` (11v11) or `"7v7"`, and `unit` is
+`"offense"` or `"defense"`.
+
+- **Scout offense** (`unit: "offense"`): offense only, for the scout offense running the
+  opponent's plays.
+  - `playKind` sorts a play call into `run` / `pass` / `rpo` / `pa` / `none`.
+  - **Runs:** `runScheme` picks the blocking:
+    - `zone`: every lineman reaches playside.
+    - `outside-zone`: same, wider.
+    - `power` (POWER, G ISO, READ POWER): the backside guard pulls and the frontside blocks down.
+    - `counter` (COUNTER, TREY, GT): the guard and tackle both pull.
+    - `iso` / lead: the center and guards climb to the backers and the fullback leads.
+    - `draw` and `sneak`.
+
+    Receivers stalk-block, and the ball carrier's path is orange.
+  - **Passes:** `routeTokens` reads route words (SLANT, BUBBLE, CORNER, WHEEL, ACROSS/CROSS,
+    OUT, FADE, LEAK, GO, POST, CURL, DIG, FLAT, SWING). One word goes to every WR
+    ("SLANT" = all slants), and BUBBLE goes to the play-side slot while the rest stalk.
+    Several words go left to right across the receivers ("FADE OUT OUT FADE"). LEAK goes to
+    the tight end.
+  - **RPO / PA:** also draw a dashed mesh fake. RPO adds zone blocking; PA adds the QB's
+    drop or boot.
+- **Scout defense** (`unit: "defense"`): the offensive formation (no assignments) plus
+  where each defender lines up. `FRONTS` covers 4-3, 3-4, 5-2 and Bear, with labels
+  E/T/N/W/M/S/B/C/FS/SS. Corners go over the widest receivers and safeties shade to the
+  receiver-heavy side. An unknown front draws as 4-3, and the card footer says so. `COVERAGE`
+  shows in the footer.
+- **7v7** drops the linemen on both sides. The script page's 7v7 period only lists
+  pass/RPO/PA plays. Team lists runs and passes, or for scout defense anything with a
+  formation or front.
+- Positions: linemen are unlabeled, and skill players are **Q, F, H, X, Y, Z** only.
+
+Coordinates:
 
 - SVG viewBox `0 0 500 300`. Center/ball at **(250, 150)**, line of scrimmage at `y = 140`.
-- Offense below the LOS (circles, center filled), defense above (X's).
-- Hash marks at `x = 167` / `333` (HS hashes split the field in thirds). The ball's hash is
-  marked with a triangle on the top edge.
-- `FORMATIONS` (spread, trips, i-form, double-eagle, pro) and `FRONTS` (4-3, 3-4, 5-2, bear)
-  are drawn **strength right**. `buildDiagram` mirrors them for left formations.
-  Corners align on the widest receiver each side, and safeties shade to the
-  receiver-heavy side.
-- Unknown formations draw as Spread and unknown fronts as 4-3. The card footer says so.
-- Routes come from the play concept (`inside-zone`, `power`, `sweep`, `verticals`, `slant`,
-  `screen`, `boot`, `dropback`…) and go toward `playDirection`.
+- Hash marks at `x = 167` / `333`. The ball's hash is a triangle on the top edge.
+- Formations and fronts are drawn **strength right**. `OFF STR` (or a side tag in the
+  formation) mirrors them, and `PLAY DIR` (or a tag in the play call) sets the play side.
+- Unknown formations draw as Spread, and the footer says so.
 
-To add a formation: add the key to `FormationKey` in `hudlParser.ts`, add a
-keyword to `classifyFormation`, add a shape (11 players total incl. 5 OL) to `FORMATIONS`
-and a label to `FORMATION_LABELS`, then run `npm test`. The overlap test covers new combos.
+To add a formation: add the key to `FormationKey` in `hudlParser.ts`, add a keyword to
+`classifyFormation`, and add a shape to `FORMATIONS` (5 OL + Q + backs + skill = 11, using
+only Q/F/H/X/Y/Z) and a label to `FORMATION_LABELS`. Then run `npm test`; the label and
+defender-overlap tests cover new combinations.
 
 ## Importing a Hudl CSV
 

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Printer } from "lucide-react";
 import { ScoutCard } from "@/components/ScoutCard";
 import { Button } from "@/components/ui/button";
+import type { DiagramMode, ScoutUnit } from "@/lib/formations";
 import type { HudlPlayCard } from "@/lib/hudlParser";
 import { cn } from "@/lib/utils";
 
@@ -30,7 +31,17 @@ function chunk<T>(items: T[], size: number): T[][] {
   return pages;
 }
 
-export function PrintGrid({ cards, fileName }: { cards: HudlPlayCard[]; fileName: string }) {
+export function PrintGrid({
+  cards,
+  fileName,
+  mode = "team",
+  unit = "offense",
+}: {
+  cards: HudlPlayCard[];
+  fileName: string;
+  mode?: DiagramMode;
+  unit?: ScoutUnit;
+}) {
   const [perPage, setPerPage] = useState<PerPage>(4);
   const layout = LAYOUTS[perPage];
   const pages = chunk(cards, perPage);
@@ -40,7 +51,11 @@ export function PrintGrid({ cards, fileName }: { cards: HudlPlayCard[]; fileName
       <style>{`@page { size: letter ${layout.orientation}; margin: 0; }`}</style>
 
       <div className="no-print flex flex-wrap items-center gap-3 border-b px-6 py-3">
-        <div role="group" aria-label="Cards per page" className="flex rounded-xl border bg-secondary p-1">
+        <div
+          role="group"
+          aria-label="Cards per page"
+          className="flex rounded-xl border bg-secondary p-1"
+        >
           {([2, 4] as const).map((n) => (
             <button
               key={n}
@@ -60,7 +75,12 @@ export function PrintGrid({ cards, fileName }: { cards: HudlPlayCard[]; fileName
           {cards.length} cards · {pages.length} {pages.length === 1 ? "page" : "pages"} · Letter{" "}
           {layout.orientation}
         </p>
-        <Button size="lg" className="ml-auto" onClick={() => window.print()} disabled={cards.length === 0}>
+        <Button
+          size="lg"
+          className="ml-auto"
+          onClick={() => window.print()}
+          disabled={cards.length === 0}
+        >
           <Printer aria-hidden="true" />
           Print / Save PDF
         </Button>
@@ -80,7 +100,8 @@ export function PrintGrid({ cards, fileName }: { cards: HudlPlayCard[]; fileName
             >
               <div className="flex items-end justify-between border-b-2 border-[#111] pb-1.5">
                 <span className="font-display text-2xl font-extrabold tracking-[0.02em]">
-                  SCOUT SCRIPT · {fileName}
+                  {unit === "defense" ? "SCOUT DEFENSE" : "SCOUT OFFENSE"} ·{" "}
+                  {mode === "7v7" ? "7v7" : "TEAM"} · {fileName}
                 </span>
                 <span className="text-sm font-semibold text-[#4a4a4a]">
                   {perPage} per page · Page {i + 1} of {pages.length} · ScoutCard AI
@@ -88,7 +109,7 @@ export function PrintGrid({ cards, fileName }: { cards: HudlPlayCard[]; fileName
               </div>
               <div className={cn("grid justify-center gap-[0.25in]", layout.grid)}>
                 {page.map((card) => (
-                  <ScoutCard key={card.id} card={card} variant="print" />
+                  <ScoutCard key={card.id} card={card} variant="print" mode={mode} unit={unit} />
                 ))}
               </div>
             </section>

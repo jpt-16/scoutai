@@ -73,6 +73,9 @@ export interface HudlPlayCard {
   /** Hudl RESULT / GN/LS text ("Gain 6"), when the file has it. */
   result: string;
 
+  /** Hudl COVERAGE text ("6 - DOUBLE FIRE"), shown on scout defense cards. */
+  coverage: string;
+
   /** Every column of the original row, keyed by the normalized header. */
   raw: Record<string, string>;
 }
@@ -89,6 +92,7 @@ export type HudlField =
   | "playType"
   | "defFront"
   | "result"
+  | "coverage"
   | "offStrength"
   | "playDir"
   | "odk";
@@ -138,6 +142,7 @@ export const COLUMN_ALIASES: Record<HudlField, string[]> = {
   playType: ["PLAY TYPE", "PLAY TYP", "RUN/PASS"],
   defFront: ["DEF FRONT", "FRONT", "DEF ALIGN", "DEF FORM", "DEF FORMATION"],
   result: ["RESULT", "PLAY RESULT", "GN/LS", "GAIN/LOSS"],
+  coverage: ["COVERAGE", "COV", "DEF COVERAGE", "DEF COV", "COVERAGES"],
   offStrength: ["OFF STR", "OFF STRENGTH", "STRENGTH", "STR"],
   playDir: ["PLAY DIR", "PLAY DIRECTION", "DIR", "DIRECTION"],
   odk: ["ODK"],
@@ -180,6 +185,7 @@ const HEADER_PATTERNS: Record<HudlField, RegExp> = {
   playType: /^PLAY TYPE$|\bRUN ?\/? ?PASS\b/,
   defFront: /\b(DEF|DEFENSIVE|DEFENSE|D) ?(FRONT|FRONTS|ALIGN|ALIGNMENT|FORM|FORMATION)\b|^FRONTS?$/,
   result: /\bRESULTS?\b|^(GN|GAIN) ?\/? ?(LS|LOSS)$/,
+  coverage: /\bCOV(ERAGE)?S?\b|\bSHELL\b/,
   offStrength: /^(OFF |OFFENSIVE |FORM )?STR(ENGTH)?$/,
   playDir: /^(PLAY |RUN )?DIR(ECTION)?$/,
   odk: /^ODK$/,
@@ -520,6 +526,7 @@ export function rowToCard(
     defFront,
     frontKey: classifyFront(defFront),
     result: cell(row, columns.result),
+    coverage: cell(row, columns.coverage),
     raw: row,
   };
 }

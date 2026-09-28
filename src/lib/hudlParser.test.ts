@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { MOCK_HUDL_CSV } from "./demoScript";
-import { buildDiagram } from "./formations";
+import { buildDiagram, isPassPlay, runScheme } from "./formations";
 import {
   classifyConcept,
+  type FormationKey,
   classifyFormation,
   classifyFront,
   detectUnsupportedFile,
@@ -489,46 +490,144 @@ describe("classifiers", () => {
   });
 });
 
-describe("buildDiagram", () => {
-  it("places 11 on offense and 11 on defense for every demo play", () => {
-    for (const card of parseHudlCsvText(MOCK_HUDL_CSV).cards) {
-      const diagram = buildDiagram(card);
-      expect(diagram.offense.length + 1).toBe(11);
-      expect(diagram.defense).toHaveLength(11);
-      expect(diagram.routes.length).toBeGreaterThan(0);
+describe("buildDiagram (offense only)", () => {
+  const card = (formationKey: FormationKey, playCall: string, dir: "left" | "right" = "right") => {
+    const parsed = parseHudlCsvText(`OFF FORM,OFF PLAY\n${formationKey},${playCall}\n`).cards[0];
+    return { ...parsed, formationKey, formationSide: dir, playDirection: dir };
+  };
+  const labels = (d: ReturnType<typeof buildDiagram>) => d.players.map((p) => p.label).filter(Boolean).sort();
+
+  it("draws 11 on offense, linemen unlabeled, skill players Q F H X Y Z", () => {
+    for (const key of ["spread", "trips", "i-form", "double-eagle", "pro"] as const) {
+      const d = buildDiagram(card(key, "IZ"));
+      expect(d.players).toHaveLength(11);
+      expect(d.players.filter((p) => p.role === "OL" && p.label === "")).toHaveLength(5);
+      expect(labels(d)).toEqual(["F", "H", "Q", "X", "Y", "Z"]);
     }
   });
 
-  it("never stacks two defenders on the same spot", () => {
-    const formations = ["spread", "trips", "i-form", "double-eagle", "pro"] as const;
-    const fronts = ["4-3", "3-4", "5-2", "bear"] as const;
-    for (const formationKey of formations) {
-      for (const frontKey of fronts) {
-        for (const side of ["left", "right"] as const) {
-          const { defense } = buildDiagram({
-            formationKey,
-            frontKey,
-            formationSide: side,
-            playDirection: side,
-            concept: "unknown",
-            hash: null,
-          });
-          for (let i = 0; i < defense.length; i++) {
-            for (let j = i + 1; j < defense.length; j++) {
-              const gap = Math.hypot(defense[i].x - defense[j].x, defense[i].y - defense[j].y);
-              expect(gap, `${formationKey} ${side} vs ${frontKey}`).toBeGreaterThan(18);
+  it("classifies run, pass, RPO, and play action", () => {
+    const kind = (call: string) => buildDiagram(card("spread", call)).kind;
+    expect(kind("READ POWER")).toBe("run");
+    expect(kind("G ISO")).toBe("run");
+    expect(kind("SPEED OPTION")).toBe("run");
+    expect(kind("FADE OUT OUT FADE")).toBe("pass");
+    expect(kind("RPO BUBBLE")).toBe("rpo");
+    expect(kind("PA TE LEAK")).toBe("pa");
+    expect(kind("")).toBe("none");
+  });
+
+  it("zone: every lineman reaches playside, receivers stalk, back carries", () => {
+    const d = buildDiagram(card("spread", "INSIDE ZONE"));
+    expect(runScheme({ playCall: "INSIDE ZONE", concept: "inside-zone" })).toBe("zone");
+    const lineBlocks = d.blocks.filter((b) => b[0].y === 150 && b[0].x >= 206 && b[0].x <= 294);
+    expect(lineBlocks).toHaveLength(5);
+    expect(lineBlocks.every((b) => b[b.length - 1].x > b[0].x)).toBe(true); // stepping right
+    expect(d.pulls).toEqual([]);
+    expect(d.carrier).not.toBeNull();
+    expect(d.routes).toEqual([]);
+  });
+
+  it("power / G ISO: backside guard pulls, frontside blocks down", () => {
+    for (const call of ["POWER", "G ISO", "READ POWER"]) {
+      expect(runScheme({ playCall: call, concept: "power" })).toBe("power");
+      const d = buildDiagram(card("i-form", call));
+      expect(d.pulls).toHaveLength(1);
+      expect(d.pulls[0][0]).toEqual({ x: 228, y: 150 }); // left guard pulls on a play to the right
+    }
+    expect(buildDiagram(card("i-form", "COUNTER", "left")).pulls).toHaveLength(2);
+  });
+
+  it("iso / lead: center and guards climb, fullback leads", () => {
+    const d = buildDiagram(card("i-form", "ISO"));
+    const climbs = d.blocks.filter((b) => b[0].y === 150 && Math.abs(b[0].x - 250) <= 22);
+    expect(climbs).toHaveLength(3);
+    expect(climbs.every((b) => b[b.length - 1].y <= 104)).toBe(true);
+    expect(d.blocks.some((b) => b[0].x === 250 && b[0].y === 198)).toBe(true); // F leads
+  });
+
+  it("reads a multi-route call left to right across the receivers", () => {
+    const d = buildDiagram(card("spread", "FADE OUT OUT FADE"));
+    expect(d.routes).toHaveLength(4);
+    const byStart = [...d.routes].sort((a, b) => a[0].x - b[0].x);
+    expect(byStart[0][byStart[0].length - 1].y).toBeLessThan(40); // X fades
+    expect(byStart[1][2].y).toBe(104); // H out
+    expect(d.blocks).toEqual([]); // no run blocking on a pass
+  });
+
+  it("RPO and play action draw the mesh fake plus routes", () => {
+    const rpo = buildDiagram(card("trips", "RPO BUBBLE"));
+    expect(rpo.fakes.length).toBeGreaterThan(0);
+    expect(rpo.routes).toHaveLength(1); // bubble to the play-side slot
+    const pa = buildDiagram(card("pro", "PA TE LEAK"));
+    expect(pa.fakes.length).toBeGreaterThan(0);
+    expect(pa.routes).toHaveLength(1);
+  });
+
+  it("7v7 drops the offensive line and its blocks", () => {
+    const d = buildDiagram(card("trips", "RPO BUBBLE"), "7v7");
+    expect(d.players.some((p) => p.role === "OL")).toBe(false);
+    expect(labels(d)).toEqual(["F", "H", "Q", "X", "Y", "Z"]);
+    expect(d.blocks.every((b) => b[0].y !== 150 || b[0].x < 206 || b[0].x > 294)).toBe(true);
+    expect(d.routes.length).toBeGreaterThan(0);
+  });
+
+  it("mirrors a left-handed formation", () => {
+    const xs = (d: ReturnType<typeof buildDiagram>) => d.players.map((p) => p.x).sort((a, b) => a - b);
+    const right = buildDiagram(card("trips", "", "right"));
+    const left = buildDiagram(card("trips", "", "left"));
+    expect(xs(left)).toEqual(xs(right).map((x) => 500 - x).sort((a, b) => a - b));
+  });
+
+  describe("scout defense", () => {
+    const withFront = (formationKey: FormationKey, front: string, dir: "left" | "right" = "right") => {
+      const parsed = parseHudlCsvText(`OFF FORM,OFF PLAY,DEF FRONT\n${formationKey},IZ,${front}\n`).cards[0];
+      return { ...parsed, formationKey, formationSide: dir, playDirection: dir };
+    };
+
+    it("team: 11 on 11, with the formation but no offensive assignments", () => {
+      const d = buildDiagram(withFront("trips", "EVEN"), "team", "defense");
+      expect(d.players).toHaveLength(11);
+      expect(d.defense).toHaveLength(11);
+      expect(d.defense.map((p) => p.label).sort()).toEqual(["C", "C", "E", "E", "FS", "M", "S", "SS", "T", "T", "W"]);
+      expect([d.blocks, d.routes, d.pulls, d.fakes]).toEqual([[], [], [], []]);
+      expect(d.carrier).toBeNull();
+    });
+
+    it("7v7: no linemen on either side", () => {
+      const d = buildDiagram(withFront("spread", "4-3"), "7v7", "defense");
+      expect(d.players.some((p) => p.role === "OL")).toBe(false);
+      expect(d.defense.map((p) => p.label).sort()).toEqual(["C", "C", "FS", "M", "S", "SS", "W"]);
+    });
+
+    it("an unknown front draws a 4-3 and flags it", () => {
+      expect(buildDiagram(withFront("pro", "COVER 3"), "team", "defense").frontFallback).toBe(true);
+    });
+
+    it("never stacks two defenders on the same spot", () => {
+      for (const key of ["spread", "trips", "i-form", "double-eagle", "pro"] as const) {
+        for (const front of ["4-3", "3-4", "5-2", "BEAR"]) {
+          for (const dir of ["left", "right"] as const) {
+            const { defense } = buildDiagram(withFront(key, front, dir), "team", "defense");
+            for (let i = 0; i < defense.length; i++) {
+              for (let j = i + 1; j < defense.length; j++) {
+                const gap = Math.hypot(defense[i].x - defense[j].x, defense[i].y - defense[j].y);
+                expect(gap, `${key} ${dir} vs ${front}`).toBeGreaterThan(18);
+              }
             }
           }
         }
       }
-    }
+    });
+
+    it("reads COVERAGE onto the card", () => {
+      const [c] = parseHudlCsvText("OFF FORM,DEF FRONT,COVERAGE\nTRIO,EVEN,6 - DOUBLE FIRE\n").cards;
+      expect(c.coverage).toBe("6 - DOUBLE FIRE");
+    });
   });
 
-  it("mirrors a left-handed formation", () => {
-    const base = { frontKey: "4-3", concept: "unknown", hash: null } as const;
-    const right = buildDiagram({ ...base, formationKey: "trips", formationSide: "right", playDirection: "right" });
-    const left = buildDiagram({ ...base, formationKey: "trips", formationSide: "left", playDirection: "left" });
-    const xs = (pts: { x: number }[]) => pts.map((p) => p.x).sort((a, b) => a - b);
-    expect(xs(left.offense)).toEqual(xs(right.offense.map((p) => ({ x: 500 - p.x }))));
+  it("keeps plays with isPassPlay for 7v7", () => {
+    expect(isPassPlay({ playCall: "SLANT", concept: "slant" })).toBe(true);
+    expect(isPassPlay({ playCall: "G ISO", concept: "power" })).toBe(false);
   });
 });
