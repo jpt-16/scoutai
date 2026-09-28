@@ -6,6 +6,17 @@
 
 import { createBrowserClient } from "@supabase/ssr";
 
+/**
+ * True once the Supabase env vars are set. Before that (e.g. this app
+ * deployed without the video feature configured yet), every auth-related
+ * component must degrade to "signed out" rather than call `createClient()` —
+ * `createBrowserClient` throws synchronously on a missing URL/key, which
+ * would otherwise crash the whole page, including the free CSV path.
+ */
+export function isSupabaseConfigured(): boolean {
+  return Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
+}
+
 export function createClient() {
   return createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,

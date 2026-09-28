@@ -8,7 +8,7 @@ import { useTeamAccount } from "@/lib/useTeamAccount";
 
 /** Header sign-in/out control, only relevant to the paid video feature. */
 export function AccountMenu() {
-  const { loading, user, team, refresh } = useTeamAccount();
+  const { loading, user, team, configured, refresh } = useTeamAccount();
   const [authOpen, setAuthOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [inviteStatus, setInviteStatus] = useState<"idle" | "copied" | "error">("idle");
@@ -55,6 +55,10 @@ export function AccountMenu() {
       setBusy(false);
     }
   }
+
+  // Nothing to sign into yet — hide the control entirely rather than show a
+  // "Sign in" button that would crash on submit (see src/lib/supabase/client.ts).
+  if (!configured) return null;
 
   if (loading) return null;
 

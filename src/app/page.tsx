@@ -6,8 +6,10 @@ import {
   AlertTriangle,
   Check,
   Film,
+  Layers,
   Lock,
   MousePointerClick,
+  Printer,
   ScanEye,
   Smartphone,
   Upload,
@@ -78,6 +80,44 @@ const STEPS = [
   "Export the breakdown from Hudl as CSV",
   "Drop it here and check the cards",
   "Run the script on the iPad or print it",
+];
+
+const HOW_IT_WORKS_STEPS: { icon: typeof Upload; title: string; detail: string }[] = [
+  {
+    icon: Upload,
+    title: "Upload your breakdown",
+    detail:
+      "Drop this week's Hudl CSV — or a few film clips at once — and it's parsed right in your " +
+      "browser. Nothing is uploaded for the free path.",
+  },
+  {
+    icon: Layers,
+    title: "Cards build automatically",
+    detail:
+      "Formation, routes, blocking, and assignments turn into a clean vector scout card for " +
+      "every play, matched straight from your Hudl tags.",
+  },
+  {
+    icon: Smartphone,
+    title: "Run it at practice",
+    detail:
+      "Swipe through cards on the iPad, filter by down or formation, and add it to your Home " +
+      "Screen to keep using it offline on the field.",
+  },
+  {
+    icon: Printer,
+    title: "Or print the script",
+    detail:
+      "Switch to Print Grid for 2 or 4 cards a page and hit Print / Save PDF — black on white, " +
+      "ready for a binder.",
+  },
+  {
+    icon: Film,
+    title: "No CSV? Use game film",
+    detail:
+      "Upload a clip and AI analyzes the play — routes appear on a card automatically, ready " +
+      "for your staff to drag into shape. A paid feature, per coaching staff.",
+  },
 ];
 
 const VIDEO_STEPS: { icon: typeof Upload; title: string; detail: string }[] = [
@@ -208,7 +248,7 @@ export default function UploadPage() {
   };
 
   const handleUploadClick = () => {
-    if (account.loading) return;
+    if (!account.configured || account.loading) return;
     if (!account.user) {
       setAuthOpen(true);
       return;
@@ -224,21 +264,23 @@ export default function UploadPage() {
     videoInput.current?.click();
   };
 
-  const uploadButtonLabel = account.loading
-    ? "Loading…"
-    : videoBusy
-      ? !account.user || !account.team
-        ? "Working…"
-        : !account.entitled
-          ? "Redirecting to checkout…"
-          : "Reading the clip…"
-      : !account.user
-        ? "Sign in to upload film"
-        : !account.team
-          ? "Create a team to continue"
+  const uploadButtonLabel = !account.configured
+    ? "AI film import coming soon"
+    : account.loading
+      ? "Loading…"
+      : videoBusy
+        ? !account.user || !account.team
+          ? "Working…"
           : !account.entitled
-            ? "Subscribe to unlock AI film import"
-            : "Upload game film";
+            ? "Redirecting to checkout…"
+            : "Reading the clip…"
+        : !account.user
+          ? "Sign in to upload film"
+          : !account.team
+            ? "Create a team to continue"
+            : !account.entitled
+              ? "Subscribe to unlock AI film import"
+              : "Upload game film";
 
   /**
    * Beta: upload a game clip straight to blob storage, send its URL to
@@ -341,7 +383,7 @@ export default function UploadPage() {
                 <Button
                   size="lg"
                   className="w-fit"
-                  disabled={videoBusy || account.loading}
+                  disabled={videoBusy || account.loading || !account.configured}
                   onClick={handleUploadClick}
                 >
                   <Film aria-hidden="true" />
@@ -396,6 +438,36 @@ export default function UploadPage() {
           </ol>
         </aside>
       </main>
+
+      <section className="border-t px-6 py-10 lg:px-12 lg:py-12">
+        <p className="text-sm font-bold tracking-[0.14em] text-primary">HOW SCOUTCARD AI WORKS</p>
+        <h2 className="mt-2 font-display text-3xl leading-tight font-extrabold uppercase sm:text-4xl">
+          From breakdown to practice
+        </h2>
+        <ol className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+          {HOW_IT_WORKS_STEPS.map(({ icon: Icon, title, detail }, i) => (
+            <li key={title}>
+              <Card className="h-full gap-2.5 rounded-xl py-4">
+                <CardContent className="flex flex-col gap-2.5 px-4">
+                  <div className="flex items-center gap-2.5">
+                    <span
+                      className="flex size-8 shrink-0 items-center justify-center rounded-full border-2 border-primary text-primary"
+                      aria-hidden="true"
+                    >
+                      <Icon className="size-4" />
+                    </span>
+                    <span className="font-display text-lg font-extrabold text-primary">
+                      {String(i + 1).padStart(2, "0")}
+                    </span>
+                  </div>
+                  <span className="text-[15px] leading-snug font-semibold">{title}</span>
+                  <span className="text-sm leading-relaxed text-muted-foreground">{detail}</span>
+                </CardContent>
+              </Card>
+            </li>
+          ))}
+        </ol>
+      </section>
 
       <Dialog open={report != null} onOpenChange={(open) => !open && setReport(null)}>
         <DialogContent className="sm:max-w-xl">

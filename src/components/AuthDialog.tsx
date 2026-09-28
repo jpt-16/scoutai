@@ -9,7 +9,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { createClient } from "@/lib/supabase/client";
+import { createClient, isSupabaseConfigured } from "@/lib/supabase/client";
 
 interface AuthDialogProps {
   open: boolean;
@@ -25,6 +25,14 @@ export function AuthDialog({ open, onOpenChange }: AuthDialogProps) {
     event.preventDefault();
     setStatus("sending");
     setError(null);
+
+    // Defensive — callers shouldn't be able to open this dialog when
+    // Supabase isn't configured, but createClient() would throw if reached.
+    if (!isSupabaseConfigured()) {
+      setStatus("error");
+      setError("Sign-in isn't set up yet.");
+      return;
+    }
 
     const supabase = createClient();
     const { error: signInError } = await supabase.auth.signInWithOtp({

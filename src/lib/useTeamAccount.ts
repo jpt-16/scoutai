@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import type { User } from "@supabase/supabase-js";
-import { createClient } from "@/lib/supabase/client";
+import { createClient, isSupabaseConfigured } from "@/lib/supabase/client";
 
 export interface TeamAccountTeam {
   id: string;
@@ -16,6 +16,8 @@ export interface TeamAccountState {
   team: TeamAccountTeam | null;
   /** Mirrors the check in src/lib/entitlement.ts — kept in sync by hand, not imported (that module is server-only). */
   entitled: boolean;
+  /** False until the Supabase env vars are set — callers should treat this like a permanent signed-out state, not prompt to sign in. */
+  configured: boolean;
   refresh: () => void;
 }
 
@@ -33,6 +35,11 @@ export function useTeamAccount(): TeamAccountState {
   const refresh = useCallback(() => setNonce((value) => value + 1), []);
 
   useEffect(() => {
+    if (!isSupabaseConfigured()) {
+      setLoading(false);
+      return;
+    }
+
     const supabase = createClient();
     let cancelled = false;
 
@@ -84,5 +91,5 @@ export function useTeamAccount(): TeamAccountState {
 
   const entitled = team?.subscriptionStatus === "active" || team?.subscriptionStatus === "trialing";
 
-  return { loading, user, team, entitled, refresh };
+  return { loading, user, team, entitled, configured: isSupabaseConfigured(), refresh };
 }

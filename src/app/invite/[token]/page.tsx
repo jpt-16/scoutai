@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { AuthDialog } from "@/components/AuthDialog";
 import { BrandMark } from "@/components/BrandMark";
-import { createClient } from "@/lib/supabase/client";
+import { createClient, isSupabaseConfigured } from "@/lib/supabase/client";
 
 export default function InvitePage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = use(params);
@@ -17,6 +17,12 @@ export default function InvitePage({ params }: { params: Promise<{ token: string
   const [authOpen, setAuthOpen] = useState(false);
 
   useEffect(() => {
+    if (!isSupabaseConfigured()) {
+      setStatus("error");
+      setError("Sign-in isn't set up yet.");
+      return;
+    }
+
     let cancelled = false;
     const supabase = createClient();
 
