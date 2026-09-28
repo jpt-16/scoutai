@@ -129,6 +129,8 @@ const CORE_FIELDS: HudlField[] = [
   "defFront",
 ];
 
+const KNOWN_HEADERS = new Set(Object.values(COLUMN_ALIASES).flat());
+
 export function normalizeHeader(header: string): string {
   return header
     .replace(/^﻿/, "")
@@ -138,13 +140,53 @@ export function normalizeHeader(header: string): string {
     .trim();
 }
 
-/** Picks the CSV header to use for every field, honoring alias priority. */
+/**
+ * Pattern fallbacks for header names that aren't in `COLUMN_ALIASES`, such as
+ * spelled-out exports ("Offensive Formation", "Defensive Front", "Yards To
+ * Go"). Tested against normalized headers, after the exact aliases.
+ */
+const HEADER_PATTERNS: Record<HudlField, RegExp> = {
+  playNumber: /^(#|NO|PLAY ?(#|NO|NUM|NUMBER|ID))$/,
+  down: /^(DN|DWN|DOWNS?)$/,
+  distance: /^(DIST|DISTANCE|YTG|(YDS|YARDS) TO GO|TO GO)$/,
+  yardLine: /\b(YARD|YD)S? ?(LN|LINE)\b|\bBALL ON\b|\bFIELD POS/,
+  hash: /\bHASH/,
+  formation: /^(?!.*\b(DEF|DEFENSIVE|DEFENSE|D)\b).*\bFORM(ATION)?S?\b/,
+  playCall: /\b(OFF|OFFENSIVE|OFFENSE|O) ?PLAY\b|\bPLAY ?(CALL|NAME)\b/,
+  playType: /^PLAY TYPE$|\bRUN ?\/? ?PASS\b/,
+  defFront: /\b(DEF|DEFENSIVE|DEFENSE|D) ?(FRONT|FRONTS|ALIGN|ALIGNMENT|FORM|FORMATION)\b|^FRONTS?$/,
+  odk: /^ODK$/,
+};
+
+/** Whether a (raw or normalized) header cell looks like a Hudl column. */
+export function isHudlHeader(header: string): boolean {
+  const h = normalizeHeader(header);
+  return (
+    KNOWN_HEADERS.has(h) || (Object.values(HEADER_PATTERNS) as RegExp[]).some((re) => re.test(h))
+  );
+}
+
+/**
+ * Picks the CSV header to use for every field: exact aliases first (in
+ * priority order), then `HEADER_PATTERNS` for anything still unmapped.
+ */
 export function mapColumns(headers: string[]): Partial<Record<HudlField, string>> {
-  const available = new Set(headers.map(normalizeHeader));
+  const normalized = headers.map(normalizeHeader);
+  const available = new Set(normalized);
   const columns: Partial<Record<HudlField, string>> = {};
-  for (const field of Object.keys(COLUMN_ALIASES) as HudlField[]) {
+  const fields = Object.keys(COLUMN_ALIASES) as HudlField[];
+  for (const field of fields) {
     const match = COLUMN_ALIASES[field].find((alias) => available.has(alias));
     if (match) columns[field] = match;
+  }
+  const claimed = new Set(Object.values(columns));
+  for (const field of fields) {
+    if (columns[field]) continue;
+    const match = normalized.find((h) => !claimed.has(h) && HEADER_PATTERNS[field].test(h));
+    if (match) {
+      columns[field] = match;
+      claimed.add(match);
+    }
   }
   // PLAY TYPE is only the play call when nothing better exists; if it is used
   // as the play call, don't also report it as the run/pass type.
@@ -350,22 +392,29 @@ function parseRawRows(text: string) {
   });
 }
 
-const KNOWN_HEADERS = new Set(Object.values(COLUMN_ALIASES).flat());
 /** How many rows from the top to search for the header row. */
 const HEADER_SEARCH_ROWS = 25;
 
 /**
- * Index of the header row: the first row with at least two known Hudl column
- * names (`PLAY #`, `DN`, `OFF FORM`, `OFF PLAY`, `FORMATION`, …). Title lines
- * and Excel `sep=,` lines above it are ignored. Returns -1 when none match.
+ * Index of the header row within the top `HEADER_SEARCH_ROWS` rows: the row
+ * with the most Hudl-looking column names (`PLAY #`, `DN`, `OFF FORM`,
+ * `OFF PLAY`, `FORMATION`, …), needing at least two. Picking the best row
+ * (earliest on a tie) rather than the first match keeps a metadata line
+ * like "Offensive formation report, defensive front" from winning.
+ * Rows above it (titles, notes, `sep=,`, blanks) are ignored. -1 if none.
  */
 export function findHeaderRow(rows: string[][]): number {
   const limit = Math.min(rows.length, HEADER_SEARCH_ROWS);
+  let best = -1;
+  let bestHits = 1;
   for (let i = 0; i < limit; i++) {
-    const hits = rows[i].filter((c) => KNOWN_HEADERS.has(normalizeHeader(c))).length;
-    if (hits >= 2) return i;
+    const hits = rows[i].filter(isHudlHeader).length;
+    if (hits > bestHits) {
+      best = i;
+      bestHits = hits;
+    }
   }
-  return -1;
+  return best;
 }
 
 /** Normalized, unique header keys; blank headers become `COLUMN <n>`. */

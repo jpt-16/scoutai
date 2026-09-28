@@ -67,7 +67,9 @@ src/
 ### Hudl column mapping
 
 Headers are normalized (uppercased, BOM stripped, `.`/`_` → space, whitespace collapsed),
-then matched against `COLUMN_ALIASES` in priority order:
+then matched against `COLUMN_ALIASES` in priority order. Headers still unmatched fall back to
+`HEADER_PATTERNS`, which handles spelled-out names like `Offensive Formation`, `Offensive Play`,
+`Defensive Front` and `Yards To Go`. `DEF FORMATION` is never taken as the offensive formation.
 
 | Field       | Accepted headers                                                   |
 | ----------- | ------------------------------------------------------------------ |
@@ -90,8 +92,9 @@ Parsing pipeline (`parseHudlCsvText`, never throws):
    delimiter (comma, tab, `;`, `|`) and uses `skipEmptyLines: "greedy"`. If it reports
    quote errors, `repairCsvLine` re-quotes each line leniently and the file is parsed again.
    Straightened quotes like `"Hot" Slant Rt` would otherwise swallow the rest of the file.
-3. `findHeaderRow` picks the first row with ≥ 2 known Hudl headers, so title or
-   `sep=,` lines above it are skipped.
+3. `findHeaderRow` looks at the top 25 rows and picks the one with the most Hudl-looking
+   headers (at least 2; earliest wins a tie). Title, metadata, `sep=,` and blank lines above
+   it are skipped, and a notes line that mentions "formation" can't beat the real header.
 4. `rowToRecord` maps each later row by column index. Short rows read as blanks and extra
    cells are ignored. Keys and values are trimmed.
 5. Parse problems become `warnings`. Valid rows always load.

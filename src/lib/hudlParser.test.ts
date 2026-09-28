@@ -253,6 +253,57 @@ describe("parseHudlCsvText", () => {
     });
   });
 
+  describe("header row detection", () => {
+    const header = "PLAY #,ODK,DN,DIST,YARD LN,HASH,OFF FORM,OFF PLAY,DEF FRONT";
+    const rows = "1,O,3,6,Opp 45,L,Trips Right,Slant,4-3\n2,O,1,10,Own 30,R,Spread,IZ,3-4";
+
+    it.each([
+      ["title and blank lines", `Hudl Breakdown Export\nTeam: Central\n\n\n${header}\n${rows}`, 2],
+      ["key,value metadata", `Opponent,Central High\nGame,Week 7\n${header}\n${rows}`, 2],
+      ["a title containing commas", `Central vs. Eastside, Week 7, 2026\n${header}\n${rows}`, 1],
+      ["22 note lines", `${Array.from({ length: 22 }, (_, i) => `note ${i}`).join("\n")}\n${header}\n${rows}`, 22],
+      [
+        "a metadata line that mentions formation and front",
+        `Offensive formation report,Defensive front summary\nPrepared by,Coach\n${header}\n${rows}`,
+        2,
+      ],
+    ])("finds the header below %s", (_, csv, skipped) => {
+      const result = parseHudlCsvText(csv);
+      expect(result.cards.map((c) => c.formationKey)).toEqual(["trips", "spread"]);
+      expect(result.warnings[0]).toMatch(new RegExp(`^Skipped ${skipped} lines? above the header row`));
+    });
+
+    it("maps spelled-out column names", () => {
+      const csv =
+        "Title\nPlay Number,Down,Yards To Go,Ball On,Hash Mark,Offensive Formation,Offensive Play,Defensive Front\n" +
+        "7,2,4,+30,R,Trips Lt,Verts,Bear\n";
+      const result = parseHudlCsvText(csv);
+      expect(result.missingColumns).toEqual([]);
+      expect(result.cards[0]).toMatchObject({
+        playNumber: 7,
+        downDistance: "2nd & 4",
+        formationKey: "trips",
+        concept: "verticals",
+        frontKey: "bear",
+      });
+    });
+
+    it("does not read DEF FORMATION as the offensive formation", () => {
+      const columns = mapColumns(["Play #", "Dn", "Off. Formation", "Off Play Name", "Def Formation"]);
+      expect(columns).toMatchObject({
+        formation: "OFF FORMATION",
+        playCall: "OFF PLAY NAME",
+        defFront: "DEF FORMATION",
+      });
+    });
+
+    it("converts DN, DIST, YARD LN, and PLAY # to numbers", () => {
+      const csv = `${header}\n" 07 ",3rd,6 yds, -35 ,L,Spread,IZ,4-3\n`.replace('" 07 ",', '" 07 ",O,');
+      const [card] = parseHudlCsvText(csv).cards;
+      expect(card).toMatchObject({ playNumber: 7, down: 3, distance: 6, yardLine: -35, yardLineLabel: "-35" });
+    });
+  });
+
   it("warns when the file doesn't look like a Hudl breakdown", () => {
     const result = parseHudlCsvText("NAME,EMAIL\nA,b@c.d\n");
     expect(result.cards).toHaveLength(0);
