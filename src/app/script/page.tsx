@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { ChevronLeft, ChevronRight, Grid2x2, RectangleVertical, Upload } from "lucide-react";
 import { BrandMark } from "@/components/BrandMark";
 import { FilterGroup, type FilterOption } from "@/components/FilterBar";
+import { ImportNotice } from "@/components/ImportNotice";
 import { PrintGrid } from "@/components/PrintGrid";
 import { ScoutCard, SCOUT_CARD_ASPECT } from "@/components/ScoutCard";
 import { Button } from "@/components/ui/button";
@@ -179,6 +180,8 @@ export default function ScriptPage() {
           onChange={setFilter(setFormation)}
         />
       </div>
+
+      <ImportNotice fileName={script.fileName} playCount={cards.length} warnings={script.warnings} />
 
       <TabsContent value="field" className="flex min-h-0 flex-col">
         <main className="flex min-h-0 flex-1 gap-6 px-4 py-3.5 sm:px-6">

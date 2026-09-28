@@ -263,100 +263,31 @@ export function parseSide(text: string): Side | null {
 /*                                   Parser                                   */
 /* -------------------------------------------------------------------------- */
 
-/** A parsed CSV row. `dynamicTyping` turns numeric cells into numbers. */
-export type CsvRow = Record<string, string | number | boolean | null | undefined>;
+/** One data row, keyed by normalized header name. Every value is trimmed text. */
+export type CsvRow = Record<string, string>;
 
 function cell(row: CsvRow, column: string | undefined): string {
-  if (!column) return "";
-  const v = row[column];
-  return v == null ? "" : String(v).trim();
-}
-
-function stringifyRow(row: CsvRow): Record<string, string> {
-  return Object.fromEntries(Object.entries(row).map(([k, v]) => [k, v == null ? "" : String(v)]));
-}
-
-const KNOWN_HEADERS = new Set(Object.values(COLUMN_ALIASES).flat());
-/** How far down the file to look for the header row. */
-const HEADER_SEARCH_LINES = 25;
-
-/**
- * Finds the real header row. Exports edited in Excel or Sheets often have a
- * title line ("Week 7 Breakdown") or an Excel `sep=,` line above the header.
- * PapaParse would read that line as a 1-column header and then report every
- * row as "Too many fields". Returns the text from the header row on, plus the
- * number of lines dropped above it.
- */
-export function locateHeaderRow(text: string): { body: string; skippedLines: number } {
-  const lines = text.replace(/^\uFEFF/, "").split(/\r\n|\n|\r/);
-  const limit = Math.min(lines.length, HEADER_SEARCH_LINES);
-  for (let i = 0; i < limit; i++) {
-    if (!lines[i].trim()) continue;
-    const fields = Papa.parse<string[]>(lines[i], { delimiter: "" }).data[0] ?? [];
-    const hits = fields.filter((f) => KNOWN_HEADERS.has(normalizeHeader(String(f)))).length;
-    if (hits >= 2) return { body: lines.slice(i).join("\n"), skippedLines: i };
-  }
-  return { body: text, skippedLines: 0 };
-}
-
-/** Turns one normalized CSV row into a card. Exposed for tests. */
-export function rowToCard(
-  row: CsvRow,
-  rowIndex: number,
-  columns: Partial<Record<HudlField, string>>,
-): HudlPlayCard {
-  const playNumberRaw = cell(row, columns.playNumber);
-  const parsedPlayNumber = Number.parseInt(playNumberRaw, 10);
-  const playNumber = Number.isFinite(parsedPlayNumber) ? parsedPlayNumber : rowIndex + 1;
-
-  const down = parseDown(cell(row, columns.down));
-  const { distance, isGoalToGo } = parseDistance(cell(row, columns.distance));
-  const yardLineLabel = cell(row, columns.yardLine);
-  const formation = cell(row, columns.formation);
-  const playCall = cell(row, columns.playCall);
-  const playType = cell(row, columns.playType);
-  const defFront = cell(row, columns.defFront);
-
-  const formationSide = parseSide(formation) ?? "right";
-
-  return {
-    id: `play-${playNumber}-${rowIndex}`,
-    playNumber,
-    rowIndex,
-    down,
-    distance,
-    isGoalToGo,
-    downDistance: formatDownDistance(down, distance, isGoalToGo),
-    yardLine: parseYardLine(yardLineLabel),
-    yardLineLabel,
-    hash: parseHash(cell(row, columns.hash)),
-    formation,
-    formationKey: classifyFormation(formation),
-    formationSide,
-    playCall,
-    playType,
-    concept: classifyConcept(playCall, playType),
-    playDirection: parseSide(playCall) ?? formationSide,
-    defFront,
-    frontKey: classifyFront(defFront),
-    raw: stringifyRow(row),
-  };
+  return column ? (row[column] ?? "").trim() : "";
 }
 
 /**
- * Normalizes characters that Excel, Google Sheets, and copy-paste from texts or
- * email put into hand-edited files:
+ * Pre-processes a raw upload before PapaParse sees it:
+ * - newlines: `\r\n` and `\r` become `\n`
  * - curly double quotes (“ ” „ ‟ ″) become straight `"`
  * - curly single quotes (‘ ’ ‚ ‛ ′) become straight `'`
- * - zero-width and non-breaking spaces become normal spaces
+ * - non-breaking spaces become normal spaces
+ * - BOMs, zero-width characters, and other non-printable control characters
+ *   are stripped (tabs and newlines are kept: tab is a valid delimiter)
  * Straightening quotes can leave a cell like `"Hot" Slant` with unbalanced
- * quoting, so `parseHudlCsvText` follows up with `repairCsvLine` when needed.
+ * quoting; `parseHudlCsvText` repairs that with `repairCsvLine` when needed.
  */
-export function cleanCsvText(rawText: string): string {
-  return rawText
+export function sanitizeCsvInput(raw: string): string {
+  return raw
+    .replace(/\r\n?/g, "\n")
     .replace(/[“”„‟″]/g, '"')
     .replace(/[‘’‚‛′]/g, "'")
-    .replace(/[​‌‍⁠   ]/g, " ");
+    .replace(/[   ]/g, " ")
+    .replace(/[﻿​-‍⁠\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/g, "");
 }
 
 function quoteField(field: string, delimiter: string): string {
@@ -407,28 +338,113 @@ export function repairCsvLine(line: string, delimiter: string): string {
   return fields.map((f) => quoteField(f, delimiter)).join(delimiter);
 }
 
-function parseCsvBody(body: string) {
-  return Papa.parse<CsvRow>(body, {
-    header: true,
+/** Parses sanitized text into raw rows (no header handling, no typing). */
+function parseRawRows(text: string) {
+  return Papa.parse<string[]>(text, {
+    header: false,
     // Auto-detect comma, tab, semicolon, or pipe (European Excel saves with ";").
     delimiter: "",
     quoteChar: '"',
     escapeChar: '"',
     skipEmptyLines: "greedy",
-    // Numeric cells become numbers; `cell()` turns everything back into trimmed text.
-    dynamicTyping: true,
-    // Trims and uppercases header keys ("  off form " → "OFF FORM"), and also strips a
-    // BOM and collapses inner whitespace/dots/underscores.
-    transformHeader: normalizeHeader,
-    // Trims spaces around commas before dynamicTyping sees the value.
-    transform: (value) => value.trim(),
   });
 }
 
-/** Parses Hudl breakdown CSV text synchronously. */
+const KNOWN_HEADERS = new Set(Object.values(COLUMN_ALIASES).flat());
+/** How many rows from the top to search for the header row. */
+const HEADER_SEARCH_ROWS = 25;
+
+/**
+ * Index of the header row: the first row with at least two known Hudl column
+ * names (`PLAY #`, `DN`, `OFF FORM`, `OFF PLAY`, `FORMATION`, …). Title lines
+ * and Excel `sep=,` lines above it are ignored. Returns -1 when none match.
+ */
+export function findHeaderRow(rows: string[][]): number {
+  const limit = Math.min(rows.length, HEADER_SEARCH_ROWS);
+  for (let i = 0; i < limit; i++) {
+    const hits = rows[i].filter((c) => KNOWN_HEADERS.has(normalizeHeader(c))).length;
+    if (hits >= 2) return i;
+  }
+  return -1;
+}
+
+/** Normalized, unique header keys; blank headers become `COLUMN <n>`. */
+function headerKeys(headerRow: string[]): string[] {
+  const seen = new Map<string, number>();
+  return headerRow.map((h, i) => {
+    const key = normalizeHeader(h) || `COLUMN ${i + 1}`;
+    const count = seen.get(key) ?? 0;
+    seen.set(key, count + 1);
+    return count === 0 ? key : `${key} (${count + 1})`;
+  });
+}
+
+/**
+ * Maps a raw row onto header keys by index. Short rows (missing trailing
+ * commas) read as blank cells; extra cells past the last header are ignored.
+ */
+export function rowToRecord(keys: string[], values: string[]): CsvRow {
+  const record: CsvRow = {};
+  keys.forEach((key, i) => {
+    record[key] = (values[i] ?? "").trim();
+  });
+  return record;
+}
+
+/** Turns one keyed CSV row into a card. Exposed for tests. */
+export function rowToCard(
+  row: CsvRow,
+  rowIndex: number,
+  columns: Partial<Record<HudlField, string>>,
+): HudlPlayCard {
+  const playNumberRaw = cell(row, columns.playNumber);
+  const parsedPlayNumber = Number.parseInt(playNumberRaw, 10);
+  const playNumber = Number.isFinite(parsedPlayNumber) ? parsedPlayNumber : rowIndex + 1;
+
+  const down = parseDown(cell(row, columns.down));
+  const { distance, isGoalToGo } = parseDistance(cell(row, columns.distance));
+  const yardLineLabel = cell(row, columns.yardLine);
+  const formation = cell(row, columns.formation);
+  const playCall = cell(row, columns.playCall);
+  const playType = cell(row, columns.playType);
+  const defFront = cell(row, columns.defFront);
+
+  const formationSide = parseSide(formation) ?? "right";
+
+  return {
+    id: `play-${playNumber}-${rowIndex}`,
+    playNumber,
+    rowIndex,
+    down,
+    distance,
+    isGoalToGo,
+    downDistance: formatDownDistance(down, distance, isGoalToGo),
+    yardLine: parseYardLine(yardLineLabel),
+    yardLineLabel,
+    hash: parseHash(cell(row, columns.hash)),
+    formation,
+    formationKey: classifyFormation(formation),
+    formationSide,
+    playCall,
+    playType,
+    concept: classifyConcept(playCall, playType),
+    playDirection: parseSide(playCall) ?? formationSide,
+    defFront,
+    frontKey: classifyFront(defFront),
+    raw: row,
+  };
+}
+
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
+/**
+ * Parses Hudl breakdown CSV text synchronously:
+ * sanitize → raw 2D rows → find the header row → map rows by column index.
+ * Never throws; problems come back as `warnings` and valid rows always load.
+ */
 export function parseHudlCsvText(text: string): HudlParseResult {
-  const { body, skippedLines } = locateHeaderRow(cleanCsvText(text));
-  let parsed = parseCsvBody(body);
+  const sanitized = sanitizeCsvInput(text);
+  let parsed = parseRawRows(sanitized);
   let repairedQuotes = false;
 
   // Stray or unbalanced quotes: PapaParse either warns (and keeps the row) or,
@@ -437,9 +453,9 @@ export function parseHudlCsvText(text: string): HudlParseResult {
   const quoteErrors = (p: typeof parsed) => p.errors.filter((e) => e.type === "Quotes").length;
   if (quoteErrors(parsed) > 0) {
     const delimiter = parsed.meta.delimiter || ",";
-    const repaired = parseCsvBody(
-      body
-        .split(/\r\n|\n|\r/)
+    const repaired = parseRawRows(
+      sanitized
+        .split("\n")
         .map((line) => repairCsvLine(line, delimiter))
         .join("\n"),
     );
@@ -449,67 +465,62 @@ export function parseHudlCsvText(text: string): HudlParseResult {
     }
   }
 
-  const headers = parsed.meta.fields ?? [];
-  const columns = mapColumns(headers);
+  const rows = parsed.data.filter((r) => Array.isArray(r));
+  const found = findHeaderRow(rows);
+  const headerIndex = Math.max(found, 0);
+  const keys = headerKeys(rows[headerIndex] ?? []);
+  const dataRows = rows.slice(headerIndex + 1);
+  const columns = mapColumns(keys);
+
   const warnings: string[] = [];
-  if (skippedLines > 0) {
-    warnings.push(
-      `Skipped ${skippedLines} line${skippedLines === 1 ? "" : "s"} above the header row (title or notes).`,
-    );
+  if (found > 0) {
+    warnings.push(`Skipped ${plural(found, "line")} above the header row (title or notes).`);
   }
   if (repairedQuotes) {
     warnings.push("Fixed stray quote marks in the file. Double-check play names that use quotes.");
   }
-
-  for (const error of parsed.errors.slice(0, 5)) {
-    // Row numbers from Papa are 0-based data rows; show 1-based spreadsheet rows.
-    const where = error.row != null ? ` (row ${error.row + 2 + skippedLines})` : "";
+  const remainingQuoteErrors = parsed.errors.filter((e) => e.type === "Quotes");
+  for (const error of remainingQuoteErrors.slice(0, 3)) {
+    const where = error.row != null ? ` (line ${error.row + 1})` : "";
     warnings.push(`${error.message}${where}`);
-  }
-  if (parsed.errors.length > 5) {
-    warnings.push(`…and ${parsed.errors.length - 5} more CSV issues.`);
   }
 
   const missingColumns = CORE_FIELDS.filter((field) => !columns[field]);
   if (!columns.formation && !columns.playCall && !columns.defFront) {
-    warnings.push(
-      "No formation, play, or front columns found. Is this a Hudl breakdown export?",
-    );
+    warnings.push("No formation, play, or front columns found. Is this a Hudl breakdown export?");
   }
 
-  // PapaParse errors above are warnings only: every row it returned is still
-  // read, and a row that can't be turned into a card is skipped, not fatal.
+  // Rows with none of these filled in carry nothing to put on a card.
+  const criticalColumns = [columns.playNumber, columns.formation, columns.playCall, columns.down];
   const cards: HudlPlayCard[] = [];
   let skipped = 0;
   let unreadable = 0;
-  parsed.data.forEach((row, rowIndex) => {
-    let card: HudlPlayCard;
+  dataRows.forEach((values, rowIndex) => {
     try {
-      card = rowToCard(row, rowIndex, columns);
+      const row = rowToRecord(keys, values);
+      const blank = criticalColumns.every((c) => !cell(row, c));
+      const card = rowToCard(row, rowIndex, columns);
+      const hasPlayData = Boolean(card.formation || card.playCall || card.defFront);
+      if (blank || !hasPlayData || cell(row, columns.odk).toUpperCase() === "K") {
+        skipped += 1;
+        return;
+      }
+      cards.push(card);
     } catch {
       unreadable += 1;
-      return;
     }
-    const odk = cell(row, columns.odk).toUpperCase();
-    const hasPlayData = Boolean(card.formation || card.playCall || card.defFront);
-    if (odk === "K" || !hasPlayData) {
-      skipped += 1;
-      return;
-    }
-    cards.push(card);
   });
 
   if (unreadable > 0) {
-    warnings.push(`Couldn't read ${unreadable} row${unreadable === 1 ? "" : "s"}; the rest loaded normally.`);
+    warnings.push(`Couldn't read ${plural(unreadable, "row")}; the rest loaded normally.`);
   }
-
   if (skipped > 0) {
     warnings.push(
-      `Skipped ${skipped} row${skipped === 1 ? "" : "s"} with no formation, play, or front (special teams or blank).`,
+      `Skipped ${plural(skipped, "row")} with no formation, play, or front (special teams or blank).`,
     );
   }
 
-  return { cards, columns, missingColumns, warnings, rowCount: parsed.data.length };
+  return { cards, columns, missingColumns, warnings, rowCount: dataRows.length };
 }
 
 /** Parses a Hudl breakdown CSV from a `File` (browser upload) or raw text. */

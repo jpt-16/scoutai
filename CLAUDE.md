@@ -58,8 +58,9 @@ src/
 
 1. `parseHudlCsv(file)` / `parseHudlCsvText(text)` in `src/lib/hudlParser.ts` returns
    `{ cards, columns, missingColumns, warnings, rowCount }`.
-2. The landing page shows that result in a dialog. **Open scout script** saves it with
-   `saveScript()` and routes to `/script`.
+2. If there's at least one card, the landing page saves it with `saveScript()` and routes to
+   `/script?loaded=1`, where `ImportNotice` shows the warnings. With zero cards it shows
+   the "No plays found" dialog instead.
 3. `/script` reads it back with `loadScript()`, filters it, and renders `<ScoutCard>`.
 4. `<ScoutCard>` calls `buildDiagram(card)` from `src/lib/formations.ts` and draws the SVG.
 
@@ -81,20 +82,23 @@ then matched against `COLUMN_ALIASES` in priority order:
 | Def front   | `DEF FRONT`, `FRONT`, `DEF ALIGN`, `DEF FORM`, `DEF FORMATION`      |
 | ODK         | `ODK`: rows tagged `K` are skipped                                  |
 
-The parser also handles hand-edited files. It auto-detects the delimiter (comma, tab, `;`,
-`|`), trims spaces around cells, and types numeric cells (`dynamicTyping`). `locateHeaderRow`
-skips title or `sep=,` lines above the header. Without that step, PapaParse reads the title
-as a 1-column header and reports "Too many fields" on every row.
+Parsing pipeline (`parseHudlCsvText`, never throws):
 
-Quotes: `cleanCsvText` straightens curly quotes and turns zero-width/non-breaking spaces into
-normal spaces before parsing. Straightened quotes can unbalance a cell (`"Hot" Slant Rt`),
-which makes PapaParse swallow the rest of the file. So when PapaParse reports quote
-errors, each line is re-quoted leniently with `repairCsvLine` and parsed again.
-(`relaxUnescapedQuotes` belongs to `csv-parse`, not PapaParse.) Parse errors are warnings:
-valid rows always load.
+1. `sanitizeCsvInput` normalizes newlines to `\n`, straightens curly quotes, turns
+   non-breaking spaces into spaces, and strips BOM/zero-width/control characters.
+2. PapaParse with `header: false` parses the text into raw rows. It auto-detects the
+   delimiter (comma, tab, `;`, `|`) and uses `skipEmptyLines: "greedy"`. If it reports
+   quote errors, `repairCsvLine` re-quotes each line leniently and the file is parsed again.
+   Straightened quotes like `"Hot" Slant Rt` would otherwise swallow the rest of the file.
+3. `findHeaderRow` picks the first row with ≥ 2 known Hudl headers, so title or
+   `sep=,` lines above it are skipped.
+4. `rowToRecord` maps each later row by column index. Short rows read as blanks and extra
+   cells are ignored. Keys and values are trimmed.
+5. Parse problems become `warnings`. Valid rows always load.
 
-Rows with no formation, play call, **and** front are dropped as special teams/blank rows,
-and the result carries a warning when that happens.
+Rows are dropped as blank or special teams when `PLAY #`, `DN`, `OFF FORM`, and `OFF PLAY` are
+all empty, when there's no formation, play call, or front to draw, or when ODK is `K`. The
+result carries a warning when that happens.
 
 Free-text tags are classified by keyword (`classifyFormation`, `classifyFront`,
 `classifyConcept`, `parseSide`). Add new keywords there and a test case in
@@ -124,8 +128,10 @@ and a label to `FORMATION_LABELS`, then run `npm test`. The overlap test covers 
    **breakdown data as CSV** (the menu is usually Export → Breakdown / Data → CSV; the
    exact wording varies by Hudl version).
 2. Open ScoutCard AI, drop the `.csv` on the upload box (or tap **Choose CSV file**).
-3. Check the dialog: it lists which Hudl columns were matched and any warnings. Then tap
-   **Open scout script**.
+3. If at least one play parses, the app opens the cards directly. Any notes about the file
+   (skipped title lines, fixed quotes, skipped rows) sit behind a dismissible notice. The
+   blocking dialog only appears when no plays could be read. It lists which Hudl columns
+   matched.
 4. On the field: swipe or use **PREVIOUS CARD / NEXT CARD** (arrow keys on a keyboard).
    Filter by down or formation. Switch to **Print Grid** for 2 or 4 cards per page and
    **Print / Save PDF**.

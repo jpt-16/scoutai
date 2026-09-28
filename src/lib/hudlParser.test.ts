@@ -5,7 +5,7 @@ import {
   classifyConcept,
   classifyFormation,
   classifyFront,
-  cleanCsvText,
+  sanitizeCsvInput,
   mapColumns,
   parseHash,
   parseHudlCsvText,
@@ -171,8 +171,10 @@ describe("parseHudlCsvText", () => {
     const second = "2,1,10,Spread,IZ,4-3";
     const plays = (csv: string) => parseHudlCsvText(csv).cards.map((c) => [c.playCall, c.defFront]);
 
-    it("cleanCsvText straightens curly quotes and normalizes odd spaces", () => {
-      expect(cleanCsvText("\u201CHot\u201D \u2018Rt\u2019\u00A0x\u200By")).toBe(`"Hot" 'Rt' x y`);
+    it("sanitizeCsvInput straightens quotes, normalizes newlines, strips invisibles", () => {
+      expect(sanitizeCsvInput("\uFEFF\u201CHot\u201D \u2018Rt\u2019\u00A0x\u200By\u0007\r\nz\rw\tv")).toBe(
+        `"Hot" 'Rt' xy\nz\nw\tv`,
+      );
     });
 
     it("keeps a curly-quoted play name without swallowing the rest of the file", () => {
@@ -209,6 +211,45 @@ describe("parseHudlCsvText", () => {
       ["a;\"q\" r;b", 'a;"""q"" r";b'],
     ])("repairCsvLine %s", (line, fixed) => {
       expect(repairCsvLine(line, line.includes(";") ? ";" : ",")).toBe(fixed);
+    });
+  });
+
+  describe("row shape fallbacks", () => {
+    const header = "PLAY #,DN,DIST,HASH,OFF FORM,OFF PLAY,DEF FRONT";
+
+    it("reads rows with missing trailing commas and extra cells", () => {
+      const csv = `${header}\n1,3,6,L,Trips Rt,Slant\n2,1,10,R,Spread,IZ,4-3,extra,cells\n`;
+      const result = parseHudlCsvText(csv);
+      expect(result.cards.map((c) => [c.playNumber, c.playCall, c.defFront])).toEqual([
+        [1, "Slant", ""],
+        [2, "IZ", "4-3"],
+      ]);
+      expect(result.warnings.filter((w) => /fields/i.test(w))).toEqual([]);
+    });
+
+    it("skips rows whose PLAY #, DN, OFF FORM, and OFF PLAY are all blank", () => {
+      const csv = `${header}\n1,1,10,L,Spread,IZ,4-3\n,,5,M,,,Bear\n ,  , , , , ,\n3,2,4,R,Pro,Power,5-2\n`;
+      const result = parseHudlCsvText(csv);
+      expect(result.cards.map((c) => c.playNumber)).toEqual([1, 3]);
+      // The all-whitespace row never reaches us: skipEmptyLines "greedy" drops it.
+      expect(result.warnings).toContain(
+        "Skipped 1 row with no formation, play, or front (special teams or blank).",
+      );
+    });
+
+    it("finds the header row by DOWN / FORMATION keywords below notes", () => {
+      const csv = "Scouting report,,\nOpponent: Central,,\nDOWN,FORMATION,PLAY CALL\n2,Trips Lt,Verts\n";
+      const result = parseHudlCsvText(csv);
+      expect(result.cards).toHaveLength(1);
+      expect(result.cards[0]).toMatchObject({ down: 2, formationKey: "trips", concept: "verticals" });
+      expect(result.warnings[0]).toBe("Skipped 2 lines above the header row (title or notes).");
+    });
+
+    it("never throws on junk input", () => {
+      for (const junk of ["", "\n\n", '"', "a,b\n\u0000\u0001", ",,,\n,,,"]) {
+        expect(() => parseHudlCsvText(junk)).not.toThrow();
+        expect(parseHudlCsvText(junk).cards).toEqual([]);
+      }
     });
   });
 

@@ -66,6 +66,13 @@ export default function UploadPage() {
     setError(null);
     try {
       const result = await parseHudlCsv(file);
+      if (result.cards.length > 0) {
+        // At least one usable play: go straight to the cards. Parse warnings
+        // are shown there as a dismissible notice, not a blocking dialog.
+        saveScript(file.name, result);
+        router.push("/script?loaded=1");
+        return;
+      }
       setReport({ fileName: file.name, result });
     } catch {
       setError(`Couldn't read "${file.name}". Try exporting it from Hudl again.`);
@@ -79,13 +86,6 @@ export default function UploadPage() {
     router.push("/script");
   };
 
-  const openReport = () => {
-    if (!report) return;
-    saveScript(report.fileName, report.result);
-    router.push("/script");
-  };
-
-  const hasCards = (report?.result.cards.length ?? 0) > 0;
 
   return (
     <div className="flex min-h-dvh flex-col">
@@ -145,9 +145,7 @@ export default function UploadPage() {
             <>
               <DialogHeader>
                 <DialogTitle className="font-display text-3xl font-bold">
-                  {hasCards
-                    ? `${report.result.cards.length} plays ready`
-                    : "No plays found"}
+                  No plays found
                 </DialogTitle>
                 <DialogDescription className="text-base">
                   {report.fileName} · {report.result.rowCount} rows read
@@ -193,14 +191,9 @@ export default function UploadPage() {
               )}
 
               <DialogFooter>
-                <Button size="lg" variant="outline" onClick={() => setReport(null)}>
-                  {hasCards ? "Cancel" : "Try another file"}
+                <Button size="lg" onClick={() => setReport(null)}>
+                  Try another file
                 </Button>
-                {hasCards && (
-                  <Button size="lg" onClick={openReport}>
-                    Open scout script
-                  </Button>
-                )}
               </DialogFooter>
             </>
           )}
