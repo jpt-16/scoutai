@@ -48,7 +48,7 @@ export default function RootLayout({
   );
 
   return (
-    <html lang="en">
+    <html lang="en" className="scroll-smooth">
       {/* Only the paid video feature uses Clerk — the free CSV path never
           needs a signed-in user, so ClerkProvider (which throws without a
           publishable key) is skipped entirely until one is configured. */}

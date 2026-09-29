@@ -69,6 +69,11 @@ const CARD_HEADER = (
   </>
 );
 
+interface VideoUploadCardProps {
+  /** Skip the NEW badge + heading — for when a wrapping section already introduces the feature. */
+  hideHeader?: boolean;
+}
+
 /**
  * A paid, per-coaching-staff feature — gated behind Clerk sign-in, an active
  * organization, and a subscription (see src/lib/entitlement.ts). Renders a
@@ -76,12 +81,12 @@ const CARD_HEADER = (
  * whole component would otherwise call Clerk hooks with no <ClerkProvider>
  * in the tree (see src/app/layout.tsx).
  */
-export function VideoUploadCard() {
+export function VideoUploadCard({ hideHeader }: VideoUploadCardProps) {
   if (!isClerkConfigured()) {
     return (
       <Card className="gap-3 rounded-2xl border-2 border-primary/70 bg-primary/[0.07] py-5">
         <CardContent className="flex flex-col gap-3 px-5">
-          {CARD_HEADER}
+          {!hideHeader && CARD_HEADER}
           <Button size="lg" className="w-fit" disabled>
             <Film aria-hidden="true" />
             AI film import coming soon
@@ -95,10 +100,10 @@ export function VideoUploadCard() {
     );
   }
 
-  return <VideoUploadCardInner />;
+  return <VideoUploadCardInner hideHeader={hideHeader} />;
 }
 
-function VideoUploadCardInner() {
+function VideoUploadCardInner({ hideHeader }: VideoUploadCardProps) {
   const router = useRouter();
   const clerk = useClerk();
   const account = useTeamAccount();
@@ -210,7 +215,7 @@ function VideoUploadCardInner() {
     <>
       <Card className="gap-3 rounded-2xl border-2 border-primary/70 bg-primary/[0.07] py-5">
         <CardContent className="flex flex-col gap-3 px-5">
-          {CARD_HEADER}
+          {!hideHeader && CARD_HEADER}
           <div className="flex flex-wrap items-center gap-4">
             <Button
               size="lg"
