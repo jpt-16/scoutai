@@ -11,6 +11,7 @@
  */
 
 import { auth, clerkClient } from "@clerk/nextjs/server";
+import { isAiGateDisabled } from "./featureFlags";
 
 export type EntitlementResult =
   | { ok: true; userId: string; teamId: string }
@@ -43,6 +44,12 @@ export function evaluateEntitlement(input: {
 }
 
 export async function requireEntitlement(): Promise<EntitlementResult> {
+  // Testing-only escape hatch — see src/lib/featureFlags.ts for the safety
+  // conditions (local-only in practice, a no-op on Vercel production).
+  if (isAiGateDisabled()) {
+    return { ok: true, userId: "test-bypass", teamId: "test-bypass" };
+  }
+
   const { userId, orgId } = await auth();
 
   if (!userId || !orgId) {

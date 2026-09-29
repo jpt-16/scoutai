@@ -409,6 +409,14 @@ there's still no separate database for this either.
 - `src/lib/useTeamAccount.ts`: a thin client hook over `useAuth()`/`useOrganization()` (Clerk keeps
   them reactive on its own — no manual refetch/refresh needed, unlike the Supabase version this
   replaced). Only call it from a component that's guaranteed to render inside `<ClerkProvider>`.
+- **Testing the video pipeline before Clerk/Stripe are trusted:** `NEXT_PUBLIC_SKIP_AI_GATE=true`
+  in `.env.local` (`src/lib/featureFlags.ts`'s `isAiGateDisabled()`) bypasses the whole sign-in +
+  team + subscription gate on both the client (`VideoUploadCard`'s testing-mode variant, no Clerk
+  hooks called) and the server (`requireEntitlement()` short-circuits to an always-entitled
+  result keyed `"test-bypass"`, which the rate limiter still buckets by). Only ever set this in
+  `.env.local` — `isAiGateDisabled()` also checks `NEXT_PUBLIC_VERCEL_ENV !== "production"`, so
+  even if the var leaks into a real deployment's env vars it's a no-op on Vercel's production
+  environment. Remove the env var once you trust the feature and want the real gate back.
 
 ## Conventions
 

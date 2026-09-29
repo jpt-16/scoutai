@@ -214,16 +214,26 @@ export default function UploadPage() {
   };
 
   return (
-    <div className="flex min-h-dvh flex-col">
-      <header className="flex h-[72px] shrink-0 items-center justify-between border-b px-6 lg:px-12">
-        <BrandMark />
-        <div className="flex items-center gap-5">
-          <p className="hidden items-center gap-2 text-[15px] font-medium text-muted-foreground md:flex">
-            <Smartphone className="size-[18px]" aria-hidden="true" />
-            Add to Home Screen to use offline on the field
-          </p>
-          <AccountMenu />
-        </div>
+    <div id="top" className="flex min-h-dvh flex-col">
+      <header className="sticky top-0 z-40 flex h-[72px] shrink-0 items-center justify-between border-b bg-background/95 px-6 backdrop-blur lg:px-12">
+        <a href="#top" className="shrink-0">
+          <BrandMark />
+        </a>
+        <nav className="hidden items-center gap-8 text-[15px] font-semibold md:flex">
+          <a href="#top" className="text-muted-foreground transition-colors hover:text-foreground">
+            Home
+          </a>
+          <a href="#features" className="text-muted-foreground transition-colors hover:text-foreground">
+            Features
+          </a>
+          <a href="#how-it-works" className="text-muted-foreground transition-colors hover:text-foreground">
+            How it works
+          </a>
+          <a href="#faq" className="text-muted-foreground transition-colors hover:text-foreground">
+            FAQ
+          </a>
+        </nav>
+        <AccountMenu />
       </header>
 
       <main className="flex flex-col">
@@ -276,6 +286,61 @@ export default function UploadPage() {
             <div className="flex flex-col gap-3">
               <p className="text-xs font-bold tracking-[0.14em] text-muted-foreground">LIVE PREVIEW</p>
               <ScoutCard card={PREVIEW_CARD} />
+            </div>
+          </div>
+        </section>
+
+        {/* AI game-film analysis */}
+        <section id="ai-film" className="scroll-mt-20 border-t bg-card/30 px-6 py-16 sm:py-20 lg:px-12 lg:py-24">
+          <div className="mx-auto max-w-6xl">
+            <div className="mx-auto max-w-2xl text-center">
+              <Badge className="mx-auto h-6 w-fit rounded-full bg-primary px-2.5 text-xs font-extrabold tracking-[0.08em] text-primary-foreground">
+                NEW
+              </Badge>
+              <h2 className="mt-3 font-display text-3xl leading-tight font-extrabold uppercase sm:text-4xl">
+                No breakdown yet? Use your game film
+              </h2>
+              <p className="mt-3 text-[17px] leading-relaxed text-muted-foreground">
+                Upload a short clip of one play and AI builds a first-pass scout card for you to
+                review — the same card, Print Grid, and iPad script a Hudl import gets.
+              </p>
+            </div>
+
+            <div className="mt-10 grid gap-4 sm:grid-cols-3">
+              <Card className="gap-2.5 rounded-xl py-5">
+                <CardContent className="flex flex-col gap-2.5 px-5">
+                  <Film className="size-6 text-primary" aria-hidden="true" />
+                  <span className="text-[15px] font-semibold">Upload one play&apos;s clip</span>
+                  <span className="text-sm leading-relaxed text-muted-foreground">
+                    A sideline or endzone angle, 10–20 seconds, uploaded straight to a private file.
+                  </span>
+                </CardContent>
+              </Card>
+              <Card className="gap-2.5 rounded-xl py-5">
+                <CardContent className="flex flex-col gap-2.5 px-5">
+                  <ScanEye className="size-6 text-primary" aria-hidden="true" />
+                  <span className="text-[15px] font-semibold">AI drafts the card</span>
+                  <span className="text-sm leading-relaxed text-muted-foreground">
+                    Each skill player&apos;s alignment and route path is detected and drawn automatically.
+                  </span>
+                </CardContent>
+              </Card>
+              <Card className="gap-2.5 rounded-xl py-5">
+                <CardContent className="flex flex-col gap-2.5 px-5">
+                  <MousePointerClick className="size-6 text-primary" aria-hidden="true" />
+                  <span className="text-[15px] font-semibold">You review and correct it</span>
+                  <span className="text-sm leading-relaxed text-muted-foreground">
+                    It&apos;s a first pass, not a measurement — drag any route&apos;s break point into
+                    shape before it&apos;s practice-ready.
+                  </span>
+                </CardContent>
+              </Card>
+            </div>
+
+            <div className="mt-10 flex justify-center">
+              <div className="w-full max-w-xl">
+                <VideoUploadCard hideHeader />
+              </div>
             </div>
           </div>
         </section>
@@ -411,89 +476,41 @@ export default function UploadPage() {
           </div>
         </section>
 
-        {/* AI game-film analysis */}
-        <section id="ai-film" className="scroll-mt-20 border-t bg-card/30 px-6 py-16 sm:py-20 lg:px-12 lg:py-24">
-          <div className="mx-auto max-w-6xl">
-            <div className="mx-auto max-w-2xl text-center">
-              <Badge className="mx-auto h-6 w-fit rounded-full bg-primary px-2.5 text-xs font-extrabold tracking-[0.08em] text-primary-foreground">
-                NEW
-              </Badge>
-              <h2 className="mt-3 font-display text-3xl leading-tight font-extrabold uppercase sm:text-4xl">
-                No breakdown yet? Use your game film
-              </h2>
-              <p className="mt-3 text-[17px] leading-relaxed text-muted-foreground">
-                Upload a short clip of one play and AI builds a first-pass scout card for you to
-                review — the same card, Print Grid, and iPad script a Hudl import gets.
-              </p>
-            </div>
-
-            <div className="mt-10 grid gap-4 sm:grid-cols-3">
-              <Card className="gap-2.5 rounded-xl py-5">
-                <CardContent className="flex flex-col gap-2.5 px-5">
-                  <Film className="size-6 text-primary" aria-hidden="true" />
-                  <span className="text-[15px] font-semibold">Upload one play&apos;s clip</span>
-                  <span className="text-sm leading-relaxed text-muted-foreground">
-                    A sideline or endzone angle, 10–20 seconds, uploaded straight to a private file.
-                  </span>
-                </CardContent>
-              </Card>
-              <Card className="gap-2.5 rounded-xl py-5">
-                <CardContent className="flex flex-col gap-2.5 px-5">
-                  <ScanEye className="size-6 text-primary" aria-hidden="true" />
-                  <span className="text-[15px] font-semibold">AI drafts the card</span>
-                  <span className="text-sm leading-relaxed text-muted-foreground">
-                    Each skill player&apos;s alignment and route path is detected and drawn automatically.
-                  </span>
-                </CardContent>
-              </Card>
-              <Card className="gap-2.5 rounded-xl py-5">
-                <CardContent className="flex flex-col gap-2.5 px-5">
-                  <MousePointerClick className="size-6 text-primary" aria-hidden="true" />
-                  <span className="text-[15px] font-semibold">You review and correct it</span>
-                  <span className="text-sm leading-relaxed text-muted-foreground">
-                    It&apos;s a first pass, not a measurement — drag any route&apos;s break point into
-                    shape before it&apos;s practice-ready.
-                  </span>
-                </CardContent>
-              </Card>
-            </div>
-
-            <div className="mt-10 flex justify-center">
-              <div className="w-full max-w-xl">
-                <VideoUploadCard hideHeader />
-              </div>
-            </div>
-          </div>
-        </section>
-
         {/* 4-step flow */}
-        <section className="border-t px-6 py-16 sm:py-20 lg:px-12 lg:py-24">
+        <section
+          id="how-it-works"
+          className="scroll-mt-20 border-t bg-card/30 px-6 py-16 sm:py-20 lg:px-12 lg:py-28"
+        >
           <div className="mx-auto max-w-6xl">
             <div className="mx-auto max-w-2xl text-center">
               <p className="text-sm font-bold tracking-[0.18em] text-primary">HOW IT WORKS</p>
-              <h2 className="mt-2 font-display text-3xl leading-tight font-extrabold uppercase sm:text-4xl">
+              <h2 className="mt-2 font-display text-4xl leading-tight font-extrabold uppercase sm:text-5xl">
                 Upload. Generate. Review. Practice.
               </h2>
+              <p className="mt-3 text-[17px] leading-relaxed text-muted-foreground">
+                Four steps from a Hudl breakdown — or a game clip — to a script your whole staff can run.
+              </p>
             </div>
 
-            <ol className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <ol className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
               {FOUR_STEPS.map(({ icon: Icon, title, detail }, i) => (
                 <li key={title}>
-                  <Card className="h-full gap-3 rounded-2xl py-6 transition-transform hover:-translate-y-1">
-                    <CardContent className="flex flex-col gap-3 px-6">
-                      <div className="flex items-center gap-3">
-                        <span
-                          className="flex size-10 shrink-0 items-center justify-center rounded-full border-2 border-primary text-primary"
-                          aria-hidden="true"
-                        >
-                          <Icon className="size-5" />
-                        </span>
-                        <span className="font-display text-2xl font-extrabold text-primary">
-                          {String(i + 1).padStart(2, "0")}
-                        </span>
-                      </div>
-                      <span className="font-display text-xl font-extrabold uppercase">{title}</span>
-                      <span className="text-sm leading-relaxed text-muted-foreground">{detail}</span>
+                  <Card className="h-full gap-4 overflow-hidden rounded-2xl border-2 py-8 transition-all hover:-translate-y-1.5 hover:border-primary/60">
+                    <CardContent className="flex flex-col gap-3 px-7">
+                      <span
+                        className="font-display text-7xl leading-none font-extrabold text-primary/15"
+                        aria-hidden="true"
+                      >
+                        {String(i + 1).padStart(2, "0")}
+                      </span>
+                      <span
+                        className="-mt-9 flex size-14 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground"
+                        aria-hidden="true"
+                      >
+                        <Icon className="size-7" />
+                      </span>
+                      <span className="mt-1 font-display text-2xl font-extrabold uppercase">{title}</span>
+                      <span className="text-[15px] leading-relaxed text-muted-foreground">{detail}</span>
                     </CardContent>
                   </Card>
                 </li>
@@ -503,7 +520,7 @@ export default function UploadPage() {
         </section>
 
         {/* Built for football staffs */}
-        <section className="border-t bg-card/30 px-6 py-16 sm:py-20 lg:px-12 lg:py-24">
+        <section id="features" className="scroll-mt-20 border-t px-6 py-16 sm:py-20 lg:px-12 lg:py-24">
           <div className="mx-auto max-w-6xl">
             <div className="mx-auto max-w-2xl text-center">
               <p className="text-sm font-bold tracking-[0.18em] text-primary">BUILT FOR FOOTBALL STAFFS</p>
@@ -535,7 +552,7 @@ export default function UploadPage() {
         </section>
 
         {/* FAQ */}
-        <section className="border-t px-6 py-16 sm:py-20 lg:px-12 lg:py-24">
+        <section id="faq" className="scroll-mt-20 border-t px-6 py-16 sm:py-20 lg:px-12 lg:py-24">
           <div className="mx-auto max-w-3xl">
             <div className="text-center">
               <p className="text-sm font-bold tracking-[0.18em] text-primary">FAQ</p>

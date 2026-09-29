@@ -16,6 +16,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { isClerkConfigured } from "@/lib/clerkConfig";
+import { isAiGateDisabled } from "@/lib/featureFlags";
 import { storeScript } from "@/lib/scriptStore";
 import { useTeamAccount } from "@/lib/useTeamAccount";
 import { buildCardFromDetection, type DetectedPlay } from "@/lib/videoImport";
@@ -79,9 +80,15 @@ interface VideoUploadCardProps {
  * organization, and a subscription (see src/lib/entitlement.ts). Renders a
  * static "coming soon" version when Clerk isn't configured yet, since this
  * whole component would otherwise call Clerk hooks with no <ClerkProvider>
- * in the tree (see src/app/layout.tsx).
+ * in the tree (see src/app/layout.tsx). `isAiGateDisabled()` — a local-only
+ * testing flag, see src/lib/featureFlags.ts — takes priority over both, so
+ * the upload/analysis pipeline can be tried without Clerk configured at all.
  */
 export function VideoUploadCard({ hideHeader }: VideoUploadCardProps) {
+  if (isAiGateDisabled()) {
+    return <VideoUploadCardTesting hideHeader={hideHeader} />;
+  }
+
   if (!isClerkConfigured()) {
     return (
       <Card className="gap-3 rounded-2xl border-2 border-primary/70 bg-primary/[0.07] py-5">
@@ -103,72 +110,20 @@ export function VideoUploadCard({ hideHeader }: VideoUploadCardProps) {
   return <VideoUploadCardInner hideHeader={hideHeader} />;
 }
 
-function VideoUploadCardInner({ hideHeader }: VideoUploadCardProps) {
+/**
+ * Upload a game clip straight to blob storage, send its URL to
+ * `/api/parse-video` for AI route detection, and build a card from what
+ * comes back. This is a rough, unverified detection meant to be corrected
+ * on the card afterward — see `coordinateMapper.ts`'s doc comment. Shared by
+ * both the real (Clerk-gated) and testing-mode cards, neither of which
+ * touches Clerk from in here.
+ */
+function useVideoUpload() {
   const router = useRouter();
-  const clerk = useClerk();
-  const account = useTeamAccount();
   const [videoBusy, setVideoBusy] = useState(false);
   const [videoError, setVideoError] = useState<string | null>(null);
-  const [howItWorksOpen, setHowItWorksOpen] = useState(false);
   const videoInput = useRef<HTMLInputElement>(null);
 
-  const handleSubscribe = async () => {
-    setVideoBusy(true);
-    setVideoError(null);
-    try {
-      const res = await fetch("/api/stripe/checkout", { method: "POST" });
-      const payload = await res.json();
-      if (!res.ok || !payload.url) {
-        setVideoError(payload.error ?? "Couldn't start checkout.");
-        setVideoBusy(false);
-        return;
-      }
-      window.location.href = payload.url;
-    } catch {
-      setVideoError("Couldn't start checkout. Try again.");
-      setVideoBusy(false);
-    }
-  };
-
-  const handleUploadClick = () => {
-    if (account.loading) return;
-    if (!account.userId) {
-      clerk.openSignIn();
-      return;
-    }
-    if (!account.team) {
-      clerk.openCreateOrganization();
-      return;
-    }
-    if (!account.entitled) {
-      void handleSubscribe();
-      return;
-    }
-    videoInput.current?.click();
-  };
-
-  const uploadButtonLabel = account.loading
-    ? "Loading…"
-    : videoBusy
-      ? !account.userId || !account.team
-        ? "Working…"
-        : !account.entitled
-          ? "Redirecting to checkout…"
-          : "Reading the clip…"
-      : !account.userId
-        ? "Sign in to upload film"
-        : !account.team
-          ? "Create a team to continue"
-          : !account.entitled
-            ? "Subscribe to unlock AI film import"
-            : "Upload game film";
-
-  /**
-   * Upload a game clip straight to blob storage, send its URL to
-   * `/api/parse-video` for AI route detection, and build a card from what
-   * comes back. This is a rough, unverified detection meant to be corrected
-   * on the card afterward — see `coordinateMapper.ts`'s doc comment.
-   */
   const handleVideoFile = async (file: File) => {
     setVideoBusy(true);
     setVideoError(null);
@@ -211,6 +166,174 @@ function VideoUploadCardInner({ hideHeader }: VideoUploadCardProps) {
     }
   };
 
+  return { videoBusy, videoError, videoInput, handleVideoFile };
+}
+
+function HowItWorksDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-xl">
+        <DialogHeader>
+          <DialogTitle className="font-display text-3xl font-bold">How AI video import works</DialogTitle>
+          <DialogDescription className="text-base">
+            Four steps from a game clip to a card you can adjust and print.
+          </DialogDescription>
+        </DialogHeader>
+
+        <ol className="flex flex-col gap-4">
+          {VIDEO_STEPS.map(({ icon: Icon, title, detail }, i) => (
+            <li key={title} className="flex gap-3.5">
+              <span
+                className="flex size-9 shrink-0 items-center justify-center rounded-full border-2 border-primary text-primary"
+                aria-hidden="true"
+              >
+                <Icon className="size-[18px]" />
+              </span>
+              <div className="flex flex-col gap-0.5 pt-1">
+                <span className="font-display text-lg leading-none font-extrabold uppercase">
+                  {String(i + 1)}. {title}
+                </span>
+                <span className="text-sm leading-relaxed text-muted-foreground">{detail}</span>
+              </div>
+            </li>
+          ))}
+        </ol>
+
+        <p className="flex items-start gap-2 rounded-lg border bg-card p-3 text-sm leading-relaxed">
+          <AlertTriangle className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden="true" />
+          Unlike the CSV importer above, your clip does leave the device — it&apos;s sent to an AI
+          service for analysis. Don&apos;t upload film you&apos;re not allowed to share off-device.
+        </p>
+        <p className="flex items-start gap-2 rounded-lg border bg-card p-3 text-sm leading-relaxed">
+          <Lock className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden="true" />
+          This is a paid feature, billed per coaching staff. Sign in, create (or join) your
+          staff&apos;s team, and subscribe once — every coach on that team then gets AI film import.
+          The CSV importer above stays free with no sign-in, always.
+        </p>
+
+        <DialogFooter>
+          <Button size="lg" onClick={() => onOpenChange(false)}>
+            Got it
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/**
+ * Testing-only variant — no Clerk hooks, no sign-in/team/subscribe gate.
+ * Only rendered when `isAiGateDisabled()` is true (see src/lib/featureFlags.ts),
+ * which is itself a no-op outside local dev/preview.
+ */
+function VideoUploadCardTesting({ hideHeader }: VideoUploadCardProps) {
+  const { videoBusy, videoError, videoInput, handleVideoFile } = useVideoUpload();
+  const [howItWorksOpen, setHowItWorksOpen] = useState(false);
+
+  return (
+    <>
+      <Card className="gap-3 rounded-2xl border-2 border-primary/70 bg-primary/[0.07] py-5">
+        <CardContent className="flex flex-col gap-3 px-5">
+          {!hideHeader && CARD_HEADER}
+          <p className="w-fit rounded-full bg-destructive/20 px-2.5 py-1 text-xs font-extrabold tracking-[0.08em] text-destructive">
+            TESTING MODE — SIGN-IN DISABLED
+          </p>
+          <div className="flex flex-wrap items-center gap-4">
+            <Button
+              size="lg"
+              className="w-fit"
+              disabled={videoBusy}
+              onClick={() => videoInput.current?.click()}
+            >
+              <Film aria-hidden="true" />
+              {videoBusy ? "Reading the clip…" : "Upload game film"}
+            </Button>
+            <button
+              type="button"
+              onClick={() => setHowItWorksOpen(true)}
+              className="text-sm font-bold text-primary underline-offset-4 hover:underline focus-visible:underline focus-visible:outline-none"
+            >
+              How does this work?
+            </button>
+          </div>
+          <p className="max-w-[540px] text-sm text-muted-foreground">
+            AI-detected routes are a rough first pass — this clip is sent to a vision model for
+            analysis, unlike the CSV above. You&apos;ll drag each route into shape on the card.
+          </p>
+          {videoError && <p className="text-sm font-semibold text-destructive">{videoError}</p>}
+          <input
+            ref={videoInput}
+            type="file"
+            accept="video/mp4,video/quicktime,video/x-m4v"
+            className="sr-only"
+            aria-label="Upload a game clip"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              e.target.value = "";
+              if (file) void handleVideoFile(file);
+            }}
+          />
+        </CardContent>
+      </Card>
+
+      <HowItWorksDialog open={howItWorksOpen} onOpenChange={setHowItWorksOpen} />
+    </>
+  );
+}
+
+function VideoUploadCardInner({ hideHeader }: VideoUploadCardProps) {
+  const clerk = useClerk();
+  const account = useTeamAccount();
+  const { videoBusy, videoError, videoInput, handleVideoFile } = useVideoUpload();
+  const [howItWorksOpen, setHowItWorksOpen] = useState(false);
+  const [subscribing, setSubscribing] = useState(false);
+
+  const handleSubscribe = async () => {
+    setSubscribing(true);
+    try {
+      const res = await fetch("/api/stripe/checkout", { method: "POST" });
+      const payload = await res.json();
+      if (res.ok && payload.url) {
+        window.location.href = payload.url;
+        return;
+      }
+    } catch {
+      // Fall through — the button re-enables and label reverts to "not entitled."
+    }
+    setSubscribing(false);
+  };
+
+  const handleUploadClick = () => {
+    if (account.loading) return;
+    if (!account.userId) {
+      clerk.openSignIn();
+      return;
+    }
+    if (!account.team) {
+      clerk.openCreateOrganization();
+      return;
+    }
+    if (!account.entitled) {
+      void handleSubscribe();
+      return;
+    }
+    videoInput.current?.click();
+  };
+
+  const uploadButtonLabel = account.loading
+    ? "Loading…"
+    : subscribing
+      ? "Redirecting to checkout…"
+      : videoBusy
+        ? "Reading the clip…"
+        : !account.userId
+          ? "Sign in to upload film"
+          : !account.team
+            ? "Create a team to continue"
+            : !account.entitled
+              ? "Subscribe to unlock AI film import"
+              : "Upload game film";
+
   return (
     <>
       <Card className="gap-3 rounded-2xl border-2 border-primary/70 bg-primary/[0.07] py-5">
@@ -220,7 +343,7 @@ function VideoUploadCardInner({ hideHeader }: VideoUploadCardProps) {
             <Button
               size="lg"
               className="w-fit"
-              disabled={videoBusy || account.loading}
+              disabled={videoBusy || subscribing || account.loading}
               onClick={handleUploadClick}
             >
               <Film aria-hidden="true" />
@@ -256,56 +379,7 @@ function VideoUploadCardInner({ hideHeader }: VideoUploadCardProps) {
         </CardContent>
       </Card>
 
-      <Dialog open={howItWorksOpen} onOpenChange={setHowItWorksOpen}>
-        <DialogContent className="sm:max-w-xl">
-          <DialogHeader>
-            <DialogTitle className="font-display text-3xl font-bold">
-              How AI video import works
-            </DialogTitle>
-            <DialogDescription className="text-base">
-              Four steps from a game clip to a card you can adjust and print.
-            </DialogDescription>
-          </DialogHeader>
-
-          <ol className="flex flex-col gap-4">
-            {VIDEO_STEPS.map(({ icon: Icon, title, detail }, i) => (
-              <li key={title} className="flex gap-3.5">
-                <span
-                  className="flex size-9 shrink-0 items-center justify-center rounded-full border-2 border-primary text-primary"
-                  aria-hidden="true"
-                >
-                  <Icon className="size-[18px]" />
-                </span>
-                <div className="flex flex-col gap-0.5 pt-1">
-                  <span className="font-display text-lg leading-none font-extrabold uppercase">
-                    {String(i + 1)}. {title}
-                  </span>
-                  <span className="text-sm leading-relaxed text-muted-foreground">{detail}</span>
-                </div>
-              </li>
-            ))}
-          </ol>
-
-          <p className="flex items-start gap-2 rounded-lg border bg-card p-3 text-sm leading-relaxed">
-            <AlertTriangle className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden="true" />
-            Unlike the CSV importer above, your clip does leave the device — it&apos;s sent to an
-            AI service for analysis. Don&apos;t upload film you&apos;re not allowed to share
-            off-device.
-          </p>
-          <p className="flex items-start gap-2 rounded-lg border bg-card p-3 text-sm leading-relaxed">
-            <Lock className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden="true" />
-            This is a paid feature, billed per coaching staff. Sign in, create (or join) your
-            staff&apos;s team, and subscribe once — every coach on that team then gets AI film
-            import. The CSV importer above stays free with no sign-in, always.
-          </p>
-
-          <DialogFooter>
-            <Button size="lg" onClick={() => setHowItWorksOpen(false)}>
-              Got it
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <HowItWorksDialog open={howItWorksOpen} onOpenChange={setHowItWorksOpen} />
     </>
   );
 }
