@@ -444,6 +444,7 @@ export default function UploadPage() {
                 </SectionHeading>
                 <ul className="flex flex-col gap-3">
                   {[
+                    "Runs off your playsheet: Scout D follows your calls, period by period",
                     "Works offline from the Home Screen",
                     "Filter by down, formation, or 7v7 / Team",
                     "Print Grid: 2 or 4 cards a page",

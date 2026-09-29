@@ -38,7 +38,9 @@ src/
     layout.tsx             Fonts, metadata (manifest, apple web app), SW registration
     globals.css            Theme tokens (dark field palette) + print rules
     page.tsx               Upload landing: dropzone, demo button, parse-report dialog
-    script/page.tsx        iPad reader: Scout O/D + All/7v7/Team toggles, filters, swiper, Print Grid
+    script/page.tsx        iPad reader: Scout O/D + All/7v7/Team toggles, filters, swiper, Print Grid;
+                           practice mode (?practice=<day>&period=<n>) runs a day's playsheet
+    practice/page.tsx      Practice playsheet editor: days → periods (7v7/Team, our O or our D) → calls
   components/
     ScoutCard.tsx          PlayIQ-style card: title header, white-field SVG, assignment table
     PrintGrid.tsx          Letter-size sheets, 2-up portrait / 4-up landscape, window.print()
@@ -56,6 +58,7 @@ src/
     importFilms.ts         Parses several CSVs (one per film) into one script
     demoScript.ts          MOCK_HUDL_CSV: 5-play sample used by the "Demo Script" button
     scriptStore.ts         Persists the loaded script in localStorage (offline on the field)
+    practicePlan.ts        Practice playsheet: line parser, opponent looks, rep → Scout D card
     hudlParser.test.ts     Vitest suite
 ```
 
@@ -302,6 +305,41 @@ Pencil or a finger. There are four colors, plus **Undo** and **Clear** (tap twic
 stored in SVG viewBox coordinates in `card.drawings.offense` / `.defense`, so Scout O and
 Scout D each have their own layer. They print and survive reloads. Swiping and Adjust X's are
 off while drawing. `ScoutCard`'s `ink` prop enables the overlay.
+
+## Practice playsheet (`/practice`, `src/lib/practicePlan.ts`)
+
+Staffs already run practice off a playsheet: each period (7v7 or team) lists the plays they'll
+run, in order. The app follows that sheet instead of asking them to change it. **Playsheet** on
+`/script` opens the editor; a plan is days (Mon, Tue… or just today) → periods, saved in
+localStorage (`scoutcard:practice:v1`), never uploaded.
+
+Each period says which side is ours, and the scout team is the converse:
+
+- **Our O → Scout D.** The offensive coach reads calls off his playsheet, so the coach pastes
+  that period's calls, one per line, exactly as the sheet has them (`parsePlaysheetLine`). Rows
+  copied from Excel/Sheets are tab-separated: a leading rep-number cell is dropped and a cell
+  that's only `L`/`M`/`R` is the hash. Typed lines take `1.` / `3)` rep numbers, `LH`/`RH`/`(M)`/
+  `left hash`, and `vs 3-4 C1` to call a look. A bare leading number with no punctuation stays
+  in the call ("24 DIVE"). Every call becomes a Scout D card (`periodRepCards`): our call is the
+  formation and play call, drawn against a look from the opponent's film.
+  - **Looks** (`opponentLooks`): the opponent's front + coverage pairs, from ODK `D` rows when the
+    breakdown tags ODK, else every row with a front/coverage (like normal Scout D cards).
+  - `assignLooks` matches each rep to what they showed against that same formation (else their
+    overall mix) and spreads reps in proportion (smooth weighted round-robin, deterministic), so
+    a 60/40 defense gets 6 and 4 of 10 reps, mixed in. A look written on the line always wins.
+    The editor's per-rep dropdown rewrites the line's `vs …` (`setLineLook`), so the pasted text
+    stays the single source of truth.
+  - The staff's own formation names ("REX") that the classifier doesn't know get a one-time
+    "draw it as" pick, stored in `formationAliases` by the call's first word.
+- **Our D → Scout O.** The defensive coach calls his own defense, so there's no list: Scout O
+  runs the opponent's plays for that period type as usual (`periodScoutOCards`, which also drops
+  ODK `D` snaps).
+
+`/script?practice=<dayId>&period=<n>` runs it: the period chips replace the filters, unit and
+mode come from the period, the cards keep playsheet order, and PREVIOUS/NEXT roll over into the
+adjacent period. Rep cards (`id` starts `rep-`, `isRepCard`) aren't in the saved script, so Edit
+play / Draw / Adjust X's are off for them and they show no tendency badges. Print Grid prints the
+current period.
 
 ## Offline / iPad install
 

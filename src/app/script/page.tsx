@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import {
   ChevronLeft,
   ChevronRight,
+  ClipboardList,
   FilePlus2,
   Grid2x2,
   Move,
@@ -35,6 +36,14 @@ import {
   type InkStroke,
 } from "@/lib/hudlParser";
 import { importFilms } from "@/lib/importFilms";
+import {
+  isRepCard,
+  loadPlan,
+  periodRepCards,
+  periodScoutOCards,
+  type PracticeDay,
+  type PracticePlan,
+} from "@/lib/practicePlan";
 import { loadScript, saveScript, storeScript, type StoredScript } from "@/lib/scriptStore";
 import { cn } from "@/lib/utils";
 
@@ -84,8 +93,15 @@ export default function ScriptPage() {
   // undefined while reading localStorage, null when nothing is loaded.
   const [script, setScript] = useState<StoredScript | null | undefined>(undefined);
   const [view, setView] = useState<View>("field");
-  const [mode, setMode] = useState<Mode>("all");
-  const [unit, setUnit] = useState<ScoutUnit>("offense");
+  const [modeChoice, setMode] = useState<Mode>("all");
+  const [unitChoice, setUnit] = useState<ScoutUnit>("offense");
+  // Practice mode (/script?practice=<day>&period=<n>): the day's playsheet
+  // decides the unit, period type and cards instead of the toggles.
+  const [practice, setPractice] = useState<{
+    plan: PracticePlan;
+    day: PracticeDay;
+  } | null>(null);
+  const [periodIndex, setPeriodIndex] = useState(0);
   const [down, setDown] = useState<DownFilter>("all");
   const [formation, setFormation] = useState<FormationFilter>("all");
   const [film, setFilm] = useState<string>("all");
@@ -106,25 +122,55 @@ export default function ScriptPage() {
 
   useEffect(() => {
     setScript(loadScript());
+    const params = new URLSearchParams(window.location.search);
+    const dayId = params.get("practice");
+    if (!dayId) return;
+    const plan = loadPlan();
+    const day = plan.days.find((d) => d.id === dayId);
+    if (!day || day.periods.length === 0) return;
+    setPractice({ plan, day });
+    const at = Number.parseInt(params.get("period") ?? "0", 10);
+    setPeriodIndex(Number.isFinite(at) ? Math.min(Math.max(at, 0), day.periods.length - 1) : 0);
   }, []);
 
   const cards = useMemo(() => script?.cards ?? [], [script]);
+  const practicePeriod = practice?.day.periods[periodIndex];
+  // Our offense's period is the scout defense's; our defense's is the scout offense's.
+  const unit: ScoutUnit = practicePeriod
+    ? practicePeriod.side === "offense"
+      ? "defense"
+      : "offense"
+    : unitChoice;
+  const mode: Mode = practicePeriod ? practicePeriod.kind : modeChoice;
+  const periodCards = useMemo(() => {
+    if (!practice) return [];
+    return practice.day.periods.map((p) =>
+      p.side === "offense"
+        ? periodRepCards(p, cards, practice.plan.formationAliases)
+        : periodScoutOCards(p, cards),
+    );
+  }, [practice, cards]);
   // Whole-script tendencies, not the currently filtered view -- "how often
   // does this team run Trips" means the whole game, not just this filter.
   const tendencies = useMemo(() => computeTendencies(cards), [cards]);
   const multiFilm = (script?.films.length ?? 0) > 1;
   const modeCards = useMemo(
-    () => cards.filter((c) => inPeriod(c, mode, unit) && (film === "all" || c.source === film)),
-    [cards, mode, unit, film],
+    () =>
+      practicePeriod
+        ? (periodCards[periodIndex] ?? [])
+        : cards.filter((c) => inPeriod(c, mode, unit) && (film === "all" || c.source === film)),
+    [cards, mode, unit, film, practicePeriod, periodCards, periodIndex],
   );
   const filtered = useMemo(
     () =>
-      modeCards.filter(
-        (c) =>
-          (down === "all" || c.down === down) &&
-          (formation === "all" || c.formationKey === formation),
-      ),
-    [modeCards, down, formation],
+      practicePeriod
+        ? modeCards
+        : modeCards.filter(
+            (c) =>
+              (down === "all" || c.down === down) &&
+              (formation === "all" || c.formationKey === formation),
+          ),
+    [modeCards, down, formation, practicePeriod],
   );
   const cardMode = mode === "7v7" ? "7v7" : "team";
 
@@ -162,15 +208,36 @@ export default function ScriptPage() {
   const current: HudlPlayCard | undefined = filtered[position];
   const canPrev = position > 0;
   const canNext = position < filtered.length - 1;
+  const periodCount = practice?.day.periods.length ?? 0;
+  const hasPrevPeriod = Boolean(practicePeriod) && periodIndex > 0;
+  const hasNextPeriod = Boolean(practicePeriod) && periodIndex < periodCount - 1;
+  // Playsheet cards aren't in the saved script, so there's nothing to edit or draw on.
+  const editable = Boolean(current) && !isRepCard(current!);
 
-  const prev = useCallback(
-    () => setIndex((i) => Math.max(0, Math.min(i, filtered.length - 1) - 1)),
-    [filtered.length],
+  const goToPeriod = useCallback(
+    (at: number, toEnd = false) => {
+      if (!practice) return;
+      setPeriodIndex(at);
+      setIndex(toEnd ? Math.max((periodCards[at]?.length ?? 1) - 1, 0) : 0);
+      setDrawing(false);
+      setAdjusting(false);
+      const q = new URLSearchParams({
+        practice: practice.day.id,
+        period: String(at),
+      });
+      window.history.replaceState(null, "", `/script?${q}`);
+    },
+    [practice, periodCards],
   );
-  const next = useCallback(
-    () => setIndex((i) => Math.min(filtered.length - 1, Math.min(i, filtered.length - 1) + 1)),
-    [filtered.length],
-  );
+
+  const prev = useCallback(() => {
+    if (!canPrev && hasPrevPeriod) return goToPeriod(periodIndex - 1, true);
+    setIndex((i) => Math.max(0, Math.min(i, filtered.length - 1) - 1));
+  }, [filtered.length, canPrev, hasPrevPeriod, goToPeriod, periodIndex]);
+  const next = useCallback(() => {
+    if (!canNext && hasNextPeriod) return goToPeriod(periodIndex + 1);
+    setIndex((i) => Math.min(filtered.length - 1, Math.min(i, filtered.length - 1) + 1));
+  }, [filtered.length, canNext, hasNextPeriod, goToPeriod, periodIndex]);
 
   useEffect(() => {
     if (view !== "field") return;
@@ -289,83 +356,98 @@ export default function ScriptPage() {
     >
       <header className="no-print flex h-16 shrink-0 items-center gap-4 border-b px-4 sm:px-6">
         <Button asChild variant="outline" size="icon" className="border">
-          <Link href="/" aria-label="Back to upload">
+          <Link
+            href={practice ? `/practice?day=${practice.day.id}` : "/"}
+            aria-label={practice ? "Back to the playsheet" : "Back to upload"}
+          >
             <ChevronLeft className="size-5" />
           </Link>
         </Button>
         <div className="flex min-w-0 flex-1 flex-col">
-          <span className="text-xs font-bold tracking-[0.14em] text-primary">SCOUT SCRIPT</span>
+          <span className="text-xs font-bold tracking-[0.14em] text-primary">
+            {practice ? `PRACTICE · ${practice.day.name.toUpperCase()}` : "SCOUT SCRIPT"}
+          </span>
           <span className="font-display truncate text-2xl leading-[1.05] font-bold">
-            {script.fileName} · {cards.length} plays
+            {practicePeriod
+              ? `${practicePeriod.name} · ${practicePeriod.kind === "7v7" ? "7v7" : "Team"} · ${
+                  unit === "defense" ? "Scout D" : "Scout O"
+                }`
+              : `${script.fileName} · ${cards.length} plays`}
           </span>
         </div>
-        <div
-          role="group"
-          aria-label="Scout team"
-          className="flex shrink-0 rounded-xl border bg-secondary p-1"
-        >
-          {UNITS.map((u) => {
-            const selected = unit === u.value;
-            return (
-              <button
-                key={u.value}
-                type="button"
-                aria-pressed={selected}
-                onClick={() => {
-                  setUnit(u.value);
-                  setIndex(0);
-                }}
-                className={cn(
-                  "flex h-11 items-center rounded-[9px] px-3 text-sm font-bold whitespace-nowrap transition-colors",
-                  "focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none",
-                  selected ? "bg-foreground text-background" : "text-foreground hover:bg-accent",
-                )}
-              >
-                <span className="hidden xl:inline">{u.label}</span>
-                <span className="xl:hidden">{u.short}</span>
-              </button>
-            );
-          })}
-        </div>
-        <div
-          role="group"
-          aria-label="Practice period"
-          className="flex shrink-0 rounded-xl border bg-secondary p-1"
-        >
-          {MODES.map((m) => {
-            const count = cards.filter((c) => inPeriod(c, m.value, unit)).length;
-            const selected = mode === m.value;
-            return (
-              <button
-                key={m.value}
-                type="button"
-                aria-pressed={selected}
-                onClick={() => {
-                  setMode(m.value);
-                  setIndex(0);
-                }}
-                className={cn(
-                  "flex h-11 items-center gap-1.5 rounded-[9px] px-3 text-sm font-bold whitespace-nowrap transition-colors",
-                  "focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none",
-                  selected
-                    ? "bg-primary text-primary-foreground"
-                    : "text-foreground hover:bg-accent",
-                )}
-              >
-                <span className="hidden xl:inline">{m.label}</span>
-                <span className="xl:hidden">{m.short}</span>
-                <span
-                  className={cn(
-                    "text-xs tabular-nums",
-                    selected ? "text-primary-foreground/75" : "text-muted-foreground",
-                  )}
-                >
-                  {count}
-                </span>
-              </button>
-            );
-          })}
-        </div>
+        {!practicePeriod && (
+          <>
+            <div
+              role="group"
+              aria-label="Scout team"
+              className="flex shrink-0 rounded-xl border bg-secondary p-1"
+            >
+              {UNITS.map((u) => {
+                const selected = unit === u.value;
+                return (
+                  <button
+                    key={u.value}
+                    type="button"
+                    aria-pressed={selected}
+                    onClick={() => {
+                      setUnit(u.value);
+                      setIndex(0);
+                    }}
+                    className={cn(
+                      "flex h-11 items-center rounded-[9px] px-3 text-sm font-bold whitespace-nowrap transition-colors",
+                      "focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none",
+                      selected
+                        ? "bg-foreground text-background"
+                        : "text-foreground hover:bg-accent",
+                    )}
+                  >
+                    <span className="hidden xl:inline">{u.label}</span>
+                    <span className="xl:hidden">{u.short}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <div
+              role="group"
+              aria-label="Practice period"
+              className="flex shrink-0 rounded-xl border bg-secondary p-1"
+            >
+              {MODES.map((m) => {
+                const count = cards.filter((c) => inPeriod(c, m.value, unit)).length;
+                const selected = mode === m.value;
+                return (
+                  <button
+                    key={m.value}
+                    type="button"
+                    aria-pressed={selected}
+                    onClick={() => {
+                      setMode(m.value);
+                      setIndex(0);
+                    }}
+                    className={cn(
+                      "flex h-11 items-center gap-1.5 rounded-[9px] px-3 text-sm font-bold whitespace-nowrap transition-colors",
+                      "focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none",
+                      selected
+                        ? "bg-primary text-primary-foreground"
+                        : "text-foreground hover:bg-accent",
+                    )}
+                  >
+                    <span className="hidden xl:inline">{m.label}</span>
+                    <span className="xl:hidden">{m.short}</span>
+                    <span
+                      className={cn(
+                        "text-xs tabular-nums",
+                        selected ? "text-primary-foreground/75" : "text-muted-foreground",
+                      )}
+                    >
+                      {count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </>
+        )}
         <TabsList className="h-[54px] rounded-xl border bg-secondary p-1">
           <TabsTrigger
             value="field"
@@ -442,6 +524,45 @@ export default function ScriptPage() {
               Draw on the field with a Pencil or finger. Swiping is paused.
             </p>
           </div>
+        ) : practice ? (
+          <div
+            role="group"
+            aria-label="Practice period"
+            className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto"
+          >
+            <span className="mr-1.5 shrink-0 text-xs font-bold tracking-[0.12em] text-muted-foreground">
+              PERIOD
+            </span>
+            {practice.day.periods.map((p, i) => {
+              const selected = i === periodIndex;
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  aria-pressed={selected}
+                  onClick={() => goToPeriod(i)}
+                  className={cn(
+                    "flex h-11 shrink-0 flex-col items-start justify-center rounded-[10px] border px-3 text-left leading-tight transition-colors",
+                    "focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none",
+                    selected
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "border-border hover:bg-accent",
+                  )}
+                >
+                  <span className="text-sm font-bold whitespace-nowrap">{p.name}</span>
+                  <span
+                    className={cn(
+                      "text-[11px] font-semibold whitespace-nowrap",
+                      selected ? "text-primary-foreground/75" : "text-muted-foreground",
+                    )}
+                  >
+                    {p.kind === "7v7" ? "7v7" : "Team"} ·{" "}
+                    {p.side === "offense" ? "Scout D" : "Scout O"} · {periodCards[i]?.length ?? 0}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         ) : (
           <div className="flex min-w-0 flex-1 items-center gap-5 overflow-x-auto">
             <FilterGroup
@@ -481,7 +602,7 @@ export default function ScriptPage() {
                 setAdjusting(false);
                 setConfirmClear(false);
               }}
-              disabled={!current}
+              disabled={!editable}
             >
               <PenLine aria-hidden="true" />
               {drawing ? "Done" : "Draw"}
@@ -497,7 +618,7 @@ export default function ScriptPage() {
                   setAdjusting((a) => !a);
                   setDrawing(false);
                 }}
-                disabled={!current}
+                disabled={!editable}
               >
                 <Move aria-hidden="true" />
                 {adjusting ? "Done" : "Adjust X's"}
@@ -520,14 +641,25 @@ export default function ScriptPage() {
               )}
             </>
           )}
-          <Button size="lg" variant="outline" onClick={() => addFilmInput.current?.click()}>
-            <FilePlus2 aria-hidden="true" />
-            Add film
-          </Button>
+          {!practice && (
+            <>
+              <Button asChild size="lg" variant="outline">
+                <Link href="/practice">
+                  <ClipboardList aria-hidden="true" />
+                  Playsheet
+                </Link>
+              </Button>
+              <Button size="lg" variant="outline" onClick={() => addFilmInput.current?.click()}>
+                <FilePlus2 aria-hidden="true" />
+                <span className="hidden xl:inline">Add film</span>
+                <span className="xl:hidden">Film</span>
+              </Button>
+            </>
+          )}
           <Button
             size="lg"
             onClick={() => setEditing(true)}
-            disabled={!current || view !== "field"}
+            disabled={!editable || view !== "field"}
           >
             <Pencil aria-hidden="true" />
             Edit play
@@ -621,7 +753,7 @@ export default function ScriptPage() {
                     card={current}
                     mode={cardMode}
                     unit={unit}
-                    tendencies={tendencies}
+                    tendencies={editable ? tendencies : undefined}
                     onMoveDefender={
                       adjusting && unit === "defense"
                         ? (id, at) =>
@@ -666,6 +798,20 @@ export default function ScriptPage() {
                       )
                     }
                   />
+                </div>
+              ) : practicePeriod ? (
+                <div className="flex h-full w-full flex-col items-center justify-center gap-3 rounded-[14px] border-2 border-dashed border-input px-6 text-center">
+                  <p className="font-display text-3xl font-bold">
+                    {practicePeriod.side === "offense"
+                      ? "No calls on the playsheet for this period"
+                      : `No ${practicePeriod.kind === "7v7" ? "passes" : "plays"} in the opponent's film`}
+                  </p>
+                  <Button asChild size="lg" variant="outline">
+                    <Link href={`/practice?day=${practice?.day.id ?? ""}`}>
+                      <ClipboardList aria-hidden="true" />
+                      Open the playsheet
+                    </Link>
+                  </Button>
                 </div>
               ) : (
                 <div className="flex h-full w-full flex-col items-center justify-center gap-3 rounded-[14px] border-2 border-dashed border-input">
@@ -725,7 +871,9 @@ export default function ScriptPage() {
                         </span>
                         <span className="truncate text-sm text-muted-foreground">
                           {multiFilm && `${card.source.replace(/\.(csv|xlsx)$/i, "")} · `}
-                          {unit === "defense" ? card.defFront || "—" : card.playCall || "—"}
+                          {unit === "defense"
+                            ? [card.defFront || "—", card.coverage].filter(Boolean).join(" · ")
+                            : card.playCall || "—"}
                           {card.edited && " · edited"}
                         </span>
                       </span>
@@ -741,26 +889,35 @@ export default function ScriptPage() {
           <button
             type="button"
             onClick={prev}
-            disabled={!canPrev}
+            disabled={!canPrev && !hasPrevPeriod}
             className="font-display flex items-center justify-center gap-3.5 rounded-2xl border-2 border-input bg-secondary text-2xl font-extrabold tracking-[0.04em] transition-opacity focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none active:bg-muted disabled:opacity-40 sm:text-[34px]"
           >
             <ChevronLeft className="size-8" strokeWidth={3} aria-hidden="true" />
-            PREVIOUS CARD
+            {!canPrev && hasPrevPeriod ? "PREVIOUS PERIOD" : "PREVIOUS CARD"}
           </button>
           <button
             type="button"
             onClick={next}
-            disabled={!canNext}
+            disabled={!canNext && !hasNextPeriod}
             className="font-display flex items-center justify-center gap-3.5 rounded-2xl bg-primary text-2xl font-extrabold tracking-[0.04em] text-primary-foreground transition-opacity focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none active:bg-primary/85 disabled:opacity-40 sm:text-[34px]"
           >
-            NEXT CARD
+            {!canNext && hasNextPeriod ? "NEXT PERIOD" : "NEXT CARD"}
             <ChevronRight className="size-8" strokeWidth={3} aria-hidden="true" />
           </button>
         </footer>
       </TabsContent>
 
       <TabsContent value="print" className="flex flex-col">
-        <PrintGrid cards={filtered} fileName={script.fileName} mode={cardMode} unit={unit} />
+        <PrintGrid
+          cards={filtered}
+          fileName={
+            practice && practicePeriod
+              ? `${practice.day.name} · ${practicePeriod.name}`
+              : script.fileName
+          }
+          mode={cardMode}
+          unit={unit}
+        />
       </TabsContent>
     </Tabs>
   );
