@@ -11,6 +11,7 @@
  */
 
 import { auth, clerkClient } from "@clerk/nextjs/server";
+import { isClerkConfigured } from "./clerkConfig";
 import { isAiGateDisabled } from "./featureFlags";
 
 export type EntitlementResult =
@@ -22,7 +23,7 @@ export function evaluateEntitlement(input: {
   team: { id: string; subscriptionStatus: string | null } | null;
 }): EntitlementResult {
   if (!input.userId) {
-    return { ok: false, status: 401, error: "sign_in_required", message: "Sign in to upload film." };
+    return { ok: false, status: 401, error: "sign_in_required", message: "Sign in to use the AI features." };
   }
   if (!input.team) {
     return {
@@ -37,7 +38,7 @@ export function evaluateEntitlement(input: {
       ok: false,
       status: 402,
       error: "subscription_required",
-      message: "Your team's subscription isn't active. Subscribe to unlock AI film import.",
+      message: "Your team's subscription isn't active. Subscribe to unlock the AI features.",
     };
   }
   return { ok: true, userId: input.userId, teamId: input.team.id };
@@ -49,6 +50,10 @@ export async function requireEntitlement(): Promise<EntitlementResult> {
   if (isAiGateDisabled()) {
     return { ok: true, userId: "test-bypass", teamId: "test-bypass" };
   }
+
+  // No Clerk keys on this deployment: nobody can sign in, so nobody is entitled
+  // (and auth() would throw without its middleware).
+  if (!isClerkConfigured()) return evaluateEntitlement({ userId: null, team: null });
 
   const { userId, orgId } = await auth();
 

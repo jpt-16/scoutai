@@ -8,7 +8,7 @@ describe("evaluateEntitlement", () => {
       ok: false,
       status: 401,
       error: "sign_in_required",
-      message: "Sign in to upload film.",
+      message: "Sign in to use the AI features.",
     });
   });
 

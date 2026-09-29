@@ -1147,7 +1147,7 @@ export function buildDiagram(
         blocks.splice(0, blocks.length, ...blocks.filter((b) => !mine(b)));
         targetBlocks.splice(0, targetBlocks.length, ...targetBlocks.filter((t) => !mine(t.path)));
         const path: Pt[] = [pl.at, ...own.path.map(([dx, dy]) => [pl.at[0] + dx, pl.at[1] + dy] as Pt)];
-        routes.push({ path, label: "", videoLetter: own.source === "video" ? pl.label : undefined });
+        routes.push({ path, label: "", videoLetter: own.source === "video" || own.source === "ai" ? pl.label : undefined });
         jobs[pl.label] = "Route";
       } else if (own.route) {
         routes = routes.filter((r) => !mine(r.path));

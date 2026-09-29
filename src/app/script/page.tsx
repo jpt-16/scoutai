@@ -16,11 +16,13 @@ import {
   Undo2,
   Eraser,
   RectangleVertical,
+  Sparkles,
   Upload,
 } from "lucide-react";
 import { BrandMark } from "@/components/BrandMark";
 import { FilterGroup, type FilterOption } from "@/components/FilterBar";
 import { EditPlayDialog } from "@/components/EditPlayDialog";
+import { GenerateCardDialog } from "@/components/GenerateCardDialog";
 import { ImportNotice } from "@/components/ImportNotice";
 import { PrintGrid } from "@/components/PrintGrid";
 import { ScoutCard, SCOUT_CARD_ASPECT } from "@/components/ScoutCard";
@@ -107,6 +109,7 @@ export default function ScriptPage() {
   const [film, setFilm] = useState<string>("all");
   const [index, setIndex] = useState(0);
   const [editing, setEditing] = useState(false);
+  const [generating, setGenerating] = useState(false);
   const [adjusting, setAdjusting] = useState(false);
   const [drawing, setDrawing] = useState(false);
   const [inkColor, setInkColor] = useState(INK_COLORS[0].value);
@@ -323,6 +326,37 @@ export default function ScriptPage() {
     setIndex(0);
   };
 
+  /** A card from the AI dialog: added to the end of the script (or starts one) and shown. */
+  const addGenerated = (card: HudlPlayCard) => {
+    const existing = script?.cards ?? [];
+    const playNumber = Math.max(0, ...existing.map((c) => c.playNumber)) + 1;
+    const added = { ...card, playNumber, rowIndex: playNumber - 1 };
+    setScript(
+      storeScript(
+        script
+          ? { ...script, cards: [...existing, added] }
+          : { fileName: "", films: [], savedAt: "", cards: [added], warnings: [] },
+      ),
+    );
+    // Show it: every play, Scout O, no filters, so the new card is last.
+    setMode("all");
+    setUnit("offense");
+    setDown("all");
+    setFormation("all");
+    setFilm("all");
+    setIndex(existing.length);
+    setGenerating(false);
+    setNotice((n) => ({
+      heading: "Added an AI card",
+      detail: "Drag a route's break points to fix it. On Scout D, Adjust X's moves the defense.",
+      warnings: [],
+      trigger: n.trigger + 1,
+    }));
+  };
+  const generateDialog = (
+    <GenerateCardDialog open={generating} onOpenChange={setGenerating} onCreate={addGenerated} />
+  );
+
   if (script === undefined) return <div className="min-h-dvh" />;
 
   if (script === null || cards.length === 0) {
@@ -343,7 +377,12 @@ export default function ScriptPage() {
           <Button size="xl" variant="outline" onClick={loadDemo}>
             Load demo script
           </Button>
+          <Button size="xl" variant="outline" onClick={() => setGenerating(true)}>
+            <Sparkles aria-hidden="true" />
+            Draw a play with AI
+          </Button>
         </div>
+        {generateDialog}
       </main>
     );
   }
@@ -654,6 +693,11 @@ export default function ScriptPage() {
                 <span className="hidden xl:inline">Add film</span>
                 <span className="xl:hidden">Film</span>
               </Button>
+              <Button size="lg" variant="outline" onClick={() => setGenerating(true)}>
+                <Sparkles aria-hidden="true" />
+                <span className="hidden xl:inline">AI card</span>
+                <span className="xl:hidden">AI</span>
+              </Button>
             </>
           )}
           <Button
@@ -689,6 +733,8 @@ export default function ScriptPage() {
         warnings={notice.trigger ? notice.warnings : script.warnings}
         trigger={notice.trigger}
       />
+
+      {generateDialog}
 
       {current && editing && (
         <EditPlayDialog
@@ -782,6 +828,25 @@ export default function ScriptPage() {
                               setStrokes((s) => [...s, stroke]);
                             },
                           }
+                        : undefined
+                    }
+                    onEditDetectedRoute={
+                      editable && !drawing
+                        ? (letter, path) =>
+                            saveCards(
+                              cards.map((c) =>
+                                c.id === current.id
+                                  ? {
+                                      ...c,
+                                      routeOverrides: {
+                                        ...c.routeOverrides,
+                                        [letter]: { ...c.routeOverrides?.[letter], path },
+                                      },
+                                      edited: true,
+                                    }
+                                  : c,
+                              ),
+                            )
                         : undefined
                     }
                     onAssignmentChange={(key, text) =>

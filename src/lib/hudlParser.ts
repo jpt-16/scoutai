@@ -122,8 +122,12 @@ export interface RouteOverride {
    * correct it (see `source`). Takes priority over `route` when both are set.
    */
   path?: [number, number][];
-  /** Where this override came from — a coach typing it in, or AI video detection. */
-  source?: "coach" | "video";
+  /**
+   * Where this override came from: a coach typing it in, AI video detection,
+   * or a card generated from a typed play call. Video and AI paths get
+   * draggable break points on the card.
+   */
+  source?: "coach" | "video" | "ai";
 }
 
 /** One pencil stroke on a card. */

@@ -60,6 +60,7 @@ src/
     scriptStore.ts         Persists the loaded script in localStorage (offline on the field)
     practicePlan.ts        Practice playsheet: line parser, opponent looks, rep → Scout D card
     conceptMapper.ts       Named pass concepts → a route per position; RAIL / WHEEL back tags
+    generatedCard.ts       Text-to-card: Gemini prompt, answer validation, grid → card overrides
     hudlParser.test.ts     Vitest suite
 ```
 
@@ -477,11 +478,43 @@ matching the route tree above. Batch import also sends each clip's play call fro
 row, so a called concept is drawn with that geometry; the call is flattened to one quote-free line
 and capped at 80 characters before it goes in the prompt.
 
+## Text-to-card (`/api/generate-scout-card`)
+
+**AI card** on `/script` (and **Draw a play with AI** on its empty state) opens
+`src/components/GenerateCardDialog.tsx`: type a play call ("DEUCES MESH RAIL"), a formation, and
+an optional defensive call ("COVER 3", or "3-4 COVER 1" to set the front too). The route asks
+Gemini 2.5 Flash, under a strict `responseSchema`, for 0-100 grid coordinates of all 22 players,
+and returns a finished card that's appended to the script and shown. Gated and rate limited like
+the film AI (`requireEntitlement()` first, then 10 cards / 10 min per team), since every call
+costs money.
+
+The pure half is `src/lib/generatedCard.ts`, and it keeps the AI inside the app's own drawing
+instead of a second renderer:
+
+- `shellCard` builds the card from the text exactly like a CSV row (formation shape, front from
+  `splitLook`, coverage in the footer).
+- `generationContext` + `buildGenerationPrompt` hand the model the card's **own** spots for all
+  11 offensive players (Q/F/H/X/Y/Z + OL, grid units) and the exact defender labels for the front,
+  plus the rules: `FOOTBALL_CONCEPT_RULES` (MESH, RAIL, CORNER/OUT) and
+  coverage alignment rules (Cover 0/1/2/3/4/6). The grid: x 0-100 sideline to sideline, y 0-100
+  downfield to behind the offense, the card's own 500 × 300 canvas, LOS at y ≈ 46.7. User text
+  goes through `oneLine` (one quote-free line, 80 characters).
+- `applyGeneratedPlay` turns each receiver's route into a `routeOverrides` path with
+  `source: "ai"` (deltas from the start, simplified like video routes) and moves each defender onto
+  the card's own id (nearest within its label) in `defenseOverrides`, never past the ball.
+
+So an AI card is a normal card: its routes have draggable break points (`onEditDetectedRoute`, now
+wired on `/script` for both `video` and `ai` routes, saved per letter, so dragging one never moves
+another), its defenders move with **Adjust X's**, and it prints, filters and saves like the rest.
+The deterministic cards above (concept dictionary, route tree) stay the default and work offline;
+this is for a call the dictionary doesn't know or a quick one-off look.
+
 ## Auth, teams, and billing (Clerk + Stripe)
 
 The video-analysis feature is paid, per coaching staff — everything else in this app (CSV import,
 `/script`, printing) stays free and zero-auth, exactly as described everywhere else in this file.
-Only `/api/parse-video`, `/api/blob-upload`, and `/api/stripe/*` touch any of what's below;
+Only `/api/parse-video`, `/api/parse-video-batch`, `/api/generate-scout-card`, `/api/blob-upload`,
+and `/api/stripe/*` touch any of what's below;
 `src/lib/scriptStore.ts` and the CSV import path have no account concept and never will.
 
 Originally built on Supabase (auth + a hand-rolled Postgres `teams`/`team_members` layer, since
@@ -504,11 +537,12 @@ there's still no separate database for this either.
   `VideoUploadCard` each render a plain, hook-free fallback (nothing, and a disabled "coming soon"
   card, respectively) when unconfigured, and only mount their real, hook-using inner component once
   configured.
-- `middleware.ts` is a bare `clerkMiddleware()` (also config-guarded) — just enough for
+- `src/middleware.ts` (it must live in `src/`: with a `src/app` directory Next.js ignores a root `middleware.ts`, which left every gated route throwing "clerkMiddleware() was not run") is a bare `clerkMiddleware()` (also config-guarded) — just enough for
   `auth()`/`clerkClient()` to have request context in the routes that call them. It does **not**
   gate anything itself (Clerk's own path-matcher-based `createRouteMatcher` + `auth.protect()`
   pattern is deprecated in favor of per-route checks); its `matcher` only covers
-  `/api/parse-video`, `/api/blob-upload`, `/api/stripe/checkout`, `/api/stripe/portal`, and
+  `/api/parse-video`, `/api/parse-video-batch`, `/api/generate-scout-card`, `/api/blob-upload`,
+  `/api/stripe/checkout`, `/api/stripe/portal`, and
   `/account/*`, so it never runs on `/` or `/script`.
 - `src/lib/entitlement.ts`: `evaluateEntitlement()` is the pure decision (unit-tested) —
   signed-in? `orgId` present (an active org = "on a team")? org's `publicMetadata.subscriptionStatus`
