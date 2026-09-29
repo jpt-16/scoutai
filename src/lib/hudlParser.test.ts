@@ -17,7 +17,9 @@ import {
   detectUnsupportedFile,
   sanitizeCsvInput,
   mapColumns,
+  parseExcelFile,
   parseHash,
+  parseHudlCsv,
   parseHudlCsvText,
   parseYardLine,
   repairCsvLine,
@@ -921,5 +923,61 @@ describe("buildDiagram (offense only)", () => {
   it("keeps plays with isPassPlay for 7v7", () => {
     expect(isPassPlay({ playCall: "SLANT", concept: "slant" })).toBe(true);
     expect(isPassPlay({ playCall: "G ISO", concept: "power" })).toBe(false);
+  });
+});
+
+describe("Excel import", () => {
+  async function buildWorkbookBuffer(rows: (string | number)[][], sheetName = "Breakdown"): Promise<Uint8Array> {
+    const ExcelJS = (await import("exceljs")).default;
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet(sheetName);
+    rows.forEach((row) => sheet.addRow(row));
+    return new Uint8Array(await workbook.xlsx.writeBuffer());
+  }
+
+  it("parses a real .xlsx workbook the same as an equivalent CSV", async () => {
+    const buffer = await buildWorkbookBuffer([
+      ["PLAY #", "DN", "DIST", "OFF FORM", "OFF PLAY"],
+      [1, 1, 10, "SPREAD", "SLANT"],
+      [2, 2, 7, "TRIPS", "FADE"],
+    ]);
+    const file = new File([buffer as BlobPart], "breakdown.xlsx", {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+    const result = await parseHudlCsv(file);
+    expect(result.cards).toHaveLength(2);
+    expect(result.cards[0]).toMatchObject({ playNumber: 1, formation: "SPREAD", playCall: "SLANT" });
+    expect(result.cards[1]).toMatchObject({ playNumber: 2, formation: "TRIPS", playCall: "FADE" });
+  });
+
+  it("parses an Excel file even when it's misnamed with a .csv extension", async () => {
+    const buffer = await buildWorkbookBuffer([
+      ["PLAY #", "OFF FORM", "OFF PLAY"],
+      [1, "TRIPS", "SLANT"],
+    ]);
+    const file = new File([buffer as BlobPart], "breakdown.csv");
+    const result = await parseHudlCsv(file);
+    expect(result.cards).toHaveLength(1);
+    expect(result.cards[0].formation).toBe("TRIPS");
+  });
+
+  it("warns when a workbook has more than one sheet and only reads the first", async () => {
+    const ExcelJS = (await import("exceljs")).default;
+    const workbook = new ExcelJS.Workbook();
+    const sheet1 = workbook.addWorksheet("Offense");
+    sheet1.addRow(["PLAY #", "OFF FORM", "OFF PLAY"]);
+    sheet1.addRow([1, "SPREAD", "SLANT"]);
+    workbook.addWorksheet("Defense"); // second sheet, deliberately left unread
+    const buffer = new Uint8Array(await workbook.xlsx.writeBuffer());
+    const result = await parseExcelFile(new Blob([buffer]));
+    expect(result.cards).toHaveLength(1);
+    expect(result.warnings[0]).toMatch(/2 sheets.*Offense/);
+  });
+
+  it("reports a friendly error for a corrupt/unreadable Excel file", async () => {
+    const file = new File([new Uint8Array([1, 2, 3, 4])], "broken.xlsx");
+    const result = await parseHudlCsv(file);
+    expect(result.cards).toHaveLength(0);
+    expect(result.warnings[0]).toMatch(/couldn't read this excel file/i);
   });
 });

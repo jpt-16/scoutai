@@ -149,7 +149,7 @@ export default function ScriptPage() {
     },
     ...(script?.films ?? []).map((name) => ({
       value: name,
-      label: name.replace(/\.csv$/i, ""),
+      label: name.replace(/\.(csv|xlsx)$/i, ""),
       count: cards.filter((c) => c.source === name && inPeriod(c, mode, unit)).length,
     })),
   ];
@@ -531,10 +531,10 @@ export default function ScriptPage() {
           <input
             ref={addFilmInput}
             type="file"
-            accept=".csv,text/csv"
+            accept=".csv,.xlsx,text/csv"
             multiple
             className="sr-only"
-            aria-label="Add Hudl CSV files"
+            aria-label="Add Hudl breakdown files"
             onChange={(e) => {
               void addFilms(Array.from(e.target.files ?? []));
               e.target.value = "";
@@ -719,7 +719,7 @@ export default function ScriptPage() {
                           {card.hash && ` · ${card.hash} hash`}
                         </span>
                         <span className="truncate text-sm text-muted-foreground">
-                          {multiFilm && `${card.source.replace(/\.csv$/i, "")} · `}
+                          {multiFilm && `${card.source.replace(/\.(csv|xlsx)$/i, "")} · `}
                           {unit === "defense" ? card.defFront || "—" : card.playCall || "—"}
                           {card.edited && " · edited"}
                         </span>

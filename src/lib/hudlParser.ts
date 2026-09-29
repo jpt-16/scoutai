@@ -1,4 +1,5 @@
 import Papa from "papaparse";
+import type { CellValue } from "exceljs";
 
 /* -------------------------------------------------------------------------- */
 /*                                   Types                                    */
@@ -833,8 +834,83 @@ export function parseHudlCsvText(text: string): HudlParseResult {
   return { cards, columns, missingColumns, warnings, rowCount: dataRows.length };
 }
 
-/** Parses a Hudl breakdown CSV from a `File` (browser upload) or raw text. */
+/**
+ * Peeks at the first few KB rather than reading a whole (possibly large)
+ * file as text, just to check for the zip signature a real `.xlsx` starts
+ * with — the same check `detectUnsupportedFile` uses to recognize an Excel
+ * workbook saved with a `.csv` name, reused here to actually parse it
+ * instead of just explaining how to re-export it.
+ */
+async function looksLikeExcelWorkbook(blob: Blob): Promise<boolean> {
+  const head = await blob.slice(0, 4096).text();
+  return head.startsWith("PK\u0003\u0004") && (head.includes("xl/workbook") || head.includes("[Content_Types].xml"));
+}
+
+/** Cell values ExcelJS can hand back — plain, rich text, a hyperlink, or a formula's result. */
+function excelCellToString(value: CellValue): string {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  if (typeof value === "object") {
+    if ("richText" in value && Array.isArray(value.richText)) {
+      return value.richText.map((t) => t.text).join("");
+    }
+    if ("result" in value) return excelCellToString(value.result as CellValue);
+    if ("text" in value) return String(value.text ?? ""); // hyperlink
+  }
+  return String(value);
+}
+
+/**
+ * Reads an uploaded `.xlsx` workbook's first sheet into the same 2D-row
+ * shape `parseHudlCsvText` already parses a CSV into, by way of
+ * `Papa.unparse` (correct comma/quote escaping, no need to hand-roll it) —
+ * every downstream step (header detection, column mapping, classifiers)
+ * runs exactly as it does for a real CSV, no separate code path to drift.
+ * `exceljs` is dynamically imported so CSV-only users never pay for it.
+ */
+export async function parseExcelFile(blob: Blob): Promise<HudlParseResult> {
+  let rows: string[][];
+  let sheetCount: number;
+  let sheetName: string;
+  try {
+    const { default: ExcelJS } = await import("exceljs");
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(await blob.arrayBuffer());
+    const sheet = workbook.worksheets[0];
+    rows = [];
+    sheet?.eachRow({ includeEmpty: true }, (row) => {
+      const values = row.values as CellValue[]; // 1-indexed; index 0 is unused
+      rows.push(values.slice(1).map(excelCellToString));
+    });
+    sheetCount = workbook.worksheets.length;
+    sheetName = sheet?.name ?? "Sheet1";
+  } catch {
+    return {
+      cards: [],
+      columns: {},
+      missingColumns: [...CORE_FIELDS],
+      warnings: ["Couldn't read this Excel file. Re-save it in Excel and try again, or export as CSV instead."],
+      rowCount: 0,
+    };
+  }
+  const result = parseHudlCsvText(Papa.unparse(rows));
+  if (sheetCount > 1) {
+    result.warnings = [`This workbook has ${sheetCount} sheets — only the first ("${sheetName}") was read.`, ...result.warnings];
+  }
+  return result;
+}
+
+/** Parses a Hudl breakdown from a `File`/`Blob` (browser upload, CSV or `.xlsx`) or raw CSV text. */
 export async function parseHudlCsv(input: File | Blob | string): Promise<HudlParseResult> {
+  if (typeof input !== "string") {
+    const name = "name" in input ? (input as File).name : "";
+    if (/\.xlsx$/i.test(name) || (await looksLikeExcelWorkbook(input))) {
+      return parseExcelFile(input);
+    }
+  }
   const text = typeof input === "string" ? input : await input.text();
   return parseHudlCsvText(text);
 }
