@@ -46,8 +46,10 @@ import { parseHudlCsvText, type HudlField, type HudlParseResult, type Unsupporte
 import { importFilms } from "@/lib/importFilms";
 import { saveScript, storeScript } from "@/lib/scriptStore";
 
+// Smash (X hitch, H corner) to the left, curl-slide (Y slide, Z curl) to the
+// right — a real two-concept passing play, not a straight numbered call.
 const PREVIEW_CARD = parseHudlCsvText(
-  "PLAY #,DN,DIST,HASH,YARD LN,OFF FORM,OFF PLAY,DEF FRONT\n7,2,7,M,Opp 38,TRIPS RT,2960,3-4\n",
+  "PLAY #,DN,DIST,HASH,YARD LN,OFF FORM,OFF PLAY,DEF FRONT\n7,2,7,M,Opp 38,SPREAD,HITCH CORNER SLIDE CURL,3-4\n",
 ).cards[0];
 
 const FIELD_LABELS: Record<HudlField, string> = {

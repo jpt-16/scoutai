@@ -624,9 +624,10 @@ describe("buildDiagram (offense only)", () => {
   it("draws routes with sharp breaks at true field angles", () => {
     const d = buildDiagram(card("spread", "SLANT"));
     const z = d.routes.find((r) => r[0].x === 464)!; // Z, right side
-    // 5-yard stem straight up, then 45° inside: equal yards across and up.
+    // Three hard steps and plant: a 3-yard stem straight up, then 45° inside
+    // (equal yards across and up).
     expect(z[1].x).toBe(464);
-    expect(z[1].y).toBe(140 - 5 * 7);
+    expect(z[1].y).toBe(140 - 3 * 7);
     const yardsAcross = (z[1].x - z[2].x) / (500 / (160 / 3));
     const yardsUp = (z[1].y - z[2].y) / 7;
     expect(yardsAcross).toBeCloseTo(yardsUp, 5);

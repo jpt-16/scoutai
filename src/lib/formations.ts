@@ -665,32 +665,32 @@ function routePath(kind: RouteKind, p: Pt, o: number, d: number): Pt[] {
   const [x, y] = p;
   const inside = -o;
   switch (kind) {
-    case "slide": // 0: flat to the sideline, right off the line
-      return [p, [x + o * 20, y - 8], [x + o * 64, y - 14]];
-    case "speed-out": // 1: rounded 5-yard out
+    case "slide": // 0: release toward the sideline, build up to 5 and settle
+      return [p, [x + o * 20, yd(3)], [x + o * 64, yd(5)]];
+    case "speed-out": // 1: cut out at 5
       return [p, [x, yd(4)], [x + o * 10, yd(5)], [x + o * 50, yd(5)]];
     case "slant": {
-      // 2: 5-yard stem, sharp 45° break inside toward the middle
+      // 2: three hard steps and plant — quick 3-yard stem, sharp break inside
       const [bx, by] = diag(6);
-      return [p, [x, yd(5)], [x + inside * bx, yd(5) - by]];
+      return [p, [x, yd(3)], [x + inside * bx, yd(3) - by]];
     }
     case "out": // 3: stem to 10, 90° break to the sideline
       return [p, [x, yd(10)], [sideline(o), yd(10)]];
-    case "curl": // 4
-      return [p, [x, yd(12)], [x + inside * 10, yd(10.5)]];
-    case "comeback": // 5
-      return [p, [x, yd(14)], [x + o * 14, yd(12)]];
-    case "shallow": // 6
-      return [p, [x, yd(1.5)], [x + inside * 160, yd(3.5)]];
+    case "curl": // 4: stem to 12, back down to 10
+      return [p, [x, yd(12)], [x + inside * 10, yd(10)]];
+    case "comeback": // 5: stem to 16, back down to 14
+      return [p, [x, yd(16)], [x + o * 14, yd(14)]];
+    case "shallow": // 6: build up to 5 and cross the field underneath
+      return [p, [x, yd(5)], [x + inside * 160, yd(5)]];
     case "corner": {
       // 7: stem to 10, 45° break toward the pylon
       const [bx, by] = diag(6);
       return [p, [x, yd(10)], [x + o * bx, yd(10) - by]];
     }
     case "post": {
-      // 8: stem to 11, 45° break toward the goalpost (middle of the field)
+      // 8: stem to 10, 45° break toward the goalpost (middle of the field)
       const [bx, by] = diag(6);
-      return [p, [x, yd(11)], [x + inside * bx, yd(11) - by]];
+      return [p, [x, yd(10)], [x + inside * bx, yd(10) - by]];
     }
     case "fade": // 9: vertical with a slight outside release
       return [p, [x, yd(3)], [x + o * 1.5 * YARD_X, yd(17)]];

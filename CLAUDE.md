@@ -139,7 +139,12 @@ Free-text tags are classified by keyword (`classifyFormation`, `classifyFront`,
   - **Route tree** (`ROUTE_TREE`): 0 slide, 1 speed out, 2 slant, 3 10-yd out, 4 curl,
     5 comeback, 6 shallow, 7 corner, 8 post, 9 fade. Numbers in a play call are tree calls
     (`routeCall`):
-    - One number per receiver ("2960") reads **right to left** across the formation.
+    - One number per receiver ("837") reads **right to left** across the formation. In practice a
+      numbered call never runs past three digits — a coach tags a fourth (or later) receiver's
+      route by name instead of a fourth digit ("837 CURL", or "837 X CURL" to note which receiver
+      gets it — the parser reads the extra word the same either way, since `routeCall` treats a
+      trailing route word exactly like another number in the sequence; a bare, unmatched letter
+      like the "X" is simply skipped).
     - Fewer numbers than receivers ("81") mean the same on both sides, outside in
       (#1 runs 8, #2 runs 1).
     - A single number means every WR runs it.
@@ -196,12 +201,18 @@ Card look (`ScoutCard.tsx`, PlayIQ-style):
   straight segments with sharp breaks and `marker-end` arrows (ids from `useId`, drawn as a
   narrow inset triangle rather than a full-height one). Route labels move to a clear spot when
   they'd land on a player.
-- **Route angles:** true field angles (`YARD_X` across, `YARD_PX` up).
-  - Slant: 5-yard stem, 45° inside.
-  - Out: 10-yard stem, 90° to the sideline.
-  - Post: 11-yard stem, 45° to the middle.
-  - Corner: 10-yard stem, 45° to the pylon.
-  - Go straight; fade with a slight outside release.
+- **Route angles:** true field angles (`YARD_X` across, `YARD_PX` up), depths per the staff's own
+  route-tree technique, not just a generic stem length:
+  - Slide (0): release, build up to 5 and settle.
+  - Speed out (1): cut out at 5.
+  - Slant (2): three hard steps and plant — a quick 3-yard stem, 45° inside.
+  - Out (3): 10-yard stem, 90° to the sideline.
+  - Curl (4): stem to 12, back down to 10.
+  - Comeback (5): stem to 16, back down to 14.
+  - Shallow (6): build up to 5 and cross the field underneath.
+  - Corner (7): 10-yard stem, 45° to the pylon.
+  - Post (8): 10-yard stem, 45° to the middle.
+  - Fade (9): go straight, with a slight outside release — self-explanatory.
 - **Pass pro:** on passes and play action in Team, the line takes short angle-back sets, and
   any TE or back without a route protects (T-bars).
 - **Assignment table** (`buildAssignments`), with text generated from the diagram's `jobs` and
