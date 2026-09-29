@@ -118,6 +118,11 @@ export function VideoUploadCard({ hideHeader }: VideoUploadCardProps) {
  * both the real (Clerk-gated) and testing-mode cards, neither of which
  * touches Clerk from in here.
  */
+// Matches blob-upload route.ts's onBeforeGenerateToken maximumSizeInBytes —
+// checked here too so an oversized clip is rejected before spending time
+// uploading it, instead of only failing once Blob rejects the token.
+const MAX_CLIP_BYTES = 75 * 1024 * 1024;
+
 function useVideoUpload() {
   const router = useRouter();
   const [videoBusy, setVideoBusy] = useState(false);
@@ -125,6 +130,13 @@ function useVideoUpload() {
   const videoInput = useRef<HTMLInputElement>(null);
 
   const handleVideoFile = async (file: File) => {
+    if (file.size > MAX_CLIP_BYTES) {
+      setVideoError(
+        `That clip is too big (${Math.round(file.size / (1024 * 1024))} MB). Keep it under ` +
+          `${Math.round(MAX_CLIP_BYTES / (1024 * 1024))} MB — a single play, 10-20 seconds, is plenty.`,
+      );
+      return;
+    }
     setVideoBusy(true);
     setVideoError(null);
     try {
