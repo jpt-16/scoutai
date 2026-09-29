@@ -29,6 +29,7 @@ export const config = {
     "/api/parse-video-batch",
     "/api/generate-scout-card",
     "/api/ai-access",
+    "/api/review-import",
     "/api/blob-upload",
     "/api/stripe/checkout",
     "/api/stripe/portal",

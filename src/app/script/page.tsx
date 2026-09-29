@@ -19,6 +19,7 @@ import {
   Sparkles,
   Upload,
 } from "lucide-react";
+import { AppGate } from "@/components/AppGate";
 import { BrandMark } from "@/components/BrandMark";
 import { FilterGroup, type FilterOption } from "@/components/FilterBar";
 import { EditPlayDialog } from "@/components/EditPlayDialog";
@@ -46,6 +47,7 @@ import {
   type PracticeDay,
   type PracticePlan,
 } from "@/lib/practicePlan";
+import { applyReview, reviewRows, type ReviewResult } from "@/lib/importReview";
 import { loadScript, saveScript, storeScript, type StoredScript } from "@/lib/scriptStore";
 import { cn } from "@/lib/utils";
 
@@ -91,6 +93,14 @@ const UNITS: { value: ScoutUnit; label: string; short: string }[] = [
 ];
 
 export default function ScriptPage() {
+  return (
+    <AppGate>
+      <ScriptApp />
+    </AppGate>
+  );
+}
+
+function ScriptApp() {
   const router = useRouter();
   // undefined while reading localStorage, null when nothing is loaded.
   const [script, setScript] = useState<StoredScript | null | undefined>(undefined);
@@ -122,9 +132,14 @@ export default function ScriptPage() {
     trigger: 0,
   });
   const addFilmInput = useRef<HTMLInputElement>(null);
+  const reviewPending = useRef(false);
+  const scriptRef = useRef<StoredScript | null | undefined>(undefined);
+  scriptRef.current = script;
 
   useEffect(() => {
     setScript(loadScript());
+    // A fresh import: let the AI read what the rules couldn't place (below).
+    if (new URLSearchParams(window.location.search).get("loaded") === "1") reviewPending.current = true;
     const params = new URLSearchParams(window.location.search);
     const dayId = params.get("practice");
     if (!dayId) return;
@@ -297,6 +312,58 @@ export default function ScriptPage() {
   const confirmClear = clearArmed !== null && clearArmed === clearKey;
   const setConfirmClear = (armed: boolean) => setClearArmed(armed ? clearKey : null);
 
+  /**
+   * AI review of an import (src/lib/importReview.ts): plays the rules couldn't
+   * place go to /api/review-import once, and the answers become card hints.
+   * Silent when the AI isn't available here (no access, offline); the plays
+   * already load exactly as the file reads.
+   */
+  const reviewImport = useCallback(async (base: StoredScript) => {
+    const rows = reviewRows(base.cards);
+    if (rows.length === 0) return;
+    let payload: { reviewedIds?: string[]; results?: ReviewResult[]; error?: string };
+    let status = 0;
+    try {
+      const res = await fetch("/api/review-import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rows }),
+      });
+      status = res.status;
+      payload = await res.json();
+    } catch {
+      return;
+    }
+    if (status === 401 || status === 402 || status === 403) return;
+    if (status !== 200 || !payload.reviewedIds || !payload.results) {
+      setNotice((n) => ({
+        heading: "AI review didn't run",
+        detail: `${payload.error ?? "Try adding the film again later."} Every play still loads exactly as the file reads.`,
+        warnings: [],
+        trigger: n.trigger + 1,
+      }));
+      return;
+    }
+    const latest = scriptRef.current ?? base;
+    const { cards: reviewed, filled } = applyReview(latest.cards, payload.reviewedIds, payload.results);
+    setScript(storeScript({ ...latest, cards: reviewed }));
+    if (filled > 0) {
+      setNotice((n) => ({
+        heading: `AI filled in ${filled} ${filled === 1 ? "play" : "plays"}`,
+        detail:
+          "Formations, fronts or run/pass the file didn't make clear. They're marked AI in the play list; check them and fix any with Edit play.",
+        warnings: [],
+        trigger: n.trigger + 1,
+      }));
+    }
+  }, []);
+  useEffect(() => {
+    if (script && reviewPending.current) {
+      reviewPending.current = false;
+      void reviewImport(script);
+    }
+  }, [script, reviewImport]);
+
   const addFilms = async (files: File[]) => {
     if (!script || files.length === 0) return;
     const imported = await importFilms(files);
@@ -304,14 +371,14 @@ export default function ScriptPage() {
       ? `Added ${imported.cards.length} ${imported.cards.length === 1 ? "play" : "plays"}`
       : "No plays added";
     if (imported.cards.length) {
-      setScript(
-        storeScript({
-          ...script,
-          films: [...script.films, ...imported.films],
-          cards: [...script.cards, ...imported.cards],
-          warnings: [...script.warnings, ...imported.warnings],
-        }),
-      );
+      const next = storeScript({
+        ...script,
+        films: [...script.films, ...imported.films],
+        cards: [...script.cards, ...imported.cards],
+        warnings: [...script.warnings, ...imported.warnings],
+      });
+      setScript(next);
+      reviewPending.current = true;
     }
     setNotice((n) => ({
       heading,
@@ -939,6 +1006,7 @@ export default function ScriptPage() {
                           {unit === "defense"
                             ? [card.defFront || "—", card.coverage].filter(Boolean).join(" · ")
                             : card.playCall || "—"}
+                          {card.aiHints && " · AI"}
                           {card.edited && " · edited"}
                         </span>
                       </span>

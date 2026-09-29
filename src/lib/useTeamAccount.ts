@@ -19,6 +19,8 @@ export interface TeamAccountState {
    * AI_ALLOWED_EMAILS allow-list the client can't see.
    */
   entitled: boolean;
+  /** The server couldn't be asked (offline on the practice field, say): `entitled` is unknown. */
+  accessCheckFailed: boolean;
 }
 
 /**
@@ -51,14 +53,16 @@ export function useTeamAccount(): TeamAccountState {
 
   // Ask the server once per signed-in user + team.
   const key = userId ? `${userId}:${organization?.id ?? ""}` : null;
-  const [serverAccess, setServerAccess] = useState<{ key: string; ok: boolean } | null>(null);
+  const [serverAccess, setServerAccess] = useState<{ key: string; ok: boolean; failed?: boolean } | null>(
+    null,
+  );
   useEffect(() => {
     if (!key) return;
     let cancelled = false;
     fetch("/api/ai-access", { cache: "no-store" })
       .then((res) => res.json())
       .then((body: { ok?: boolean }) => !cancelled && setServerAccess({ key, ok: body.ok === true }))
-      .catch(() => !cancelled && setServerAccess({ key, ok: false }));
+      .catch(() => !cancelled && setServerAccess({ key, ok: false, failed: true }));
     return () => {
       cancelled = true;
     };
@@ -66,5 +70,7 @@ export function useTeamAccount(): TeamAccountState {
   const checked = !key || subscribed || serverAccess?.key === key;
   const entitled = subscribed || (serverAccess?.key === key && serverAccess.ok);
 
-  return { loading: loading || !checked, userId: userId ?? null, team, entitled };
+  const accessCheckFailed = serverAccess?.key === key && serverAccess.failed === true;
+
+  return { loading: loading || !checked, userId: userId ?? null, team, entitled, accessCheckFailed };
 }

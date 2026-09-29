@@ -2,8 +2,9 @@
 
 Web app for high school football staffs: upload the weekly **Hudl breakdown CSV** and get
 vector-drawn **scout team cards**, which you can flip through on an iPad at practice or print
-2 or 4 to a page. Everything runs client-side. The CSV is parsed in the browser and never
-uploaded.
+2 or 4 to a page. The CSV is parsed in the browser and never uploaded; only the AI features send
+anything to a server. On production the app itself is behind sign-in (see "Access" below); preview
+deploys and a local checkout are open.
 
 ## Stack
 
@@ -56,6 +57,7 @@ src/
     hudlParser.ts          CSV → HudlPlayCard[] (column mapping + normalization + classifiers)
     formations.ts          Formations, fronts, run schemes, route tree → buildDiagram()
     importFilms.ts         Parses several CSVs (one per film) into one script
+    importReview.ts        AI review of an import: rows the rules couldn't place → card hints
     demoScript.ts          MOCK_HUDL_CSV: 5-play sample used by the "Demo Script" button
     scriptStore.ts         Persists the loaded script in localStorage (offline on the field)
     practicePlan.ts        Practice playsheet: line parser, opponent looks, rep → Scout D card
@@ -298,6 +300,17 @@ re-export it. **Paste breakdown** takes clipboard text — a breakdown copied st
 Excel or Google Sheets pastes as tab-separated text, which `parseHudlCsvText` already reads
 (PapaParse auto-detects the delimiter), so no separate paste-parsing logic exists either.
 
+**AI review of an import** (`src/lib/importReview.ts`, `/api/review-import`): after a fresh import
+(`/script?loaded=1`) or **Add film**, the plays the rules couldn't place (a formation name or front
+the classifiers don't know, or a play call that reads as neither run nor pass) are sent once, text
+only, to Gemini, which maps them onto the app's own shapes (formation key + side, front key,
+run/pass). The answers go in `card.aiHints`, which `deriveCard` uses **only where the rules came
+up empty**, so anything the file says plainly wins; `updateCard` drops a hint when a coach retypes
+that field, and `aiReviewed` keeps a play from being sent twice. Filled plays show "· AI" in the
+play list, with a notice to check them. Silent when the AI isn't available (no access, offline):
+the plays load exactly as the file reads. One call per import, up to `MAX_REVIEW_ROWS` (150) rows,
+rate limited per tier (`reviews`).
+
 **Several films:** drop or pick several CSVs at once, or use **Add film** on the script page.
 Each play keeps its film (`card.source`), ids never collide across films, and a **Film**
 filter appears once there's more than one.
@@ -367,8 +380,8 @@ current period.
 
 ## Deploying to Vercel
 
-The free CSV/scout-card core needs no environment variables or server code at all. The paid
-video-analysis feature (below) does: `GEMINI_API_KEY`, `BLOB_READ_WRITE_TOKEN`,
+The CSV/scout-card core needs no server code; without Clerk keys the app is open (local, preview
+with the bypass). The sign-in gate and AI features need: `GEMINI_API_KEY`, `BLOB_READ_WRITE_TOKEN`,
 `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`, `STRIPE_SECRET_KEY`,
 `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_ID` — set in Vercel project settings and mirrored in
 `.env.local` for dev (`.env*` is gitignored). The app still builds and the CSV path still works
@@ -440,6 +453,7 @@ access tier** (`src/lib/usageLimits.ts`'s `TIER_LIMITS`; `requireEntitlement()` 
 | Single clips (`/api/parse-video`) | 10 / 5 min | 50 / 5 min |
 | Batch jobs (`/api/parse-video-batch`) | 1 running, max 50 plays | 3 running, max 100 plays |
 | Clip uploads (`/api/blob-upload`) | 60 / 5 min | 350 / 5 min |
+| Import reviews (`/api/review-import`) | 10 / 5 min | 60 / 5 min |
 
 Uploads are sized to the clip limit plus every running job's full game, so a batch never stalls on
 uploads. Each tier has its own bucket name (`parse-video-demo` / `-paid`), so a staff that
@@ -527,11 +541,16 @@ this is for a call the dictionary doesn't know or a quick one-off look.
 
 ## Auth, teams, and billing (Clerk + Stripe)
 
-The video-analysis feature is paid, per coaching staff — everything else in this app (CSV import,
-`/script`, printing) stays free and zero-auth, exactly as described everywhere else in this file.
-Only `/api/parse-video`, `/api/parse-video-batch`, `/api/generate-scout-card`, `/api/blob-upload`,
-and `/api/stripe/*` touch any of what's below;
-`src/lib/scriptStore.ts` and the CSV import path have no account concept and never will.
+**Access.** On production the whole app is for signed-in coaches who are on the allow-list or on a
+subscribed staff: `src/components/AppGate.tsx` wraps `/script`, `/practice` and the landing page's
+upload / AI film sections, and shows a sign-in or "private pilot" screen otherwise. The landing
+page itself and its live demo cards stay public. The gate only applies where Clerk is configured
+and the testing bypass is off (production); preview deploys (`NEXT_PUBLIC_SKIP_AI_GATE`) and a
+local checkout without Clerk keys are open. Once an iPad is verified it's trusted offline for 14
+days (`scoutcard:access:v1`), since Clerk can't load on a field with no signal. The CSV reader runs
+in the browser, so this hides the app rather than hard-locking it; the AI routes are the hard lock
+(`requireEntitlement()` on every call). `src/lib/scriptStore.ts` and the CSV parser themselves
+have no account concept.
 
 Originally built on Supabase (auth + a hand-rolled Postgres `teams`/`team_members` layer, since
 Supabase has no native "organizations" concept). Switched to **Clerk** after hitting Supabase's
@@ -557,7 +576,8 @@ there's still no separate database for this either.
   `auth()`/`clerkClient()` to have request context in the routes that call them. It does **not**
   gate anything itself (Clerk's own path-matcher-based `createRouteMatcher` + `auth.protect()`
   pattern is deprecated in favor of per-route checks); its `matcher` only covers
-  `/api/parse-video`, `/api/parse-video-batch`, `/api/generate-scout-card`, `/api/ai-access`, `/api/blob-upload`,
+  `/api/parse-video`, `/api/parse-video-batch`, `/api/generate-scout-card`, `/api/ai-access`,
+  `/api/review-import`, `/api/blob-upload`,
   `/api/stripe/checkout`, `/api/stripe/portal`, and
   `/account/*`, so it never runs on `/` or `/script`.
 - `src/lib/entitlement.ts`: `evaluateEntitlement()` is the pure decision (unit-tested) —

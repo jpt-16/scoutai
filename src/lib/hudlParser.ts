@@ -103,9 +103,25 @@ export interface HudlPlayCard {
   routeOverrides?: Record<string, RouteOverride>;
   /** Pencil drawings on the card, per scout unit, in card (SVG) coordinates. */
   drawings?: Partial<Record<"offense" | "defense", InkStroke[]>>;
+  /**
+   * What the AI import review (src/lib/importReview.ts) read from text the
+   * classifiers couldn't place: used only where the rules come up empty, so
+   * anything the text itself says always wins. Marked "AI" in the play list.
+   */
+  aiHints?: AiHints;
+  /** True once the AI import review has looked at this play (so it's never sent twice). */
+  aiReviewed?: boolean;
 
   /** Every column of the original row, keyed by the normalized header. */
   raw: Record<string, string>;
+}
+
+/** The AI import review's reading of a play's unrecognized tags (see `aiHints`). */
+export interface AiHints {
+  formationKey?: Exclude<FormationKey, "unknown">;
+  side?: Side;
+  frontKey?: Exclude<FrontKey, "unknown">;
+  playType?: "Run" | "Pass";
 }
 
 /** A coach's route assignment for one letter (see `routeOverrides`). */
@@ -573,8 +589,12 @@ export function deriveCard(base: PlaySource): HudlPlayCard {
   const offStrength = base.offStrength ?? "";
   const playDir = base.playDir ?? "";
   const defFront = base.defFront ?? "";
-  // Explicit Hudl OFF STR / PLAY DIR tags win over side tags inside the text.
-  const formationSide = parseSideTag(offStrength) ?? parseSide(formation) ?? "right";
+  const hints = base.aiHints ?? {};
+  // Explicit Hudl OFF STR / PLAY DIR tags win over side tags inside the text,
+  // and the text wins over the AI review's reading.
+  const formationSide = parseSideTag(offStrength) ?? parseSide(formation) ?? hints.side ?? "right";
+  const classifiedFormation = classifyFormation(formation);
+  const classifiedFront = classifyFront(defFront);
   return {
     ...base,
     formation,
@@ -588,11 +608,12 @@ export function deriveCard(base: PlaySource): HudlPlayCard {
     notes: base.notes ?? "",
     source: base.source ?? "",
     downDistance: formatDownDistance(base.down, base.distance, base.isGoalToGo),
-    formationKey: classifyFormation(formation),
+    formationKey:
+      classifiedFormation === "unknown" && formation.trim() ? (hints.formationKey ?? "unknown") : classifiedFormation,
     formationSide,
-    concept: inferConcept(playCall, playType, playDir),
+    concept: inferConcept(playCall, playType || hints.playType || "", playDir),
     playDirection: parseSideTag(playDir) ?? parseSide(playCall) ?? formationSide,
-    frontKey: classifyFront(defFront),
+    frontKey: classifiedFront === "unknown" && defFront.trim() ? (hints.frontKey ?? "unknown") : classifiedFront,
   };
 }
 
@@ -614,7 +635,18 @@ export type CardEdits = Partial<
 
 /** Applies edits and re-derives the card, so it draws exactly as a Hudl row would. */
 export function updateCard(card: HudlPlayCard, edits: CardEdits): HudlPlayCard {
-  return deriveCard({ ...card, ...edits, edited: true });
+  // A coach retyping a field drops the AI's reading of the old text.
+  let aiHints = card.aiHints;
+  if (aiHints) {
+    const changed = (k: keyof CardEdits) => edits[k] !== undefined && edits[k] !== card[k];
+    aiHints = { ...aiHints };
+    if (changed("formation")) delete aiHints.formationKey;
+    if (changed("formation") || changed("offStrength")) delete aiHints.side;
+    if (changed("defFront")) delete aiHints.frontKey;
+    if (changed("playCall")) delete aiHints.playType;
+    if (Object.keys(aiHints).length === 0) aiHints = undefined;
+  }
+  return deriveCard({ ...card, ...edits, aiHints, edited: true });
 }
 
 /** Turns one keyed CSV row into a card. Exposed for tests. */

@@ -23,6 +23,8 @@ export interface TierLimits {
   clips: WindowLimit;
   /** `/api/parse-video-batch`: games (jobs) running at once, and plays in one job. */
   batch: { activeJobs: number; maxPlays: number };
+  /** `/api/review-import`: AI reviews of a CSV import's unplaced rows (one per import). */
+  reviews: WindowLimit;
   /**
    * `/api/blob-upload`: clip uploads, for both flows. Sized to fit the clip
    * limit plus every running job's full game, so a batch never stalls on
@@ -38,12 +40,14 @@ export const TIER_LIMITS: Record<AccessTier, TierLimits> = {
     cards: { limit: 20, windowMs: MINUTE },
     clips: { limit: 10, windowMs: 5 * MINUTE },
     batch: { activeJobs: 1, maxPlays: 50 },
+    reviews: { limit: 10, windowMs: 5 * MINUTE },
     uploads: { limit: 10 + 1 * 50, windowMs: 5 * MINUTE },
   },
   paid: {
     cards: { limit: 120, windowMs: MINUTE },
     clips: { limit: 50, windowMs: 5 * MINUTE },
     batch: { activeJobs: 3, maxPlays: 100 },
+    reviews: { limit: 60, windowMs: 5 * MINUTE },
     uploads: { limit: 50 + 3 * 100, windowMs: 5 * MINUTE },
   },
 };

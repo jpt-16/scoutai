@@ -12,6 +12,7 @@ import {
   Trash2,
   TriangleAlert,
 } from "lucide-react";
+import { AppGate } from "@/components/AppGate";
 import { BrandMark } from "@/components/BrandMark";
 import { Button } from "@/components/ui/button";
 import { FORMATION_LABELS } from "@/lib/formations";
@@ -231,6 +232,14 @@ function OffensePeriod({
 }
 
 export default function PracticePage() {
+  return (
+    <AppGate>
+      <PracticeApp />
+    </AppGate>
+  );
+}
+
+function PracticeApp() {
   // undefined while reading localStorage.
   const [plan, setPlan] = useState<PracticePlan | undefined>(undefined);
   const [script, setScript] = useState<StoredScript | null>(null);

@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { AccountMenu } from "@/components/AccountMenu";
 import { BrandMark } from "@/components/BrandMark";
+import { AppGate } from "@/components/AppGate";
 import { UploadDropzone } from "@/components/UploadDropzone";
 import { BatchUploader } from "@/components/BatchUploader";
 import { VideoUploadCard } from "@/components/VideoUploadCard";
@@ -312,6 +313,7 @@ export default function UploadPage() {
             </Reveal>
             <div className="mt-12 grid items-start gap-8 lg:grid-cols-2 lg:gap-10">
               <Reveal className="lg:order-2 lg:sticky lg:top-24">
+                <AppGate variant="section">
                 <div className="flex flex-col gap-4">
                   <UploadDropzone
                     onFiles={handleFiles}
@@ -338,6 +340,7 @@ export default function UploadPage() {
                     </div>
                   </div>
                 </div>
+                </AppGate>
               </Reveal>
               <Reveal delay={120} className="lg:order-1">
                 <HudlExportGuide />
@@ -368,8 +371,12 @@ export default function UploadPage() {
               delay={150}
               className="mx-auto mt-14 grid max-w-5xl items-start gap-4 lg:grid-cols-2 lg:[&>*:only-child]:col-span-2 lg:[&>*:only-child]:mx-auto lg:[&>*:only-child]:w-full lg:[&>*:only-child]:max-w-xl"
             >
-              <VideoUploadCard hideHeader />
-              <BatchUploader />
+              <AppGate variant="section">
+                <VideoUploadCard hideHeader />
+              </AppGate>
+              <AppGate variant="section">
+                <BatchUploader />
+              </AppGate>
             </Reveal>
           </div>
         </section>
