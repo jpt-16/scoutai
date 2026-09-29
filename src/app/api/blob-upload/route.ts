@@ -18,8 +18,11 @@ import { checkBlobRateLimit } from "@/lib/rateLimit";
 // Every upload here is normally followed by a paid /api/parse-video call, so
 // this gets its own cap too, a bit looser than that route's. See
 // src/lib/rateLimit.ts for why checkBlobRateLimit, not just checkRateLimit,
-// is what actually enforces this.
-const BLOB_UPLOAD_RATE_LIMIT = { limit: 5, windowMs: 10 * 60 * 1000 }; // 5 per 10 minutes per team
+// is what actually enforces this. 10, not 5, so a single batch upload (see
+// /api/parse-video-batch's MAX_BATCH_CLIPS) doesn't trip this cap partway
+// through — blob storage itself costs bandwidth, not a per-call Gemini bill,
+// so the real cost ceiling is parse-video-batch's own rate limit, not this one.
+const BLOB_UPLOAD_RATE_LIMIT = { limit: 10, windowMs: 10 * 60 * 1000 }; // 10 per 10 minutes per team
 
 export async function POST(request: Request): Promise<NextResponse> {
   // Middleware already fast-fails an unauthenticated request; this re-check

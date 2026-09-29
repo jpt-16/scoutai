@@ -7,7 +7,7 @@
 
 import { FIELD } from "./formations";
 import { detectedRouteToPathDeltas, type PercentPoint } from "./coordinateMapper";
-import { deriveCard, type HudlPlayCard, type PlaySource } from "./hudlParser";
+import { deriveCard, updateCard, type HudlPlayCard, type PlaySource } from "./hudlParser";
 
 /** Skill-player letters this app draws (see `CLAUDE.md`: linemen are unlabeled). */
 export const DETECTED_PLAYER_LABELS = ["Q", "F", "H", "X", "Y", "Z"] as const;
@@ -64,19 +64,18 @@ export function validateDetectedPlay(value: unknown): string | null {
 let counter = 0;
 
 /**
- * Builds a `HudlPlayCard` from one validated detection. Every detected
- * player becomes a `routeOverrides` entry with `source: "video"` and a raw
- * `path`, so it draws through the exact same override mechanism a coach's
- * own route edit uses (see `formations.ts`'s `buildDiagram`) — the
- * formation itself is drawn in its normal, canonical shape; only each
- * letter's route line is video-derived.
+ * Turns one detection's players into `routeOverrides` entries, each with
+ * `source: "video"` and a raw `path` — the mechanism both
+ * `buildCardFromDetection` (a fresh card, no CSV row) and
+ * `applyDetectionToCard` (merged onto an existing CSV row, for the batch
+ * pipeline) build on. `existing` lets a coach's own overrides on other
+ * letters survive being merged with a video detection.
  */
-export function buildCardFromDetection(
+function detectionToRouteOverrides(
   detection: DetectedPlay,
-  source: string,
-  playNumber = 1,
-): HudlPlayCard {
-  const routeOverrides: NonNullable<HudlPlayCard["routeOverrides"]> = {};
+  existing: HudlPlayCard["routeOverrides"] = {},
+): NonNullable<HudlPlayCard["routeOverrides"]> {
+  const routeOverrides: NonNullable<HudlPlayCard["routeOverrides"]> = { ...existing };
   for (const player of detection.players) {
     if (!DETECTED_PLAYER_LABELS.includes(player.label as DetectedPlayerLabel)) continue; // unlabeled/unknown role: skip rather than guess
     const path = detectedRouteToPathDeltas(player, { width: FIELD.width, height: FIELD.height });
@@ -87,6 +86,22 @@ export function buildCardFromDetection(
       ...(player.routeType ? { tag: player.routeType.toUpperCase().slice(0, 10) } : {}),
     };
   }
+  return routeOverrides;
+}
+
+/**
+ * Builds a `HudlPlayCard` from one validated detection with no CSV row
+ * behind it (the single-clip "Upload game film" flow) — the formation
+ * itself is drawn from the AI's own guess (via `classifyFormation`, same as
+ * a CSV row's OFF FORM text), and every detected player becomes a
+ * `routeOverrides` entry (see `detectionToRouteOverrides`).
+ */
+export function buildCardFromDetection(
+  detection: DetectedPlay,
+  source: string,
+  playNumber = 1,
+): HudlPlayCard {
+  const routeOverrides = detectionToRouteOverrides(detection);
 
   const base: PlaySource = {
     id: `video-${Date.now().toString(36)}-${counter++}`,
@@ -113,4 +128,16 @@ export function buildCardFromDetection(
   };
 
   return deriveCard(base);
+}
+
+/**
+ * Merges a video detection onto an existing (CSV-derived) card, for the
+ * batch pipeline: unlike `buildCardFromDetection`, this keeps the card's
+ * real down/distance/formation/play call from Hudl — the CSV is ground
+ * truth there — and only fills in each detected letter's route, the one
+ * thing the CSV can't tell you. Any of the card's own `routeOverrides` on
+ * other letters (a coach's manual edit, say) are preserved.
+ */
+export function applyDetectionToCard(card: HudlPlayCard, detection: DetectedPlay): HudlPlayCard {
+  return updateCard(card, { routeOverrides: detectionToRouteOverrides(detection, card.routeOverrides) });
 }

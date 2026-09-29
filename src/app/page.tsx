@@ -29,6 +29,7 @@ import { DeviceFrame } from "@/components/DeviceFrame";
 import { HudlCsvMockup } from "@/components/HudlCsvMockup";
 import { ScoutCard } from "@/components/ScoutCard";
 import { UploadDropzone } from "@/components/UploadDropzone";
+import { BatchUploader } from "@/components/BatchUploader";
 import { VideoUploadCard } from "@/components/VideoUploadCard";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -227,6 +228,28 @@ export default function UploadPage() {
     router.push("/script");
   };
 
+  const handlePasteText = (text: string) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const result = parseHudlCsvText(text);
+      if (result.cards.length > 0) {
+        storeScript({
+          fileName: "",
+          films: ["Pasted breakdown"],
+          savedAt: "",
+          cards: result.cards.map((c) => ({ ...c, source: c.source || "Pasted breakdown" })),
+          warnings: result.warnings,
+        });
+        router.push("/script?loaded=1");
+        return;
+      }
+      setReport({ fileName: "Pasted breakdown", result });
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <div id="top" className="flex min-h-dvh flex-col">
       <header className="sticky top-0 z-40 flex h-[72px] shrink-0 items-center justify-between border-b bg-background/95 px-6 backdrop-blur lg:px-12">
@@ -287,7 +310,13 @@ export default function UploadPage() {
         <section id="upload" className="scroll-mt-20 px-6 py-10 lg:px-12 lg:py-14">
           <div className="mx-auto grid max-w-6xl gap-10 lg:grid-cols-[minmax(0,1fr)_460px] lg:gap-14">
             <div className="flex min-w-0 flex-col gap-5">
-              <UploadDropzone onFiles={handleFiles} onDemo={handleDemo} busy={busy} error={error} />
+              <UploadDropzone
+                onFiles={handleFiles}
+                onDemo={handleDemo}
+                onPasteText={handlePasteText}
+                busy={busy}
+                error={error}
+              />
               <p className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Film className="size-4 shrink-0 text-primary" aria-hidden="true" />
                 No breakdown handy?{" "}
@@ -351,9 +380,12 @@ export default function UploadPage() {
               </Card>
             </div>
 
-            <div className="mt-10 flex justify-center">
+            <div className="mt-10 flex flex-col items-center gap-4">
               <div className="w-full max-w-xl">
                 <VideoUploadCard hideHeader />
+              </div>
+              <div className="w-full max-w-xl">
+                <BatchUploader />
               </div>
             </div>
           </div>

@@ -43,7 +43,8 @@ src/
     ScoutCard.tsx          PlayIQ-style card: title header, white-field SVG, assignment table
     PrintGrid.tsx          Letter-size sheets, 2-up portrait / 4-up landscape, window.print()
     FilterBar.tsx          Down / formation toggle pills
-    UploadDropzone.tsx     Drag-and-drop + file picker (multiple films), .csv validation
+    UploadDropzone.tsx     Drag-and-drop + file picker (multiple films, .csv/.xlsx) + paste-to-import
+    BatchUploader.tsx      Batch video import: CSV + zip of clips, matched by play number
     EditPlayDialog.tsx     Edit a play (formation, strength, play, direction, hash, front, coverage, note)
     ImportNotice.tsx       Non-blocking "Loaded / Added N plays" notice with file notes
     BrandMark.tsx, ServiceWorkerRegister.tsx
@@ -260,6 +261,16 @@ defender-overlap tests cover new combinations.
 
 No Hudl file handy? Use **Load demo script · 5 plays**.
 
+**Excel and pasted breakdowns:** the upload box also takes a real `.xlsx` workbook — `src/lib/
+hudlParser.ts`'s `parseExcelFile` reads the first sheet with `exceljs` (dynamically imported, so
+CSV-only users never load it) and hands it to `Papa.unparse` → `parseHudlCsvText`, so it's the
+exact same column-mapping/classifier pipeline as a CSV, not a second parser to keep in sync. A
+`.csv`-named file that's actually an Excel workbook (a common Hudl-export mixup) is now
+auto-detected by its zip signature and parsed correctly instead of just explaining how to
+re-export it. **Paste breakdown** takes clipboard text — a breakdown copied straight out of
+Excel or Google Sheets pastes as tab-separated text, which `parseHudlCsvText` already reads
+(PapaParse auto-detects the delimiter), so no separate paste-parsing logic exists either.
+
 **Several films:** drop or pick several CSVs at once, or use **Add film** on the script page.
 Each play keeps its film (`card.source`), ids never collide across films, and a **Film**
 filter appears once there's more than one.
@@ -359,12 +370,46 @@ Config not found") on every attempt, consistent with custom WAF rules being a pa
 The actual cap right now is `src/lib/rateLimit.ts`'s `checkBlobRateLimit`: a counter (keyed by the
 entitled **team id**, not IP — see below) kept as tiny marker blobs in the same private Blob store
 (`ratelimit/<bucket>/<hashed team id>/<window>/`, counted with `list()`), 3 clips / 10 min on
-`/api/parse-video` and 5 uploads / 10 min on `/api/blob-upload`. Not perfectly atomic under
-concurrent hits from one team — fine for a small coaching staff's traffic, and it's
-defense-in-depth layered on top of the auth/billing gate below, not the primary defense against
-strangers anymore. If this project ever moves to a plan with Firewall rate limiting, add the
-matching rules (dashboard or `vercel firewall rules add`) and `checkRateLimit` starts enforcing
-immediately, no code change.
+`/api/parse-video`, 1 batch / 10 min on `/api/parse-video-batch` (see below), and 10 uploads /
+10 min on `/api/blob-upload` (raised from 5 so a full batch's uploads don't trip it partway
+through). Not perfectly atomic under concurrent hits from one team — fine for a small coaching
+staff's traffic, and it's defense-in-depth layered on top of the auth/billing gate below, not the
+primary defense against strangers anymore. If this project ever moves to a plan with Firewall
+rate limiting, add the matching rules (dashboard or `vercel firewall rules add`) and
+`checkRateLimit` starts enforcing immediately, no code change.
+
+## Batch video import (`/api/parse-video-batch`)
+
+For a coach with a full game script rather than one play: Hudl exports a game's clips as a zip
+alongside the breakdown CSV. **Batch upload** (below the single-clip uploader) takes both files
+at once.
+
+`src/components/BatchUploader.tsx` parses the CSV with the normal `parseHudlCsv` (real
+down/distance/formation/play-call data — ground truth, never touched by AI) and extracts the zip
+client-side with `JSZip`. `src/lib/clipMatching.ts`'s `matchClipsToCards` matches each clip
+filename to a CSV row by the number embedded in it (`"Clip_4.mp4"` → `PLAY #` 4; the extension is
+stripped first, since `.mp4` itself contains a digit) — a clip whose number doesn't match a row,
+or has no number, is skipped and counted in the script's warnings rather than guessed at.
+
+Matched clips are processed in chunks of `MAX_BATCH_CLIPS` (`src/lib/batchConfig.ts`, currently
+10) — a deliberate cost cap, not just a technical one: an uncapped batch could fire dozens of
+Gemini calls at once with no ceiling, so a 50-play script takes ~5 batches instead of one
+unpredictable bill. Each chunk's clips upload to private Blob storage client-side (same
+`@vercel/blob/client` path the single-clip flow uses), then one call to
+`/api/parse-video-batch` processes the chunk with `src/lib/concurrency.ts`'s `mapWithConcurrency`
+capping it at 4 Gemini calls in flight at once. One clip failing never sinks the batch — each
+comes back with either a `detection` or an `error`, matched back to its clip by array position.
+
+`src/lib/videoImport.ts`'s `applyDetectionToCard` (as opposed to `buildCardFromDetection`, used
+by the single-clip flow with no CSV row behind it) merges a detection's routes onto an *existing*
+CSV-derived card via `updateCard` — the formation, down/distance, and play call all stay exactly
+what the CSV said; only the matched letters' routes come from AI. Both share
+`detectionToRouteOverrides` so the actual `routeOverrides` shape (`source: "video"`, draggable
+handles on the card) is identical either way.
+
+The Gemini call itself (prompt, response schema, per-step error handling) lives in
+`src/lib/videoDetection.ts`'s `detectPlayFromClip`, shared by `/api/parse-video` (one clip) and
+`/api/parse-video-batch` (several) so there's exactly one place that logic can drift.
 
 ## Auth, teams, and billing (Clerk + Stripe)
 
