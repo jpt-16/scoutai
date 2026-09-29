@@ -45,6 +45,7 @@ src/
     FilterBar.tsx          Down / formation toggle pills
     UploadDropzone.tsx     Drag-and-drop + file picker (multiple films, .csv/.xlsx) + paste-to-import
     BatchUploader.tsx      Batch video import: CSV + zip of clips, matched by play number
+    landing/               Landing-page-only visuals (see "Landing page" below)
     EditPlayDialog.tsx     Edit a play (formation, strength, play, direction, hash, front, coverage, note)
     ImportNotice.tsx       Non-blocking "Loaded / Added N plays" notice with file notes
     BrandMark.tsx, ServiceWorkerRegister.tsx
@@ -480,6 +481,32 @@ there's still no separate database for this either.
   `.env.local` — `isAiGateDisabled()` also checks `NEXT_PUBLIC_VERCEL_ENV !== "production"`, so
   even if the var leaks into a real deployment's env vars it's a no-op on Vercel's production
   environment. Remove the env var once you trust the feature and want the real gate back.
+
+## Landing page (`src/app/page.tsx`)
+
+Sections, in order: hero, `#upload`, `#ai-film`, `#showcase`, problem/solution, on-the-field,
+`#how-it-works`, `#features`, `#about`, `#faq`, final CTA. Visuals live in
+`src/components/landing/`:
+
+- Every card shown is a real `ScoutCard` built by the real parser from demo rows
+  (`MOCK_HUDL_CSV`), never a static image. `TransformShowcase` highlights demo row 2 in
+  `HudlCsvMockup` and renders the card parsed from that same row, so "this row became this
+  card" is literally true. Keep them in sync if the demo data changes.
+- `ScriptScreenMockup` is a static, scaled-down copy of the `/script` reader chrome (unit
+  toggle, period tabs, Previous / Next) inside `DeviceFrame`. The hero (`HeroDevice`) cycles
+  it through the script; `PracticeShowcase` shows Scout D with a Print Grid sheet behind it.
+- `FilmToCardVisual` pairs an SVG film-frame illustration (not footage) with a live card whose
+  `source: "video"` routes can be dragged, exactly as in the app.
+- `HudlExportGuide` is the "how to get your file out of Hudl" guide: the data grid's **⋯** menu
+  → **Export Data to Excel** (`.xlsx` imports as-is). The menu is an HTML recreation rather than
+  a screenshot, so it stays crisp and keeps real game footage (minors) and school names off the
+  page. Hudl's wording varies by version, and the figure caption says so.
+- `primitives.tsx`: `Reveal` (fade-up on first scroll into view), `SectionHeading`, and `TryCta`,
+  the single "Try ScoutCard AI" button used in the header, hero, and final CTA.
+- Motion keyframes (`sc-float`, `sc-draw`, `sc-flow`, `sc-row-pulse`, `sc-ping`) are in
+  `globals.css` and all switch off under `prefers-reduced-motion`. Reveal content is hidden only
+  once `layout.tsx`'s inline script has added `html.js`, so it never stays invisible without JS.
+- Don't add testimonials, usage numbers, or customer logos that aren't real.
 
 ## Conventions
 

@@ -4,7 +4,6 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
-  ArrowRight,
   Check,
   ChevronDown,
   ClipboardCheck,
@@ -13,10 +12,8 @@ import {
   Film,
   Layers,
   Lock,
-  MousePointerClick,
+  Play,
   Printer,
-  RefreshCw,
-  ScanEye,
   Smartphone,
   Sparkles,
   Upload,
@@ -25,15 +22,17 @@ import {
 } from "lucide-react";
 import { AccountMenu } from "@/components/AccountMenu";
 import { BrandMark } from "@/components/BrandMark";
-import { DeviceFrame } from "@/components/DeviceFrame";
-import { HudlCsvMockup } from "@/components/HudlCsvMockup";
-import { ScoutCard } from "@/components/ScoutCard";
 import { UploadDropzone } from "@/components/UploadDropzone";
 import { BatchUploader } from "@/components/BatchUploader";
 import { VideoUploadCard } from "@/components/VideoUploadCard";
+import { FilmToCardVisual } from "@/components/landing/FilmToCardVisual";
+import { HeroDevice } from "@/components/landing/HeroDevice";
+import { HudlExportGuide } from "@/components/landing/HudlExportGuide";
+import { PracticeShowcase } from "@/components/landing/PracticeShowcase";
+import { Reveal, SectionHeading, TryCta } from "@/components/landing/primitives";
+import { TransformShowcase } from "@/components/landing/TransformShowcase";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -46,6 +45,7 @@ import { MOCK_HUDL_CSV, DEMO_FILE_NAME } from "@/lib/demoScript";
 import { parseHudlCsvText, type HudlField, type HudlParseResult, type UnsupportedFileKind } from "@/lib/hudlParser";
 import { importFilms } from "@/lib/importFilms";
 import { saveScript, storeScript } from "@/lib/scriptStore";
+import { computeTendencies } from "@/lib/tendencies";
 
 // Smash (X hitch, F corner — F is the slot in Deuces Gun, H stays in the
 // backfield) to one side, curl-slide (Y slide, Z curl) to the other — a real
@@ -64,6 +64,11 @@ const PREVIEW_CARD = {
     Z: { route: "curl" },
   },
 };
+
+// Every card the page shows is parsed from real demo rows by the real parser.
+const DEMO_CARDS = parseHudlCsvText(MOCK_HUDL_CSV).cards;
+const HERO_CARDS = [PREVIEW_CARD, ...DEMO_CARDS];
+const HERO_TENDENCIES = computeTendencies(HERO_CARDS);
 
 const FIELD_LABELS: Record<HudlField, string> = {
   playNumber: "Play #",
@@ -100,118 +105,76 @@ const REPORT_FIELDS: HudlField[] = [
 ];
 
 const PROBLEM_POINTS = [
-  "Hours spent redrawing the same formations by hand, every single week",
-  "Cards that look a little different depending on which coach made them",
-  "No easy way to fix a card once it's already drawn or printed",
-  "Film breakdown and scout cards living in two completely different tools",
+  "Hours redrawing the same formations every week",
+  "Cards that vary with whichever coach drew them",
+  "No easy fix once a card is drawn or printed",
+  "Breakdown and cards in two separate tools",
 ];
 
 const SOLUTION_POINTS = [
-  "Cards generate straight from your Hudl tags — nobody draws a formation",
-  "Every card uses the same formations, symbols, and layout, every time",
-  "Edit any play, route, or note in seconds, right on the card itself",
-  "One script: breakdown in, iPad-ready or printed cards out",
+  "Cards generate straight from your Hudl tags",
+  "Same formations, symbols, and layout every time",
+  "Edit any play, route, or note right on the card",
+  "One script: iPad-ready or printed",
 ];
 
 const FOUR_STEPS: { icon: typeof Upload; title: string; detail: string }[] = [
-  {
-    icon: Upload,
-    title: "Upload",
-    detail: "Drop this week's Hudl breakdown CSV — or a short game clip if you don't have one yet.",
-  },
-  {
-    icon: Layers,
-    title: "Generate",
-    detail: "Formation, routes, blocking, and assignments turn into a vector scout card automatically.",
-  },
-  {
-    icon: ClipboardCheck,
-    title: "Review",
-    detail: "Check each card, tweak an assignment, or drag an AI-detected route into shape.",
-  },
-  {
-    icon: Smartphone,
-    title: "Practice",
-    detail: "Swipe through the script on the iPad at practice, or switch to Print Grid for paper.",
-  },
+  { icon: Upload, title: "Upload", detail: "Drop this week's Hudl export — or a game clip." },
+  { icon: Layers, title: "Generate", detail: "Formation, routes, blocking, and assignments draw themselves." },
+  { icon: ClipboardCheck, title: "Review", detail: "Tweak an assignment or drag an AI route into shape." },
+  { icon: Smartphone, title: "Practice", detail: "Swipe it on the iPad, or print 2 or 4 to a page." },
 ];
 
 const FEATURE_CARDS: { icon: typeof Upload; title: string; detail: string }[] = [
-  {
-    icon: ClipboardList,
-    title: "For coaches",
-    detail: "Turn a weekly breakdown into a full scout script in minutes, not a Saturday afternoon.",
-  },
-  {
-    icon: Smartphone,
-    title: "For players",
-    detail:
-      "Clean, high-contrast cards built for direct sun on an iPad — swipe through looks at their own pace.",
-  },
-  {
-    icon: Printer,
-    title: "Print-ready",
-    detail: "2 or 4 cards to a page, black on white, ready to hand out or drop in a binder.",
-  },
-  {
-    icon: Users,
-    title: "Staff collaboration",
-    detail: "Create a team for your staff, invite the other coaches, and everyone works from one script.",
-  },
+  { icon: ClipboardList, title: "For coaches", detail: "A full scout script in minutes, not a Saturday afternoon." },
+  { icon: Smartphone, title: "For players", detail: "High-contrast cards built for direct sun on an iPad." },
+  { icon: Printer, title: "Print-ready", detail: "2 or 4 cards a page, black on white, binder-ready." },
+  { icon: Users, title: "Staff collaboration", detail: "Invite your coaches and work from one script." },
 ];
 
-const ABOUT_CARDS: { icon: typeof Upload; title: string; detail: string }[] = [
-  {
-    icon: Layers,
-    title: "Real coaching conventions",
-    detail:
-      "Q/F/H/X/Y/Z letters, route-tree depths and breaks the way your staff actually teaches them, real run schemes — drawn the way your coordinators already talk about it, not a stock template.",
-  },
-  {
-    icon: Clock,
-    title: "Minutes, not a late night",
-    detail:
-      "Upload this week's breakdown and every scout card draws itself — formation, routes, blocking, fronts — ready to flip through on an iPad at practice or print for the whole staff.",
-  },
-  {
-    icon: Smartphone,
-    title: "Built for the practice field",
-    detail: "Works offline once installed, holds up in direct sunlight, and swipes like a real stack of cards.",
-  },
-  {
-    icon: Sparkles,
-    title: "AI when you need it",
-    detail:
-      "No Hudl breakdown yet? Upload the game clip instead and get a first-pass card in minutes — still yours to correct, nothing locked away from you.",
-  },
+const ABOUT_POINTS: { icon: typeof Upload; title: string; detail: string }[] = [
+  { icon: Layers, title: "Real coaching conventions", detail: "Q/F/H/X/Y/Z, your route tree, real run schemes." },
+  { icon: Clock, title: "Minutes, not a late night", detail: "Every card draws itself from the breakdown." },
+  { icon: Smartphone, title: "Built for the field", detail: "Works offline and reads in direct sunlight." },
+  { icon: Sparkles, title: "AI when you need it", detail: "No breakdown? Start from the film instead." },
 ];
 
 const FAQS: { q: string; a: string }[] = [
   {
-    q: "Do I need Hudl to use this?",
-    a: "Yes, for the free path — export your breakdown from Hudl as a CSV (Export → Breakdown / Data → CSV; the exact wording varies by Hudl version). ScoutCard AI reads that file directly in your browser.",
+    q: "How do I get my breakdown out of Hudl?",
+    a: "Open the opponent's film, find the data grid under the video, click the ⋯ menu at the right end of its toolbar, and choose Export Data to Excel. Drop that file straight in — .xlsx and .csv both work. The video needs breakdown data tagged on it, and your account needs coach or admin access to export.",
   },
   {
     q: "How accurate is the AI game-film analysis?",
-    a: "It's a first-pass read, not a measurement. The AI is reading camera angle and depth by eye from a sideline or endzone clip, so treat every route as a starting point — you drag each break point into the correct shape before it's practice-ready.",
+    a: "It's a first-pass read, not a measurement. The AI reads camera angle and depth by eye from a sideline or endzone clip, so treat every route as a starting point — drag each break point into shape before it's practice-ready.",
   },
   {
     q: "Can I edit a card after it's generated?",
-    a: "Yes. Edit Play lets you change the formation, strength, play call, direction, hash, front, and coverage, plus each receiver's route. Edits save automatically and are marked \"edited\" in the play list.",
+    a: "Yes. Edit Play changes the formation, strength, play call, direction, hash, front, coverage, and each receiver's route. Edits save automatically and are marked \"edited\" in the play list.",
   },
   {
     q: "Can I print the scout cards?",
-    a: "Yes. Print Grid lays out 2 or 4 cards per letter-size page, tuned for black-and-white printing, using your browser's normal Print / Save PDF.",
+    a: "Yes. Print Grid lays out 2 or 4 cards per letter-size page, tuned for black-and-white printing, through your browser's Print / Save PDF.",
   },
   {
     q: "Does it work on an iPad?",
-    a: "Yes — add it to your Home Screen from Safari and it keeps working offline after the first load, including whatever script you already imported.",
+    a: "Yes — add it to your Home Screen from Safari and it keeps working offline after the first load, including the script you already imported.",
   },
   {
     q: "Do I have to upload game film?",
-    a: "No. The CSV path is free and runs entirely in your browser — nothing is uploaded. AI film import is a separate, optional, paid feature for staffs that don't have a Hudl breakdown yet.",
+    a: "No. Your Hudl export is read entirely in your browser — nothing is uploaded. AI film import is a separate, optional, paid feature for staffs without a breakdown yet.",
   },
 ];
+
+const NAV = [
+  ["#top", "Home"],
+  ["#features", "Features"],
+  ["#how-it-works", "How it works"],
+  ["#about", "About"],
+  ["#faq", "FAQ"],
+] as const;
+
+const SECTION = "scroll-mt-20 border-t px-5 py-20 sm:px-6 sm:py-28 lg:px-12";
 
 export default function UploadPage() {
   const router = useRouter();
@@ -277,448 +240,395 @@ export default function UploadPage() {
   };
 
   return (
-    <div id="top" className="flex min-h-dvh flex-col">
-      <header className="sticky top-0 z-40 flex h-[72px] shrink-0 items-center justify-between border-b bg-background/95 px-6 backdrop-blur lg:px-12">
-        <a href="#top" className="shrink-0">
-          <BrandMark />
-        </a>
-        <nav className="hidden items-center gap-8 text-[15px] font-semibold md:flex">
-          <a href="#top" className="text-muted-foreground transition-colors hover:text-foreground">
-            Home
+    <div id="top" className="flex min-h-dvh flex-col overflow-x-clip">
+      <header className="sticky top-0 z-40 border-b border-white/[0.06] bg-background/80 backdrop-blur-xl">
+        <div className="mx-auto flex h-[68px] max-w-7xl items-center justify-between gap-4 px-5 sm:px-6 lg:px-12">
+          <a href="#top" className="shrink-0" aria-label="ScoutCard AI home">
+            <BrandMark />
           </a>
-          <a href="#features" className="text-muted-foreground transition-colors hover:text-foreground">
-            Features
-          </a>
-          <a href="#how-it-works" className="text-muted-foreground transition-colors hover:text-foreground">
-            How it works
-          </a>
-          <a href="#about" className="text-muted-foreground transition-colors hover:text-foreground">
-            About
-          </a>
-          <a href="#faq" className="text-muted-foreground transition-colors hover:text-foreground">
-            FAQ
-          </a>
-        </nav>
-        <AccountMenu />
+          <nav className="hidden items-center gap-8 text-[15px] font-semibold lg:flex">
+            {NAV.map(([href, label]) => (
+              <a key={href} href={href} className="text-muted-foreground transition-colors hover:text-foreground">
+                {label}
+              </a>
+            ))}
+          </nav>
+          <div className="flex items-center gap-3">
+            <AccountMenu />
+            <TryCta compact className="hidden sm:inline-flex" />
+          </div>
+        </div>
       </header>
 
       <main className="flex flex-col">
         {/* Hero */}
-        <section className="px-6 pt-16 pb-4 sm:pt-20 lg:px-12 lg:pt-24">
-          <div className="mx-auto flex max-w-3xl flex-col items-center gap-6 text-center">
-            <p className="animate-in fade-in slide-in-from-bottom-2 duration-500 text-sm font-bold tracking-[0.18em] text-primary">
-              SCOUT CARDS FROM YOUR HUDL BREAKDOWN
-            </p>
-            <h1 className="animate-in fade-in slide-in-from-bottom-3 font-display text-5xl leading-[0.98] font-extrabold uppercase duration-700 sm:text-6xl lg:text-[72px]">
-              Turn your Hudl breakdown into scout cards in seconds.
-            </h1>
-            <p className="animate-in fade-in slide-in-from-bottom-3 max-w-[620px] text-[19px] leading-relaxed text-[#c9cfc9] duration-700">
-              Upload this week&apos;s CSV — or a game clip if you don&apos;t have one — and every play
-              becomes a clean vector scout card, ready to run on the iPad at practice or print for the
-              whole staff.
-            </p>
-            <div className="animate-in fade-in slide-in-from-bottom-3 flex flex-wrap items-center justify-center gap-3 duration-700">
-              <Button size="xl" asChild>
-                <a href="#upload">
-                  Try ScoutCard AI
-                  <ArrowRight aria-hidden="true" />
-                </a>
-              </Button>
-              <Button size="xl" variant="outline" asChild>
-                <a href="#showcase">See a sample card</a>
-              </Button>
+        <section className="relative isolate px-5 pt-14 pb-20 sm:px-6 sm:pt-20 lg:px-12 lg:pt-24 lg:pb-28">
+          <div
+            className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(60%_50%_at_70%_30%,rgba(255,138,61,0.14),transparent_70%),linear-gradient(to_bottom,transparent,var(--background))]"
+            aria-hidden="true"
+          />
+          <div
+            className="pointer-events-none absolute inset-0 -z-20 bg-[repeating-linear-gradient(to_bottom,transparent_0,transparent_71px,rgba(244,241,232,0.035)_71px,rgba(244,241,232,0.035)_72px)] [mask-image:radial-gradient(70%_60%_at_50%_40%,black,transparent)]"
+            aria-hidden="true"
+          />
+          <div className="mx-auto grid max-w-7xl items-center gap-14 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:gap-16">
+            <div className="flex flex-col items-center gap-7 text-center lg:items-start lg:text-left">
+              <p className="animate-in fade-in slide-in-from-bottom-2 flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-3.5 py-1.5 text-[11px] font-bold tracking-[0.12em] whitespace-nowrap text-primary duration-500 sm:text-xs sm:tracking-[0.16em]">
+                <span className="size-1.5 rounded-full bg-primary" aria-hidden="true" />
+                SCOUT CARDS FROM YOUR HUDL BREAKDOWN
+              </p>
+              <h1 className="animate-in fade-in slide-in-from-bottom-3 font-display text-[52px] leading-[0.9] font-extrabold uppercase duration-700 sm:text-7xl xl:text-[88px]">
+                Turn your Hudl breakdown into scout cards <span className="text-primary">in seconds.</span>
+              </h1>
+              <p className="animate-in fade-in slide-in-from-bottom-3 max-w-[520px] text-lg leading-relaxed text-[#c9cfc9] duration-700 sm:text-xl">
+                Every play becomes a clean, practice-ready card — on the iPad at practice or printed for the
+                whole staff.
+              </p>
+              <div className="animate-in fade-in slide-in-from-bottom-4 flex w-full max-w-sm flex-col items-stretch gap-3 duration-1000 sm:w-auto sm:max-w-none sm:flex-row sm:items-center sm:justify-center lg:justify-start">
+                <TryCta />
+                <Button size="xl" variant="outline" asChild className="h-14 rounded-xl border-white/15 px-6 hover:border-white/30 hover:bg-white/5">
+                  <a href="#showcase">See how it works</a>
+                </Button>
+              </div>
+              <p className="flex items-center justify-center gap-2 text-sm text-muted-foreground lg:justify-start">
+                <Lock className="size-4 shrink-0" aria-hidden="true" />
+                Read on your device. Nothing is uploaded.
+              </p>
             </div>
-            <p className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Lock className="size-4" aria-hidden="true" />
-              The CSV path is free and parsed on this device — nothing is uploaded.
-            </p>
+
+            <div className="animate-in fade-in zoom-in-95 mx-auto w-full max-w-[680px] duration-1000 lg:max-w-none">
+              <HeroDevice cards={HERO_CARDS} tendencies={HERO_TENDENCIES} />
+            </div>
           </div>
         </section>
 
         {/* Functional upload — the actual product entry point */}
-        <section id="upload" className="scroll-mt-20 px-6 py-10 lg:px-12 lg:py-14">
-          <div className="mx-auto grid max-w-6xl gap-10 lg:grid-cols-[minmax(0,1fr)_460px] lg:gap-14">
-            <div className="flex min-w-0 flex-col gap-5">
-              <UploadDropzone
-                onFiles={handleFiles}
-                onDemo={handleDemo}
-                onPasteText={handlePasteText}
-                busy={busy}
-                error={error}
-              />
-              <p className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Film className="size-4 shrink-0 text-primary" aria-hidden="true" />
-                No breakdown handy?{" "}
-                <a href="#ai-film" className="font-semibold text-primary underline-offset-4 hover:underline">
-                  Use your game film instead
-                </a>
-                .
-              </p>
-            </div>
-            <div className="flex flex-col gap-3">
-              <p className="text-xs font-bold tracking-[0.14em] text-muted-foreground">LIVE PREVIEW</p>
-              <ScoutCard card={PREVIEW_CARD} />
+        <section id="upload" className={`${SECTION} bg-card/30`}>
+          <div className="mx-auto max-w-6xl">
+            <Reveal>
+              <SectionHeading eyebrow="START HERE" title="Drop in this week's breakdown">
+                Export from Hudl, drop the file, and your script is ready.
+              </SectionHeading>
+            </Reveal>
+            <div className="mt-12 grid items-start gap-8 lg:grid-cols-2 lg:gap-10">
+              <Reveal className="lg:order-2 lg:sticky lg:top-24">
+                <div className="flex flex-col gap-4">
+                  <UploadDropzone
+                    onFiles={handleFiles}
+                    onDemo={handleDemo}
+                    onPasteText={handlePasteText}
+                    busy={busy}
+                    error={error}
+                  />
+                  <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Film className="size-4 shrink-0 text-primary" aria-hidden="true" />
+                    No breakdown handy?{" "}
+                    <a href="#ai-film" className="font-semibold text-primary underline-offset-4 hover:underline">
+                      Use your game film instead
+                    </a>
+                  </p>
+                  <div className="mt-2 flex flex-col gap-3 rounded-2xl border bg-background/50 p-5">
+                    <p className="text-xs font-bold tracking-[0.16em] text-muted-foreground">WORKS WITH</p>
+                    <div className="flex flex-wrap gap-2">
+                      {[".csv", ".xlsx", "Pasted rows", "Several films at once"].map((f) => (
+                        <span key={f} className="rounded-lg border bg-card px-3 py-1.5 font-mono text-[13px] font-semibold">
+                          {f}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </Reveal>
+              <Reveal delay={120} className="lg:order-1">
+                <HudlExportGuide />
+              </Reveal>
             </div>
           </div>
         </section>
 
         {/* AI game-film analysis */}
-        <section id="ai-film" className="scroll-mt-20 border-t bg-card/30 px-6 py-16 sm:py-20 lg:px-12 lg:py-24">
+        <section id="ai-film" className={SECTION}>
           <div className="mx-auto max-w-6xl">
-            <div className="mx-auto max-w-2xl text-center">
-              <Badge className="mx-auto h-6 w-fit rounded-full bg-primary px-2.5 text-xs font-extrabold tracking-[0.08em] text-primary-foreground">
-                NEW
-              </Badge>
-              <h2 className="mt-3 font-display text-3xl leading-tight font-extrabold uppercase sm:text-4xl">
-                No breakdown yet? Use your game film
-              </h2>
-              <p className="mt-3 text-[17px] leading-relaxed text-muted-foreground">
-                Upload a short clip of one play and AI builds a first-pass scout card for you to
-                review — the same card, Print Grid, and iPad script a Hudl import gets.
-              </p>
-            </div>
-
-            <div className="mt-10 grid gap-4 sm:grid-cols-3">
-              <Card className="gap-2.5 rounded-xl py-5">
-                <CardContent className="flex flex-col gap-2.5 px-5">
-                  <Film className="size-6 text-primary" aria-hidden="true" />
-                  <span className="text-[15px] font-semibold">Upload one play&apos;s clip</span>
-                  <span className="text-sm leading-relaxed text-muted-foreground">
-                    A sideline or endzone angle, 10–20 seconds, uploaded straight to a private file.
-                  </span>
-                </CardContent>
-              </Card>
-              <Card className="gap-2.5 rounded-xl py-5">
-                <CardContent className="flex flex-col gap-2.5 px-5">
-                  <ScanEye className="size-6 text-primary" aria-hidden="true" />
-                  <span className="text-[15px] font-semibold">AI drafts the card</span>
-                  <span className="text-sm leading-relaxed text-muted-foreground">
-                    Each skill player&apos;s alignment and route path is detected and drawn automatically.
-                  </span>
-                </CardContent>
-              </Card>
-              <Card className="gap-2.5 rounded-xl py-5">
-                <CardContent className="flex flex-col gap-2.5 px-5">
-                  <MousePointerClick className="size-6 text-primary" aria-hidden="true" />
-                  <span className="text-[15px] font-semibold">You review and correct it</span>
-                  <span className="text-sm leading-relaxed text-muted-foreground">
-                    It&apos;s a first pass, not a measurement — drag any route&apos;s break point into
-                    shape before it&apos;s practice-ready.
-                  </span>
-                </CardContent>
-              </Card>
-            </div>
-
-            <div className="mt-10 flex flex-col items-center gap-4">
-              <div className="w-full max-w-xl">
-                <VideoUploadCard hideHeader />
-              </div>
-              <div className="w-full max-w-xl">
-                <BatchUploader />
-              </div>
-            </div>
+            <Reveal>
+              <SectionHeading
+                eyebrow="NEW · AI GAME FILM"
+                title={
+                  <>
+                    No breakdown? <span className="text-primary">Use the film.</span>
+                  </>
+                }
+              >
+                Upload one play&apos;s clip. AI drafts the card — you drag it into shape.
+              </SectionHeading>
+            </Reveal>
+            <Reveal delay={100} className="mt-14">
+              <FilmToCardVisual />
+            </Reveal>
+            <Reveal
+              delay={150}
+              className="mx-auto mt-14 grid max-w-5xl items-start gap-4 lg:grid-cols-2 lg:[&>*:only-child]:col-span-2 lg:[&>*:only-child]:mx-auto lg:[&>*:only-child]:w-full lg:[&>*:only-child]:max-w-xl"
+            >
+              <VideoUploadCard hideHeader />
+              <BatchUploader />
+            </Reveal>
           </div>
         </section>
 
         {/* Before / after */}
-        <section id="showcase" className="scroll-mt-20 border-t px-6 py-16 sm:py-20 lg:px-12 lg:py-24">
+        <section id="showcase" className={`${SECTION} bg-card/30`}>
           <div className="mx-auto max-w-6xl">
-            <div className="mx-auto max-w-2xl text-center">
-              <p className="text-sm font-bold tracking-[0.18em] text-primary">FROM BREAKDOWN TO CARD</p>
-              <h2 className="mt-2 font-display text-3xl leading-tight font-extrabold uppercase sm:text-4xl">
-                The same play, two very different afternoons
-              </h2>
-              <p className="mt-3 text-[17px] leading-relaxed text-muted-foreground">
-                One column of Hudl tags in, one clean vector scout card out — formation, routes, and
-                blocking drawn for you, automatically.
-              </p>
-            </div>
-
-            <div className="mt-10 grid items-center gap-6 lg:grid-cols-[1fr_auto_1fr]">
-              <div className="flex flex-col gap-3">
-                <p className="text-center text-xs font-bold tracking-[0.14em] text-muted-foreground">
-                  YOUR HUDL BREAKDOWN
-                </p>
-                <HudlCsvMockup />
-              </div>
-
-              <div className="flex flex-col items-center justify-center gap-2">
-                <span
-                  className="flex size-12 shrink-0 items-center justify-center rounded-full border-2 border-primary bg-primary/10 text-primary"
-                  aria-hidden="true"
-                >
-                  <Sparkles className="size-6" />
-                </span>
-                <ArrowRight className="size-6 shrink-0 rotate-90 text-muted-foreground" aria-hidden="true" />
-              </div>
-
-              <div className="flex flex-col gap-3">
-                <p className="text-center text-xs font-bold tracking-[0.14em] text-muted-foreground">
-                  PRACTICE-READY SCOUT CARD
-                </p>
-                <ScoutCard card={PREVIEW_CARD} />
-              </div>
-            </div>
+            <Reveal>
+              <SectionHeading eyebrow="FROM BREAKDOWN TO CARD" title="One row in. One card out.">
+                Every tag in your breakdown lands exactly where it belongs on the card.
+              </SectionHeading>
+            </Reveal>
+            <Reveal delay={100} className="mt-14">
+              <TransformShowcase card={DEMO_CARDS[1]} />
+            </Reveal>
           </div>
         </section>
 
         {/* Problem / solution */}
-        <section className="border-t bg-card/30 px-6 py-16 sm:py-20 lg:px-12 lg:py-24">
+        <section className={SECTION}>
           <div className="mx-auto max-w-5xl">
-            <div className="mx-auto max-w-2xl text-center">
-              <p className="text-sm font-bold tracking-[0.18em] text-primary">THE PROBLEM</p>
-              <h2 className="mt-2 font-display text-3xl leading-tight font-extrabold uppercase sm:text-4xl">
-                Stop spending hours drawing scout cards
-              </h2>
-            </div>
-
-            <div className="mt-10 grid gap-6 sm:grid-cols-2">
-              <Card className="gap-4 rounded-2xl border-destructive/30 py-6">
-                <CardContent className="flex flex-col gap-4 px-6">
-                  <div className="flex items-center gap-2.5">
+            <Reveal>
+              <SectionHeading eyebrow="THE PROBLEM" title="Stop drawing scout cards by hand" />
+            </Reveal>
+            <div className="mt-12 grid gap-5 sm:grid-cols-2">
+              <Reveal>
+                <div className="flex h-full flex-col gap-5 rounded-3xl border bg-card/50 p-7">
+                  <span className="flex items-center gap-2.5 font-display text-xl font-extrabold tracking-wide text-muted-foreground uppercase">
                     <Clock className="size-5 text-destructive" aria-hidden="true" />
-                    <span className="font-display text-lg font-extrabold uppercase tracking-wide text-destructive">
-                      The old way
-                    </span>
-                  </div>
-                  <ul className="flex flex-col gap-3">
+                    The old way
+                  </span>
+                  <ul className="flex flex-col gap-3.5">
                     {PROBLEM_POINTS.map((point) => (
-                      <li key={point} className="flex gap-2.5 text-[15px] leading-snug text-muted-foreground">
-                        <X className="mt-0.5 size-4 shrink-0 text-destructive" aria-hidden="true" />
+                      <li key={point} className="flex gap-3 text-[15px] leading-snug text-muted-foreground">
+                        <X className="mt-0.5 size-4 shrink-0 text-destructive/80" aria-hidden="true" />
                         {point}
                       </li>
                     ))}
                   </ul>
-                </CardContent>
-              </Card>
-
-              <Card className="gap-4 rounded-2xl border-2 border-primary/60 bg-primary/[0.06] py-6">
-                <CardContent className="flex flex-col gap-4 px-6">
-                  <div className="flex items-center gap-2.5">
-                    <RefreshCw className="size-5 text-primary" aria-hidden="true" />
-                    <span className="font-display text-lg font-extrabold uppercase tracking-wide text-primary">
-                      With ScoutCard AI
-                    </span>
-                  </div>
-                  <ul className="flex flex-col gap-3">
+                </div>
+              </Reveal>
+              <Reveal delay={120}>
+                <div className="relative flex h-full flex-col gap-5 overflow-hidden rounded-3xl border border-primary/40 bg-gradient-to-br from-primary/[0.14] to-primary/[0.03] p-7 shadow-[0_20px_60px_-30px] shadow-primary/50">
+                  <span className="flex items-center gap-2.5 font-display text-xl font-extrabold tracking-wide text-primary uppercase">
+                    <Sparkles className="size-5" aria-hidden="true" />
+                    With ScoutCard AI
+                  </span>
+                  <ul className="flex flex-col gap-3.5">
                     {SOLUTION_POINTS.map((point) => (
-                      <li key={point} className="flex gap-2.5 text-[15px] leading-snug">
-                        <Check className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden="true" />
+                      <li key={point} className="flex gap-3 text-[15px] leading-snug font-medium">
+                        <span className="mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
+                          <Check className="size-3" strokeWidth={3} aria-hidden="true" />
+                        </span>
                         {point}
                       </li>
                     ))}
                   </ul>
-                </CardContent>
-              </Card>
+                </div>
+              </Reveal>
             </div>
           </div>
         </section>
 
         {/* iPad / practice experience */}
-        <section className="border-t px-6 py-16 sm:py-20 lg:px-12 lg:py-24">
-          <div className="mx-auto grid max-w-6xl items-center gap-12 lg:grid-cols-2 lg:gap-16">
-            <div className="flex flex-col gap-4">
-              <p className="text-sm font-bold tracking-[0.18em] text-primary">ON THE FIELD</p>
-              <h2 className="font-display text-3xl leading-tight font-extrabold uppercase sm:text-4xl">
-                Built to run on the sideline
-              </h2>
-              <p className="max-w-[520px] text-[17px] leading-relaxed text-muted-foreground">
-                Every card is high-contrast and vector-drawn for direct sun, not a screenshot. Swipe
-                between plays, filter by down or formation, and switch between Scout Offense and Scout
-                Defense without leaving the field.
-              </p>
-              <ul className="mt-2 flex flex-col gap-3">
-                <li className="flex gap-2.5 text-[15px] leading-snug text-muted-foreground">
-                  <Check className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden="true" />
-                  Add to Home Screen and it keeps working offline once it&apos;s loaded once
-                </li>
-                <li className="flex gap-2.5 text-[15px] leading-snug text-muted-foreground">
-                  <Check className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden="true" />
-                  Filter by down, formation, or 7v7 / Team period mid-practice
-                </li>
-                <li className="flex gap-2.5 text-[15px] leading-snug text-muted-foreground">
-                  <Check className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden="true" />
-                  Not on the iPad? Switch to Print Grid for a paper script instead
-                </li>
-              </ul>
-            </div>
-
-            <div className="mx-auto w-full max-w-sm">
-              <DeviceFrame>
-                <ScoutCard card={PREVIEW_CARD} />
-              </DeviceFrame>
-            </div>
+        <section className={`${SECTION} bg-card/30`}>
+          <div className="mx-auto grid max-w-6xl items-center gap-12 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] lg:gap-16">
+            <Reveal>
+              <div className="flex flex-col gap-6">
+                <SectionHeading eyebrow="ON THE FIELD" title="Built to run on the sideline" align="left">
+                  High-contrast vector cards made for direct sun. Swipe plays, filter by down or formation,
+                  and flip between Scout O and Scout D.
+                </SectionHeading>
+                <ul className="flex flex-col gap-3">
+                  {[
+                    "Works offline from the Home Screen",
+                    "Filter by down, formation, or 7v7 / Team",
+                    "Print Grid: 2 or 4 cards a page",
+                  ].map((item) => (
+                    <li key={item} className="flex gap-3 text-[15px] leading-snug">
+                      <span className="mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
+                        <Check className="size-3" strokeWidth={3} aria-hidden="true" />
+                      </span>
+                      {item}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </Reveal>
+            <Reveal delay={120}>
+              <PracticeShowcase cards={DEMO_CARDS} />
+            </Reveal>
           </div>
         </section>
 
         {/* 4-step flow */}
-        <section
-          id="how-it-works"
-          className="scroll-mt-20 border-t bg-card/30 px-6 py-16 sm:py-20 lg:px-12 lg:py-28"
-        >
+        <section id="how-it-works" className={SECTION}>
           <div className="mx-auto max-w-6xl">
-            <div className="mx-auto max-w-2xl text-center">
-              <p className="text-sm font-bold tracking-[0.18em] text-primary">HOW IT WORKS</p>
-              <h2 className="mt-2 font-display text-4xl leading-tight font-extrabold uppercase sm:text-5xl">
-                Upload. Generate. Review. Practice.
-              </h2>
-              <p className="mt-3 text-[17px] leading-relaxed text-muted-foreground">
-                Four steps from a Hudl breakdown — or a game clip — to a script your whole staff can run.
-              </p>
+            <Reveal>
+              <SectionHeading eyebrow="HOW IT WORKS" title="Upload. Generate. Review. Practice.">
+                From a Hudl breakdown — or a game clip — to a script your whole staff can run.
+              </SectionHeading>
+            </Reveal>
+            <div className="relative mt-14">
+              <div
+                className="absolute top-[56px] right-[12%] left-[12%] hidden h-px bg-gradient-to-r from-transparent via-primary/40 to-transparent lg:block"
+                aria-hidden="true"
+              />
+              <ol className="relative grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+                {FOUR_STEPS.map(({ icon: Icon, title, detail }, i) => (
+                  <li key={title}>
+                    <Reveal delay={i * 90} className="h-full">
+                      <div className="group relative flex h-full flex-col gap-3 rounded-3xl border bg-card p-7 transition-all duration-300 hover:-translate-y-1.5 hover:border-primary/50">
+                        <div className="flex items-center justify-between">
+                          <span className="relative flex size-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lg shadow-primary/30">
+                            <Icon className="size-7" aria-hidden="true" />
+                          </span>
+                          <span className="font-display text-5xl leading-none font-extrabold text-white/[0.07] transition-colors group-hover:text-primary/25">
+                            {String(i + 1).padStart(2, "0")}
+                          </span>
+                        </div>
+                        <span className="mt-2 font-display text-2xl font-extrabold uppercase">{title}</span>
+                        <span className="text-[15px] leading-relaxed text-muted-foreground">{detail}</span>
+                      </div>
+                    </Reveal>
+                  </li>
+                ))}
+              </ol>
             </div>
-
-            <ol className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-              {FOUR_STEPS.map(({ icon: Icon, title, detail }, i) => (
-                <li key={title}>
-                  <Card className="h-full gap-4 overflow-hidden rounded-2xl border-2 py-8 transition-all hover:-translate-y-1.5 hover:border-primary/60">
-                    <CardContent className="flex flex-col gap-3 px-7">
-                      <span
-                        className="font-display text-7xl leading-none font-extrabold text-primary/15"
-                        aria-hidden="true"
-                      >
-                        {String(i + 1).padStart(2, "0")}
-                      </span>
-                      <span
-                        className="-mt-9 flex size-14 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground"
-                        aria-hidden="true"
-                      >
-                        <Icon className="size-7" />
-                      </span>
-                      <span className="mt-1 font-display text-2xl font-extrabold uppercase">{title}</span>
-                      <span className="text-[15px] leading-relaxed text-muted-foreground">{detail}</span>
-                    </CardContent>
-                  </Card>
-                </li>
-              ))}
-            </ol>
           </div>
         </section>
 
         {/* Built for football staffs */}
-        <section id="features" className="scroll-mt-20 border-t px-6 py-16 sm:py-20 lg:px-12 lg:py-24">
+        <section id="features" className={`${SECTION} bg-card/30`}>
           <div className="mx-auto max-w-6xl">
-            <div className="mx-auto max-w-2xl text-center">
-              <p className="text-sm font-bold tracking-[0.18em] text-primary">BUILT FOR FOOTBALL STAFFS</p>
-              <h2 className="mt-2 font-display text-3xl leading-tight font-extrabold uppercase sm:text-4xl">
-                Made for the whole program
-              </h2>
-            </div>
-
-            <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              {FEATURE_CARDS.map(({ icon: Icon, title, detail }) => (
-                <Card
-                  key={title}
-                  className="h-full gap-3 rounded-2xl py-6 transition-transform hover:-translate-y-1"
-                >
-                  <CardContent className="flex flex-col gap-3 px-6">
-                    <span
-                      className="flex size-10 shrink-0 items-center justify-center rounded-full border-2 border-primary text-primary"
-                      aria-hidden="true"
-                    >
-                      <Icon className="size-5" />
+            <Reveal>
+              <SectionHeading eyebrow="BUILT FOR FOOTBALL STAFFS" title="Made for the whole program" />
+            </Reveal>
+            <div className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              {FEATURE_CARDS.map(({ icon: Icon, title, detail }, i) => (
+                <Reveal key={title} delay={i * 80} className="h-full">
+                  <div className="flex h-full flex-col gap-3 rounded-3xl border bg-background/60 p-6 transition-all duration-300 hover:-translate-y-1 hover:border-primary/40">
+                    <span className="flex size-11 items-center justify-center rounded-xl bg-primary/12 text-primary ring-1 ring-primary/25">
+                      <Icon className="size-5" aria-hidden="true" />
                     </span>
-                    <span className="font-display text-lg font-extrabold uppercase">{title}</span>
-                    <span className="text-sm leading-relaxed text-muted-foreground">{detail}</span>
-                  </CardContent>
-                </Card>
+                    <span className="mt-1 font-display text-xl font-extrabold uppercase">{title}</span>
+                    <span className="text-[15px] leading-relaxed text-muted-foreground">{detail}</span>
+                  </div>
+                </Reveal>
               ))}
             </div>
           </div>
         </section>
 
         {/* About / why */}
-        <section id="about" className="scroll-mt-20 border-t bg-card/30 px-6 py-16 sm:py-20 lg:px-12 lg:py-24">
-          <div className="mx-auto max-w-6xl">
-            <div className="mx-auto max-w-2xl text-center">
-              <p className="text-sm font-bold tracking-[0.18em] text-primary">WHY SCOUTCARD AI</p>
-              <h2 className="mt-2 font-display text-3xl leading-tight font-extrabold uppercase sm:text-4xl">
-                Built from the sideline, not a boardroom
-              </h2>
-            </div>
-
-            <blockquote className="mx-auto mt-8 max-w-2xl border-l-4 border-primary pl-5 text-left text-[19px] leading-relaxed text-[#c9cfc9] sm:text-xl">
-              &ldquo;I played high school football, and I watched our coaching staff stay late
-              hand-drawing scout team cards off a stack of Hudl printouts — hours that
-              should&apos;ve gone into actual gameplanning, film work, or just going home.
-              That&apos;s the whole reason this exists: turn a breakdown into practice-ready cards
-              in minutes, so a coordinator can walk out of the office instead of tracing X&apos;s
-              and O&apos;s by hand.&rdquo;
-              <footer className="mt-4 text-base font-bold text-foreground not-italic">— Jake, Founder</footer>
-            </blockquote>
-
-            <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              {ABOUT_CARDS.map(({ icon: Icon, title, detail }) => (
-                <Card
-                  key={title}
-                  className="h-full gap-3 rounded-2xl py-6 transition-transform hover:-translate-y-1"
+        <section id="about" className={SECTION}>
+          <div className="mx-auto max-w-5xl">
+            <Reveal>
+              <SectionHeading eyebrow="WHY SCOUTCARD AI" title="Built from the sideline, not a boardroom" />
+            </Reveal>
+            <Reveal delay={100}>
+              <figure className="relative mx-auto mt-12 max-w-3xl overflow-hidden rounded-3xl border bg-gradient-to-br from-card to-background p-8 sm:p-12">
+                <span
+                  className="pointer-events-none absolute -top-6 left-6 font-display text-[160px] leading-none font-extrabold text-primary/15 select-none"
+                  aria-hidden="true"
                 >
-                  <CardContent className="flex flex-col gap-3 px-6">
-                    <span
-                      className="flex size-10 shrink-0 items-center justify-center rounded-full border-2 border-primary text-primary"
-                      aria-hidden="true"
-                    >
-                      <Icon className="size-5" />
-                    </span>
+                  &ldquo;
+                </span>
+                <blockquote className="relative text-xl leading-relaxed text-[#dfe3de] sm:text-[22px]">
+                  I played high school football, and I watched our coaching staff stay late hand-drawing scout
+                  team cards off a stack of Hudl printouts — hours that should&apos;ve gone into actual
+                  gameplanning, film work, or just going home. That&apos;s the whole reason this exists: turn a
+                  breakdown into practice-ready cards in minutes, so a coordinator can walk out of the office
+                  instead of tracing X&apos;s and O&apos;s by hand.
+                </blockquote>
+                <figcaption className="relative mt-7 flex items-center gap-3">
+                  <span className="h-px w-8 bg-primary" aria-hidden="true" />
+                  <span className="font-bold">Jake</span>
+                  <span className="text-muted-foreground">Founder</span>
+                </figcaption>
+              </figure>
+            </Reveal>
+            <ul className="mt-10 grid gap-x-8 gap-y-6 sm:grid-cols-2 lg:grid-cols-4">
+              {ABOUT_POINTS.map(({ icon: Icon, title, detail }, i) => (
+                <li key={title}>
+                  <Reveal delay={i * 80} className="flex flex-col gap-2">
+                    <Icon className="size-5 text-primary" aria-hidden="true" />
                     <span className="font-display text-lg font-extrabold uppercase">{title}</span>
                     <span className="text-sm leading-relaxed text-muted-foreground">{detail}</span>
-                  </CardContent>
-                </Card>
+                  </Reveal>
+                </li>
               ))}
-            </div>
+            </ul>
           </div>
         </section>
 
         {/* FAQ */}
-        <section id="faq" className="scroll-mt-20 border-t px-6 py-16 sm:py-20 lg:px-12 lg:py-24">
+        <section id="faq" className={`${SECTION} bg-card/30`}>
           <div className="mx-auto max-w-3xl">
-            <div className="text-center">
-              <p className="text-sm font-bold tracking-[0.18em] text-primary">FAQ</p>
-              <h2 className="mt-2 font-display text-3xl leading-tight font-extrabold uppercase sm:text-4xl">
-                Common questions
-              </h2>
-            </div>
-
-            <div className="mt-10 flex flex-col gap-3">
+            <Reveal>
+              <SectionHeading eyebrow="FAQ" title="Common questions" />
+            </Reveal>
+            <Reveal delay={100} className="mt-12 flex flex-col gap-3">
               {FAQS.map(({ q, a }) => (
-                <details key={q} className="group rounded-xl border bg-card px-5 py-4 open:pb-5">
+                <details
+                  key={q}
+                  className="group rounded-2xl border bg-background/60 px-6 py-5 transition-colors open:border-primary/40 open:bg-background hover:border-white/15"
+                >
                   <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-[17px] font-semibold marker:content-none">
                     {q}
-                    <ChevronDown
-                      className="size-5 shrink-0 text-muted-foreground transition-transform group-open:rotate-180"
-                      aria-hidden="true"
-                    />
+                    <span className="flex size-8 shrink-0 items-center justify-center rounded-full border transition-colors group-open:border-primary/50 group-open:bg-primary/10">
+                      <ChevronDown
+                        className="size-4 text-muted-foreground transition-transform duration-300 group-open:rotate-180 group-open:text-primary"
+                        aria-hidden="true"
+                      />
+                    </span>
                   </summary>
-                  <p className="mt-3 text-[15px] leading-relaxed text-muted-foreground">{a}</p>
+                  <p className="mt-3 max-w-[62ch] text-[15px] leading-relaxed text-muted-foreground">{a}</p>
                 </details>
               ))}
-            </div>
+            </Reveal>
           </div>
         </section>
 
         {/* Final CTA */}
-        <section className="border-t px-6 py-16 sm:py-20 lg:px-12 lg:py-24">
-          <div className="mx-auto flex max-w-2xl flex-col items-center gap-5 text-center">
-            <h2 className="font-display text-4xl leading-tight font-extrabold uppercase sm:text-5xl">
-              Stop drawing cards. Start repping looks.
-            </h2>
-            <p className="max-w-[480px] text-[17px] leading-relaxed text-muted-foreground">
-              Drop this week&apos;s Hudl breakdown and see your first scout card in seconds.
-            </p>
-            <Button size="xl" asChild>
-              <a href="#upload">
-                Try ScoutCard AI
-                <ArrowRight aria-hidden="true" />
-              </a>
-            </Button>
-          </div>
+        <section className="border-t px-5 py-20 sm:px-6 sm:py-28 lg:px-12">
+          <Reveal className="mx-auto max-w-5xl">
+            <div className="relative isolate overflow-hidden rounded-[32px] border border-primary/30 bg-gradient-to-b from-primary/[0.16] via-card to-card px-6 py-16 text-center sm:px-12 sm:py-20">
+              <div
+                className="pointer-events-none absolute -top-32 left-1/2 -z-10 h-72 w-[80%] -translate-x-1/2 rounded-full bg-primary/25 blur-3xl"
+                aria-hidden="true"
+              />
+              <h2 className="mx-auto max-w-3xl font-display text-[44px] leading-[0.92] font-extrabold uppercase sm:text-6xl lg:text-7xl">
+                Stop drawing cards. <span className="text-primary">Start repping looks.</span>
+              </h2>
+              <p className="mx-auto mt-5 max-w-md text-lg leading-relaxed text-muted-foreground">
+                Drop this week&apos;s Hudl export and see your first scout card in seconds.
+              </p>
+              <div className="mx-auto mt-9 flex max-w-sm flex-col items-stretch gap-3 sm:max-w-none sm:flex-row sm:items-center sm:justify-center">
+                <TryCta />
+                <Button
+                  size="xl"
+                  variant="outline"
+                  onClick={handleDemo}
+                  className="h-14 rounded-xl border-white/15 px-6 hover:border-white/30 hover:bg-white/5"
+                >
+                  <Play className="fill-current" aria-hidden="true" />
+                  Load the demo script
+                </Button>
+              </div>
+            </div>
+          </Reveal>
         </section>
       </main>
 
-      <footer className="border-t px-6 py-8 lg:px-12">
-        <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 sm:flex-row">
+      <footer className="border-t px-5 py-10 sm:px-6 lg:px-12">
+        <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-5 sm:flex-row">
           <BrandMark />
           <p className="text-sm text-muted-foreground">Built for high school football staffs.</p>
-          <div className="flex items-center gap-5 text-sm text-muted-foreground">
+          <div className="flex items-center gap-6 text-sm text-muted-foreground">
             <a href="/privacy" className="transition-colors hover:text-foreground">
               Privacy
             </a>

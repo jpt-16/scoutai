@@ -71,6 +71,130 @@
   }
 }
 
+/*
+ * Landing-page motion. Reveal content is only hidden once JS has marked the
+ * page (`html.js`, set inline in layout.tsx), so it never stays invisible
+ * without JS. Everything here is off under prefers-reduced-motion.
+ */
+.js .reveal {
+  opacity: 0;
+  transform: translateY(28px);
+  transition:
+    opacity 0.8s cubic-bezier(0.2, 0.7, 0.2, 1),
+    transform 0.8s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.js .reveal[data-shown="true"] {
+  opacity: 1;
+  transform: none;
+}
+
+@keyframes sc-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+@keyframes sc-draw {
+  from {
+    stroke-dashoffset: var(--sc-len, 400);
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+@keyframes sc-flow {
+  0% {
+    left: 0%;
+    opacity: 0;
+  }
+  15%,
+  85% {
+    opacity: 1;
+  }
+  100% {
+    left: 100%;
+    opacity: 0;
+  }
+}
+@keyframes sc-flow-y {
+  0% {
+    top: 0%;
+    opacity: 0;
+  }
+  15%,
+  85% {
+    opacity: 1;
+  }
+  100% {
+    top: 100%;
+    opacity: 0;
+  }
+}
+@keyframes sc-row-pulse {
+  0%,
+  100% {
+    background-color: color-mix(in srgb, var(--primary) 10%, transparent);
+  }
+  50% {
+    background-color: color-mix(in srgb, var(--primary) 22%, transparent);
+  }
+}
+@keyframes sc-ping {
+  0% {
+    transform: scale(1);
+    opacity: 0.7;
+  }
+  100% {
+    transform: scale(2.2);
+    opacity: 0;
+  }
+}
+
+.sc-float {
+  animation: sc-float 7s ease-in-out infinite;
+}
+.sc-draw {
+  stroke-dasharray: var(--sc-len, 400);
+  animation: sc-draw 2.4s cubic-bezier(0.45, 0, 0.2, 1) infinite alternate;
+}
+.sc-flow {
+  animation: sc-flow 2.2s ease-in-out infinite;
+}
+.sc-flow-y {
+  animation: sc-flow-y 2.2s ease-in-out infinite;
+}
+.sc-row-pulse {
+  animation: sc-row-pulse 2.6s ease-in-out infinite;
+}
+.sc-ping {
+  animation: sc-ping 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  .js .reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+  .sc-float,
+  .sc-draw,
+  .sc-flow,
+  .sc-flow-y,
+  .sc-row-pulse,
+  .sc-ping {
+    animation: none;
+  }
+  .sc-draw {
+    stroke-dasharray: none;
+  }
+}
+
 @media print {
   html,
   body {
@@ -79,5 +203,9 @@
   }
   .no-print {
     display: none !important;
+  }
+  .js .reveal {
+    opacity: 1 !important;
+    transform: none !important;
   }
 }

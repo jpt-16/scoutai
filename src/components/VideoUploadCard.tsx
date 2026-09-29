@@ -99,8 +99,8 @@ export function VideoUploadCard({ hideHeader }: VideoUploadCardProps) {
             AI film import coming soon
           </Button>
           <p className="max-w-[540px] text-sm text-muted-foreground">
-            A paid feature for your coaching staff, not set up on this deployment yet. The CSV
-            importer above stays free with no sign-in, always.
+            A paid feature for your coaching staff, not set up on this deployment yet. The
+            Hudl import above needs no sign-in.
           </p>
         </CardContent>
       </Card>
@@ -220,7 +220,7 @@ function HowItWorksDialog({ open, onOpenChange }: { open: boolean; onOpenChange:
           <Lock className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden="true" />
           This is a paid feature, billed per coaching staff. Sign in, create (or join) your
           staff&apos;s team, and subscribe once — every coach on that team then gets AI film import.
-          The CSV importer above stays free with no sign-in, always.
+          The Hudl import above needs no sign-in.
         </p>
 
         <DialogFooter>
