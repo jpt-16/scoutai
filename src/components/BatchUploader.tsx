@@ -337,7 +337,7 @@ function BatchUploaderInner() {
   };
 
   const handleGate = () => {
-    if (account.loading || subscribing) return;
+    if (account.loading || subscribing || account.entitled) return;
     if (!account.userId) {
       clerk.openSignIn();
       return;

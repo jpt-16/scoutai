@@ -541,7 +541,7 @@ there's still no separate database for this either.
   `auth()`/`clerkClient()` to have request context in the routes that call them. It does **not**
   gate anything itself (Clerk's own path-matcher-based `createRouteMatcher` + `auth.protect()`
   pattern is deprecated in favor of per-route checks); its `matcher` only covers
-  `/api/parse-video`, `/api/parse-video-batch`, `/api/generate-scout-card`, `/api/blob-upload`,
+  `/api/parse-video`, `/api/parse-video-batch`, `/api/generate-scout-card`, `/api/ai-access`, `/api/blob-upload`,
   `/api/stripe/checkout`, `/api/stripe/portal`, and
   `/account/*`, so it never runs on `/` or `/script`.
 - `src/lib/entitlement.ts`: `evaluateEntitlement()` is the pure decision (unit-tested) —
@@ -562,6 +562,15 @@ there's still no separate database for this either.
   subscription at `/api/stripe/checkout` time) — never by `stripe_customer_id`, since that isn't
   known yet on the very first `checkout.session.completed` event. No idempotency ledger: every
   patch sets "current known state," so replaying an event twice is harmless.
+- **Free allow-list (temporary, until the staff pitch / billing is live):** `AI_ALLOWED_EMAILS`, a
+  comma-separated server-only env var of coaches' emails. `requireEntitlement()` checks the
+  signed-in user's **verified** Clerk emails against it (`isAllowListed`, unit-tested) before the
+  team/subscription checks, so an allow-listed coach needs neither a team nor a subscription;
+  their rate-limit bucket is their team, or `user-<id>` without one. Delete the env var and the
+  paywall applies to everyone again, no code change. The client can't see the list, so
+  `useTeamAccount` also asks `GET /api/ai-access` (the same `requireEntitlement()`, costs
+  nothing) once per user + team, and the upload buttons go straight to uploading when either the
+  subscription or the server says yes.
 - `src/lib/useTeamAccount.ts`: a thin client hook over `useAuth()`/`useOrganization()` (Clerk keeps
   them reactive on its own — no manual refetch/refresh needed, unlike the Supabase version this
   replaced). Only call it from a component that's guaranteed to render inside `<ClerkProvider>`.

@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useAuth, useOrganization } from "@clerk/nextjs";
 
 export interface TeamAccountTeam {
@@ -12,7 +13,11 @@ export interface TeamAccountState {
   loading: boolean;
   userId: string | null;
   team: TeamAccountTeam | null;
-  /** Mirrors the check in src/lib/entitlement.ts — kept in sync by hand, not imported (that module is server-only). */
+  /**
+   * Can use the AI features: the team's subscription (visible right away), or
+   * the server's own answer from /api/ai-access, which also knows the
+   * AI_ALLOWED_EMAILS allow-list the client can't see.
+   */
   entitled: boolean;
 }
 
@@ -42,7 +47,24 @@ export function useTeamAccount(): TeamAccountState {
       }
     : null;
 
-  const entitled = team?.subscriptionStatus === "active" || team?.subscriptionStatus === "trialing";
+  const subscribed = team?.subscriptionStatus === "active" || team?.subscriptionStatus === "trialing";
 
-  return { loading, userId: userId ?? null, team, entitled };
+  // Ask the server once per signed-in user + team.
+  const key = userId ? `${userId}:${organization?.id ?? ""}` : null;
+  const [serverAccess, setServerAccess] = useState<{ key: string; ok: boolean } | null>(null);
+  useEffect(() => {
+    if (!key) return;
+    let cancelled = false;
+    fetch("/api/ai-access", { cache: "no-store" })
+      .then((res) => res.json())
+      .then((body: { ok?: boolean }) => !cancelled && setServerAccess({ key, ok: body.ok === true }))
+      .catch(() => !cancelled && setServerAccess({ key, ok: false }));
+    return () => {
+      cancelled = true;
+    };
+  }, [key]);
+  const checked = !key || subscribed || serverAccess?.key === key;
+  const entitled = subscribed || (serverAccess?.key === key && serverAccess.ok);
+
+  return { loading: loading || !checked, userId: userId ?? null, team, entitled };
 }

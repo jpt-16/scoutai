@@ -44,6 +44,22 @@ export function evaluateEntitlement(input: {
   return { ok: true, userId: input.userId, teamId: input.team.id };
 }
 
+/**
+ * Whether any of a user's verified emails is on the free allow-list: the
+ * `AI_ALLOWED_EMAILS` env var, comma-separated. Temporary access for the
+ * owner's own staff before billing is live; delete the env var and the
+ * subscription gate applies to everyone again.
+ */
+export function isAllowListed(verifiedEmails: string[], allowList: string | undefined): boolean {
+  const allowed = new Set(
+    (allowList ?? "")
+      .split(/[,\s]+/)
+      .map((e) => e.trim().toLowerCase())
+      .filter(Boolean),
+  );
+  return allowed.size > 0 && verifiedEmails.some((e) => allowed.has(e.trim().toLowerCase()));
+}
+
 export async function requireEntitlement(): Promise<EntitlementResult> {
   // Testing-only escape hatch — see src/lib/featureFlags.ts for the safety
   // conditions (local-only in practice, a no-op on Vercel production).
@@ -57,11 +73,23 @@ export async function requireEntitlement(): Promise<EntitlementResult> {
 
   const { userId, orgId } = await auth();
 
-  if (!userId || !orgId) {
-    return evaluateEntitlement({ userId, team: null });
-  }
+  if (!userId) return evaluateEntitlement({ userId, team: null });
 
   const clerk = await clerkClient();
+  if (process.env.AI_ALLOWED_EMAILS) {
+    const user = await clerk.users.getUser(userId);
+    const verified = user.emailAddresses
+      .filter((e) => e.verification?.status === "verified")
+      .map((e) => e.emailAddress);
+    // Allow-listed: no team or subscription needed. Rate limits still bucket
+    // by team, or by the user when there's no team.
+    if (isAllowListed(verified, process.env.AI_ALLOWED_EMAILS)) {
+      return { ok: true, userId, teamId: orgId ?? `user-${userId}` };
+    }
+  }
+
+  if (!orgId) return evaluateEntitlement({ userId, team: null });
+
   const org = await clerk.organizations.getOrganization({ organizationId: orgId });
   const subscriptionStatus = (org.publicMetadata as { subscriptionStatus?: string | null })
     .subscriptionStatus ?? null;

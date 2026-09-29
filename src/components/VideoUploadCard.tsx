@@ -321,15 +321,15 @@ function VideoUploadCardInner({ hideHeader }: VideoUploadCardProps) {
       clerk.openSignIn();
       return;
     }
+    if (account.entitled) {
+      videoInput.current?.click();
+      return;
+    }
     if (!account.team) {
       clerk.openCreateOrganization();
       return;
     }
-    if (!account.entitled) {
-      void handleSubscribe();
-      return;
-    }
-    videoInput.current?.click();
+    void handleSubscribe();
   };
 
   const uploadButtonLabel = account.loading
@@ -340,11 +340,11 @@ function VideoUploadCardInner({ hideHeader }: VideoUploadCardProps) {
         ? "Reading the clip…"
         : !account.userId
           ? "Sign in to upload film"
-          : !account.team
-            ? "Create a team to continue"
-            : !account.entitled
-              ? "Subscribe to unlock AI film import"
-              : "Upload game film";
+          : account.entitled
+            ? "Upload game film"
+            : !account.team
+              ? "Create a team to continue"
+              : "Subscribe to unlock AI film import";
 
   return (
     <>
