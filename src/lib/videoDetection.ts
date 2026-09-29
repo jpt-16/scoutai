@@ -80,12 +80,53 @@ For each player give:
 Also give playName (a short label for what the offense ran) and formation (e.g. "Spread 2x2",
 "Trips Right", "I-Form").`;
 
+/**
+ * Route geometry for named concepts, so a recognized call comes back shaped
+ * the way this staff draws it (same depths as the route tree in
+ * formations.ts: shallow at 5, out and corner off a 10-yard stem) instead of
+ * the model's loose guess.
+ */
+export const FOOTBALL_CONCEPT_RULES = `Apply these exact route rules when the play call (or the concept you recognize on film)
+includes one of these keywords:
+
+1. MESH: the two inside receivers (usually H and Y) run shallow crossing / drag routes
+   underneath each other across the formation at 3-5 yards depth, passing right next to each
+   other over the ball.
+2. RAIL / WHEEL: a back or slot receiver (F, H or the inside receiver) releases out to the flat,
+   then turns vertically UP the sideline past the line of scrimmage.
+3. CORNER / OUT: outside receivers (X, Z) take a 10-yard stem, then break at a 45-degree angle
+   toward the pylon (CORNER) or break sharp at 90 degrees to the sideline (OUT).`;
+
+/** Longest play call passed through to the prompt; a real call is a few words. */
+const MAX_PLAY_CALL_LENGTH = 80;
+
+/**
+ * The full prompt for one clip. With the coach's play call (from the Hudl CSV
+ * row the clip was matched to) the model is told what was called, so a MESH
+ * or WHEEL call is drawn with that concept's geometry.
+ */
+export function buildDetectionPrompt(playCall?: string): string {
+  const call = (playCall ?? "")
+    .replace(/[\r\n"'`]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, MAX_PLAY_CALL_LENGTH);
+  const callLine = call
+    ? `\n\nThe coach's play call for this clip is "${call}". Analyze the play for that call, and make ` +
+      "the route coordinates strictly follow the concept geometry rules above for any concept it names."
+    : "\n\nIf you recognize one of the concepts above, make the route coordinates strictly follow its " +
+      "geometry rules.";
+  return `${DETECTION_PROMPT}\n\n${FOOTBALL_CONCEPT_RULES}${callLine}`;
+}
+
 export interface DetectClipOptions {
   /** A `GoogleGenAI` client, constructed once per request and reused across clips in a batch. */
   ai: GoogleGenAI;
   /** Vercel Blob read token — the clip is a private blob, so reading it back needs auth. */
   blobToken: string;
   videoUrl: string;
+  /** The coach's play call for this clip, when a CSV row is behind it (batch import). */
+  playCall?: string;
 }
 
 /**
@@ -95,7 +136,12 @@ export interface DetectClipOptions {
  * schema validation) with the HTTP status that failure maps to, for the
  * caller to relay (single-clip route) or record per-item (batch route).
  */
-export async function detectPlayFromClip({ ai, blobToken, videoUrl }: DetectClipOptions): Promise<DetectedPlay> {
+export async function detectPlayFromClip({
+  ai,
+  blobToken,
+  videoUrl,
+  playCall,
+}: DetectClipOptions): Promise<DetectedPlay> {
   let videoResponse: Response;
   try {
     videoResponse = await fetch(videoUrl, { headers: { Authorization: `Bearer ${blobToken}` } });
@@ -131,7 +177,7 @@ export async function detectPlayFromClip({ ai, blobToken, videoUrl }: DetectClip
       contents: [
         {
           role: "user",
-          parts: [{ fileData: { fileUri, mimeType: mimeType ?? "video/mp4" } }, { text: DETECTION_PROMPT }],
+          parts: [{ fileData: { fileUri, mimeType: mimeType ?? "video/mp4" } }, { text: buildDetectionPrompt(playCall) }],
         },
       ],
       config: { responseMimeType: "application/json", responseSchema: DETECTION_RESPONSE_SCHEMA },

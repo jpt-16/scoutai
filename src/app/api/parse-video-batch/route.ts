@@ -45,6 +45,8 @@ export const maxDuration = 300;
 interface RequestClip {
   videoUrl?: string;
   fileName?: string;
+  /** The matched CSV row's play call, so the prompt can apply that concept's route rules. */
+  playCall?: string;
 }
 
 interface RequestBody {
@@ -131,7 +133,15 @@ export async function POST(request: Request): Promise<NextResponse> {
 
   const ai = new GoogleGenAI({ apiKey });
   const results = await mapWithConcurrency(clips, BATCH_CONCURRENCY, (clip, i) =>
-    processClip({ ai, blobToken, videoUrl: clip.videoUrl! }, clip.fileName ?? `clip-${i + 1}`),
+    processClip(
+      {
+        ai,
+        blobToken,
+        videoUrl: clip.videoUrl!,
+        playCall: typeof clip.playCall === "string" ? clip.playCall : undefined,
+      },
+      clip.fileName ?? `clip-${i + 1}`,
+    ),
   );
 
   return NextResponse.json({ results });

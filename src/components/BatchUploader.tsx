@@ -123,14 +123,21 @@ function useBatchUpload() {
           const { upload } = await import("@vercel/blob/client");
           // Private: opposing-team film shouldn't sit at a plain fetchable URL.
           const blob = await upload(file.name, file, { access: "private", handleUploadUrl: "/api/blob-upload" });
-          return { videoUrl: blob.url, fileName: match.fileName, playNumber: match.card!.playNumber };
+          return {
+            videoUrl: blob.url,
+            fileName: match.fileName,
+            playNumber: match.card!.playNumber,
+            playCall: match.card!.playCall,
+          };
         });
 
         setProgress({ label: `Analyzing plays ${done + 1}–${done + chunk.length} of ${total}…`, current: done, total });
         const res = await fetch("/api/parse-video-batch", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ clips: uploaded.map(({ videoUrl, fileName }) => ({ videoUrl, fileName })) }),
+          body: JSON.stringify({
+            clips: uploaded.map(({ videoUrl, fileName, playCall }) => ({ videoUrl, fileName, playCall })),
+          }),
         });
         const payload = (await res.json()) as { results?: BatchClipResult[]; error?: string };
         if (!res.ok || !payload.results) {
