@@ -623,6 +623,62 @@ describe("buildDiagram (offense only)", () => {
     expect(routeTokens("SPEED OUT")).toEqual(["speed-out"]);
   });
 
+  it("MESH RAIL gives each position its own route, never one route for everyone", () => {
+    const d = buildDiagram(card("spread", "MESH RAIL"));
+    // Deuces going right: X F | Y Z, H in the backfield.
+    expect(routesBy(d)).toEqual({ X: "8", F: "DRAG", H: "RAIL", Y: "DRAG", Z: "7" });
+    expect(d.jobs.H).toMatch(/Rail/);
+    const at = (label: string) => d.routes.find((r) => r[0].x === d.players.find((p) => p.label === label)!.x)!;
+    // The drags cross over the ball in opposite directions, F at 2 and Y at 3.
+    const f = at("F");
+    const y = at("Y");
+    expect(140 - f[1].y).toBe(2 * 7);
+    expect(140 - y[1].y).toBe(3 * 7);
+    expect(f[2].x).toBeGreaterThan(250);
+    expect(y[2].x).toBeLessThan(250);
+    // The rail goes out to the backside flat, then straight up the sideline.
+    const h = at("H");
+    const top = h[h.length - 1];
+    const turn = h[h.length - 2];
+    expect(turn.x).toBe(top.x);
+    expect(top.x).toBeLessThan(100);
+    expect(top.y).toBeLessThan(140 - 15 * 7);
+  });
+
+  it("maps other concepts by position and mirrors them with the play direction", () => {
+    expect(routesBy(buildDiagram(card("spread", "SMASH")))).toEqual({ X: "HITCH", F: "7", Y: "7", Z: "HITCH" });
+    expect(routesBy(buildDiagram(card("trips", "FLOOD")))).toEqual({ Z: "GO", Y: "SAIL", H: "FLAT", X: "DIG" });
+    expect(routesBy(buildDiagram(card("spread", "DAGGER")))).toMatchObject({ Z: "DIG", Y: "GO", X: "8" });
+    // Going left, the play side flips: X is the play-side #1.
+    const left = buildDiagram({ ...card("spread", "MESH RAIL"), playDirection: "left" });
+    expect(routesBy(left)).toMatchObject({ X: "7", Z: "8", H: "RAIL" });
+    // Extra route words go to the outside receivers; CROSS alone is the concept,
+    // CROSS in a list of words is just a route.
+    expect(routesBy(buildDiagram(card("spread", "MESH GO")))).toMatchObject({ X: "GO", Z: "GO", F: "DRAG", Y: "DRAG" });
+    expect(routesBy(buildDiagram(card("spread", "CROSS")))).toMatchObject({ F: "CROSS", X: "8" });
+    expect(routesBy(buildDiagram(card("spread", "FADE CROSS CROSS FADE")))).toEqual({ X: "9", F: "6", Y: "6", Z: "9" });
+  });
+
+  it("MESH and RAIL are separate: RAIL is the back's tag on any concept", () => {
+    // Plain MESH: the same receivers' routes, and the back stays in to protect.
+    const mesh = buildDiagram(card("spread", "MESH"));
+    expect(routesBy(mesh)).toEqual({ X: "8", F: "DRAG", Y: "DRAG", Z: "7" });
+    expect(mesh.jobs.H).toBe("Pass pro");
+    // RAIL rides on another concept too.
+    expect(routesBy(buildDiagram(card("spread", "SMASH RAIL")))).toEqual({
+      X: "HITCH",
+      F: "7",
+      Y: "7",
+      Z: "HITCH",
+      H: "RAIL",
+    });
+  });
+
+  it("a lone WHEEL or RAIL goes to the back", () => {
+    expect(routesBy(buildDiagram(card("spread", "WHEEL")))).toEqual({ H: "WHEEL" });
+    expect(buildDiagram(card("spread", "RAIL")).kind).toBe("pass");
+  });
+
   it("draws routes with sharp breaks at true field angles", () => {
     const d = buildDiagram(card("spread", "SLANT"));
     const z = d.routes.find((r) => r[0].x === 464)!; // Z, right side

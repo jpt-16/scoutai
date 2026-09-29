@@ -59,6 +59,7 @@ src/
     demoScript.ts          MOCK_HUDL_CSV: 5-play sample used by the "Demo Script" button
     scriptStore.ts         Persists the loaded script in localStorage (offline on the field)
     practicePlan.ts        Practice playsheet: line parser, opponent looks, rep → Scout D card
+    conceptMapper.ts       Named pass concepts → a route per position; RAIL / WHEEL back tags
     hudlParser.test.ts     Vitest suite
 ```
 
@@ -165,6 +166,20 @@ Free-text tags are classified by keyword (`classifyFormation`, `classifyFront`,
     labeled at its T-bar, and backside receivers stalk.
     Several words go left to right across the receivers ("FADE OUT OUT FADE"). LEAK goes to
     the tight end.
+  - **Named concepts** (`src/lib/conceptMapper.ts`'s `CONCEPT_DICTIONARY`): MESH, FLOOD,
+    SMASH, DAGGER and CROSS (CROSS only when it's the lone route word) give **each position its
+    own route** instead of one route repeated across every receiver. Positions are by play side,
+    outside in (`ps1`/`ps2`/`ps3`, `bs1`/`bs2`, `back`), so a template works from any formation
+    and mirrors with the play; in Deuces going right that's Z/Y, X/F and H. A route is a tree
+    kind (drawn with the staff's own technique, e.g. MESH's 8 post and 7 corner) or a yard
+    vector for routes off the tree (`conceptPath`: MESH drags at 2 and 3 crossing over the ball,
+    FLOOD's sail, DAGGER's dig at 15, the deep cross). **RAIL / WHEEL are separate from the
+    concept**: a back tag (`BACK_TAGS`) that rides on any of them ("MESH RAIL", "SMASH RAIL")
+    and sends the back out to the backside flat and up the sideline, stepping up in front of
+    the Q first. Alone, RAIL / WHEEL is just the back's route, to his own side. Another route
+    word in a concept call ("MESH GO") goes to the #1s; anyone a template doesn't name clears
+    on a go. Tree numbers always read as numbers, never as a concept. A card with video routes
+    keeps them per letter and falls back to this template for any letter the AI missed.
   - **RPO / PA:** also draw a dashed mesh fake. RPO adds zone blocking; PA adds the QB's
     drop or boot.
 - **Scout defense** (`unit: "defense"`): the offensive formation (no assignments) plus

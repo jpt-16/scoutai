@@ -1,4 +1,5 @@
 import type { FormationKey, FrontKey, HudlPlayCard, Side } from "./hudlParser";
+import { matchConcept, type ConceptRoute, type ConceptSlot } from "./conceptMapper";
 
 /**
  * Coordinate system for every scout card diagram:
@@ -378,7 +379,7 @@ const ROUTE_WORDS: [RegExp, RouteKind][] = [
   [/^(COMEBACKS?|COMEBACK)$/, "comeback"],
   [/^(HITCH|HITCHES|STICK|STOP)$/, "hitch"],
   [/^(DIGS?|SQUARE)$/, "dig"],
-  [/^WHEELS?$/, "wheel"],
+  [/^(WHEELS?|RAILS?)$/, "wheel"],
   [/^(ACROSS|CROSS|CROSSERS?|CROSSING|MESH|SHALLOWS?|DRAGS?)$/, "shallow"],
   [/^SLIDES?$/, "slide"],
   [/^FLATS?$/, "flat"],
@@ -714,6 +715,30 @@ function routePath(kind: RouteKind, p: Pt, o: number, d: number): Pt[] {
   }
 }
 
+/**
+ * A concept route that isn't on the tree (drag, rail, sail, deep dig), from
+ * its yard vector: stem straight up to `stemY`, then to `breakX` yards across
+ * at `breakY` deep. Rails go out to the flat, then straight up the field
+ * `fromSideline` yards in from that sideline.
+ */
+function conceptPath(route: ConceptRoute, pl: Placed, o: number, d: number): Pt[] {
+  const [x, y] = pl.at;
+  const dir =
+    route.toward === "inside" ? -o : route.toward === "playside" ? d : route.toward === "backside" ? -d : o;
+  const stem = route.stemY ?? 0;
+  if (route.vertical) {
+    const railX = dir > 0 ? FIELD.width - (route.fromSideline ?? 8) * YARD_X : (route.fromSideline ?? 8) * YARD_X;
+    // Step up between the Q and the line first, so a back crossing the formation clears the Q.
+    const release: Pt = y > FIELD.los + 31 ? [x + dir * 6, FIELD.los + 31] : [x + (railX - x) * 0.3, y - 18];
+    return [pl.at, release, [railX, yd(stem)], [railX, yd(route.breakY ?? 16)]];
+  }
+  const endX = Math.min(FIELD.width - 12, Math.max(12, x + dir * (route.breakX ?? 0) * YARD_X));
+  const path: Pt[] = [pl.at];
+  if (stem > 0) path.push([x, yd(stem)]);
+  path.push([endX, yd(route.breakY ?? stem)]);
+  return path;
+}
+
 /** Receiver routes for a pass, RPO, or play-action call. */
 function buildRoutes(
   playCall: string,
@@ -741,9 +766,77 @@ function buildRoutes(
 
   // LEAK belongs to a tight end (or the back when there isn't one).
   const leaks = tokens.filter((t) => t === "leak").length;
-  const others = tokens.filter((t) => t !== "leak");
+  let others = tokens.filter((t) => t !== "leak");
   const leaker = skill.find((p) => p.role === "TE") ?? backs[backs.length - 1];
   if (leaks > 0 && leaker) run(leaker, "leak");
+
+  // A named concept ("MESH RAIL", "SMASH"): a distinct route per position
+  // from src/lib/conceptMapper.ts. Tree numbers always read as numbers.
+  const concept = numbered ? null : matchConcept(playCall);
+  const extra = concept ? routeCall(concept.otherWords.join(" ")).tokens.filter((t) => t !== "leak") : [];
+  if (concept && !(concept.concept.exclusive && extra.length > 0)) {
+    const eligible = skill.filter((p) => !assigned.has(p));
+    const outsideIn = (list: Placed[]) => list.sort((a, b) => Math.abs(b.x - 250) - Math.abs(a.x - 250));
+    const ps = outsideIn(eligible.filter((p) => side(p.x) === d));
+    const bs = outsideIn(eligible.filter((p) => side(p.x) !== d));
+    const slots: Record<ConceptSlot, Placed | undefined> = {
+      ps1: ps[0],
+      ps2: ps[1],
+      ps3: ps[2],
+      bs1: bs[0],
+      bs2: bs[1],
+      back: backs.find((b) => !assigned.has(b)),
+    };
+    for (const { who, route } of concept.concept.routes) {
+      const pl = who.map((slot) => slots[slot]).find((p) => p && !assigned.has(p));
+      if (!pl) continue;
+      // Another route word in the call ("MESH GO") goes to the outside receivers.
+      const own = extra[0] && (pl === slots.ps1 || pl === slots.bs1) ? extra[0] : null;
+      if (own) {
+        run(pl, own);
+        continue;
+      }
+      if (route.tree) {
+        routes.push({ path: routePath(route.tree, pl.at, side(pl.x), d), label: routeLabel(route.tree) });
+      } else {
+        routes.push({ path: conceptPath(route, pl, side(pl.x), d), label: route.type });
+      }
+      jobs[pl.label] = route.job;
+      assigned.add(pl);
+    }
+    // The back's own tag on top of the concept ("MESH RAIL").
+    const back = concept.backTag ? slots.back : undefined;
+    if (concept.backTag && back && !assigned.has(back)) {
+      routes.push({ path: conceptPath(concept.backTag, back, side(back.x), d), label: concept.backTag.type });
+      jobs[back.label] = concept.backTag.job;
+      assigned.add(back);
+    }
+    // Anyone the concept doesn't name (a trips #3, say) clears vertically.
+    for (const p of eligible) if (!assigned.has(p) && p.role !== "RB" && p.role !== "FB") run(p, "go");
+    return { routes, stalks, targeted, jobs };
+  }
+
+  // RAIL is always the back's route; WHEEL is too when it's the only route
+  // word. Otherwise WHEEL reads left to right like any other word
+  // ("SLANT CORNER WHEEL ACROSS").
+  const rail = / RAILS? /.test(words(playCall));
+  const backWheel = !numbered && others.includes("wheel") && (rail || others.length === 1);
+  const railer = backs.find((b) => !assigned.has(b));
+  if (backWheel && railer) {
+    const route: ConceptRoute = {
+      type: rail ? "RAIL" : "WHEEL",
+      stemY: 1,
+      breakY: 16,
+      toward: "outside",
+      vertical: true,
+      fromSideline: 8,
+      job: rail ? "Rail up the sideline" : "Wheel",
+    };
+    routes.push({ path: conceptPath(route, railer, side(railer.x), d), label: route.type });
+    jobs[railer.label] = route.job;
+    assigned.add(railer);
+    others = others.filter((t) => t !== "wheel");
+  }
 
   const receivers = skill.filter((p) => !assigned.has(p)).sort((a, b) => a.x - b.x);
   if (others.length === 1) {

@@ -89,10 +89,11 @@ Also give playName (a short label for what the offense ran) and formation (e.g. 
 export const FOOTBALL_CONCEPT_RULES = `Apply these exact route rules when the play call (or the concept you recognize on film)
 includes one of these keywords:
 
-1. MESH: the two inside receivers (usually H and Y) run shallow crossing / drag routes
-   underneath each other across the formation at 3-5 yards depth, passing right next to each
-   other over the ball.
-2. RAIL / WHEEL: a back or slot receiver (F, H or the inside receiver) releases out to the flat,
+1. MESH: the inside receiver on each side (the slots — F and Y in Deuces) runs a shallow
+   crossing / drag route across the formation at 3-5 yards depth, one slightly under the
+   other, so they pass right next to each other over the ball. The backside outside receiver
+   runs a post and the play-side one a corner unless the call names another route.
+2. RAIL / WHEEL (a separate tag that can ride on any concept, e.g. "MESH RAIL"): the back (H in Deuces; a slot if there's no back) releases out to the flat,
    then turns vertically UP the sideline past the line of scrimmage.
 3. CORNER / OUT: outside receivers (X, Z) take a 10-yard stem, then break at a 45-degree angle
    toward the pylon (CORNER) or break sharp at 90 degrees to the sideline (OUT).`;
