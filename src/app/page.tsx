@@ -46,18 +46,19 @@ import { parseHudlCsvText, type HudlField, type HudlParseResult, type Unsupporte
 import { importFilms } from "@/lib/importFilms";
 import { saveScript, storeScript } from "@/lib/scriptStore";
 
-// Smash (X hitch, H corner) to one side, curl-slide (Y slide, Z curl) to the
-// other — a real two-concept passing play. The play call itself ("Deuces Gun
-// 40 Smash") is the staff's actual name for it, not parseable route words,
-// so each letter's route is set directly via routeOverrides instead of
-// relying on routeCall to read it out of the play-call text.
+// Smash (X hitch, F corner — F is the slot in Deuces Gun, H stays in the
+// backfield) to one side, curl-slide (Y slide, Z curl) to the other — a real
+// two-concept passing play. The play call itself ("Deuces Gun 40 Smash") is
+// the staff's actual name for it, not parseable route words, so each
+// letter's route is set directly via routeOverrides instead of relying on
+// routeCall to read it out of the play-call text.
 const PREVIEW_CARD = {
   ...parseHudlCsvText(
     "PLAY #,DN,DIST,HASH,YARD LN,OFF FORM,OFF PLAY,DEF FRONT\n7,2,7,M,Opp 38,SPREAD,DEUCES GUN 40 SMASH,3-4\n",
   ).cards[0],
   routeOverrides: {
     X: { route: "hitch" },
-    H: { route: "corner" },
+    F: { route: "corner" },
     Y: { route: "slide" },
     Z: { route: "curl" },
   },

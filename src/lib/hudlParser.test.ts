@@ -588,36 +588,36 @@ describe("buildDiagram (offense only)", () => {
 
   it("reads route words left to right across the receivers", () => {
     const d = buildDiagram(card("spread", "FADE OUT OUT FADE"));
-    expect(routesBy(d)).toEqual({ X: "9", H: "3", Y: "3", Z: "9" });
+    expect(routesBy(d)).toEqual({ X: "9", F: "3", Y: "3", Z: "9" });
     // A pass gets pass protection, never run blocking: every block steps back, not upfield.
     expect(d.blocks.length).toBeGreaterThan(0);
     expect(d.blocks.every((b) => b[b.length - 1].y > b[0].y - 1 || b[0].y > 150)).toBe(true);
   });
 
   it("route-tree numbers, one per receiver, read right to left", () => {
-    // Spread, left to right: X H | Y Z. "2960" = Z 2, Y 9, H 6, X 0.
-    expect(routesBy(buildDiagram(card("spread", "2960")))).toEqual({ Z: "2", Y: "9", H: "6", X: "0" });
-    expect(routesBy(buildDiagram(card("spread", "2 9 6 0")))).toEqual({ Z: "2", Y: "9", H: "6", X: "0" });
+    // Spread, left to right: X F | Y Z. "2960" = Z 2, Y 9, F 6, X 0.
+    expect(routesBy(buildDiagram(card("spread", "2960")))).toEqual({ Z: "2", Y: "9", F: "6", X: "0" });
+    expect(routesBy(buildDiagram(card("spread", "2 9 6 0")))).toEqual({ Z: "2", Y: "9", F: "6", X: "0" });
   });
 
   it("fewer numbers than receivers are the same on both sides, outside in (81 = post / speed out)", () => {
-    expect(routesBy(buildDiagram(card("spread", "81")))).toEqual({ X: "8", H: "1", Y: "1", Z: "8" });
+    expect(routesBy(buildDiagram(card("spread", "81")))).toEqual({ X: "8", F: "1", Y: "1", Z: "8" });
     // Trips right: Z #1, Y #2, H #3 on the right; X #1 on the left.
     expect(routesBy(buildDiagram(card("trips", "964")))).toEqual({ Z: "9", Y: "6", H: "4", X: "9" });
   });
 
   it("a single number is run by every receiver, like a single route word", () => {
-    expect(routesBy(buildDiagram(card("spread", "2")))).toEqual({ X: "2", H: "2", Y: "2", Z: "2" });
+    expect(routesBy(buildDiagram(card("spread", "2")))).toEqual({ X: "2", F: "2", Y: "2", Z: "2" });
   });
 
   it("counts are not route numbers, and run numbers stay runs", () => {
-    expect(routesBy(buildDiagram(card("spread", "4 VERTS")))).toEqual({ X: "GO", H: "GO", Y: "GO", Z: "GO" });
+    expect(routesBy(buildDiagram(card("spread", "4 VERTS")))).toEqual({ X: "GO", F: "GO", Y: "GO", Z: "GO" });
     expect(buildDiagram(card("i-form", "24 DIVE")).kind).toBe("run");
   });
 
   it("labels tree routes by number and calls out the rest by name", () => {
     const d = buildDiagram(card("spread", "SLANT CORNER WHEEL ACROSS"));
-    expect(routesBy(d)).toEqual({ X: "2", H: "7", Y: "WHEEL", Z: "6" });
+    expect(routesBy(d)).toEqual({ X: "2", F: "7", Y: "WHEEL", Z: "6" });
     expect(routeTokens("SPEED OUT")).toEqual(["speed-out"]);
   });
 
@@ -661,10 +661,10 @@ describe("buildDiagram (offense only)", () => {
     const passRows = buildAssignments({ defFront: "", coverage: "", notes: "Hot vs blitz" }, pass);
     expect(passRows.map((r) => [r.key, r.text])).toEqual([
       ["X", "8 Post"],
-      ["H", "1 Speed out"],
+      ["H", "Pass pro"],
       ["Y", "1 Speed out"],
       ["Z", "8 Post"],
-      ["F", "Pass pro"],
+      ["F", "1 Speed out"],
       ["OL", "Pass pro"],
       ["NOTES", "Hot vs blitz"],
     ]);
@@ -701,7 +701,7 @@ describe("buildDiagram (offense only)", () => {
       ...card("spread", "SLANT"),
       routeOverrides: { Z: { route: "stalk" }, X: { tag: "SIGHT" } },
     });
-    expect(routesBy(d)).toEqual({ X: "SIGHT", H: "2", Y: "2" });
+    expect(routesBy(d)).toEqual({ X: "SIGHT", F: "2", Y: "2" });
     expect(d.jobs.Z).toBe("Stalk");
     expect(d.jobs.X).toBe("2 Slant · SIGHT");
   });

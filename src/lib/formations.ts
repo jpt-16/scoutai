@@ -55,12 +55,13 @@ const OFFENSIVE_LINE: Slot[] = [
 ];
 
 export const FORMATIONS: Record<Exclude<FormationKey, "unknown">, FormationShape> = {
+  // Deuces Gun: F is the slot (a receiver), H is the back in the backfield.
   spread: {
     qb: [250, 190],
-    backs: [{ label: "F", role: "RB", at: [276, 192] }],
+    backs: [{ label: "H", role: "RB", at: [276, 192] }],
     skill: [
       { label: "X", role: "WR", at: [36, 150] },
-      { label: "H", role: "WR", at: [112, 160] },
+      { label: "F", role: "WR", at: [112, 160] },
       { label: "Y", role: "WR", at: [388, 160] },
       { label: "Z", role: "WR", at: [464, 160] },
     ],
