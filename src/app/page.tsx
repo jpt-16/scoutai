@@ -160,6 +160,32 @@ const FEATURE_CARDS: { icon: typeof Upload; title: string; detail: string }[] = 
   },
 ];
 
+const ABOUT_CARDS: { icon: typeof Upload; title: string; detail: string }[] = [
+  {
+    icon: Layers,
+    title: "Real coaching conventions",
+    detail:
+      "Q/F/H/X/Y/Z letters, route-tree depths and breaks the way your staff actually teaches them, real run schemes — drawn the way your coordinators already talk about it, not a stock template.",
+  },
+  {
+    icon: Clock,
+    title: "Minutes, not a late night",
+    detail:
+      "Upload this week's breakdown and every scout card draws itself — formation, routes, blocking, fronts — ready to flip through on an iPad at practice or print for the whole staff.",
+  },
+  {
+    icon: Smartphone,
+    title: "Built for the practice field",
+    detail: "Works offline once installed, holds up in direct sunlight, and swipes like a real stack of cards.",
+  },
+  {
+    icon: Sparkles,
+    title: "AI when you need it",
+    detail:
+      "No Hudl breakdown yet? Upload the game clip instead and get a first-pass card in minutes — still yours to correct, nothing locked away from you.",
+  },
+];
+
 const FAQS: { q: string; a: string }[] = [
   {
     q: "Do I need Hudl to use this?",
@@ -265,6 +291,9 @@ export default function UploadPage() {
           </a>
           <a href="#how-it-works" className="text-muted-foreground transition-colors hover:text-foreground">
             How it works
+          </a>
+          <a href="#about" className="text-muted-foreground transition-colors hover:text-foreground">
+            About
           </a>
           <a href="#faq" className="text-muted-foreground transition-colors hover:text-foreground">
             FAQ
@@ -577,6 +606,47 @@ export default function UploadPage() {
 
             <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               {FEATURE_CARDS.map(({ icon: Icon, title, detail }) => (
+                <Card
+                  key={title}
+                  className="h-full gap-3 rounded-2xl py-6 transition-transform hover:-translate-y-1"
+                >
+                  <CardContent className="flex flex-col gap-3 px-6">
+                    <span
+                      className="flex size-10 shrink-0 items-center justify-center rounded-full border-2 border-primary text-primary"
+                      aria-hidden="true"
+                    >
+                      <Icon className="size-5" />
+                    </span>
+                    <span className="font-display text-lg font-extrabold uppercase">{title}</span>
+                    <span className="text-sm leading-relaxed text-muted-foreground">{detail}</span>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* About / why */}
+        <section id="about" className="scroll-mt-20 border-t bg-card/30 px-6 py-16 sm:py-20 lg:px-12 lg:py-24">
+          <div className="mx-auto max-w-6xl">
+            <div className="mx-auto max-w-2xl text-center">
+              <p className="text-sm font-bold tracking-[0.18em] text-primary">WHY SCOUTCARD AI</p>
+              <h2 className="mt-2 font-display text-3xl leading-tight font-extrabold uppercase sm:text-4xl">
+                Built from the sideline, not a boardroom
+              </h2>
+            </div>
+
+            <blockquote className="mx-auto mt-8 max-w-2xl border-l-4 border-primary pl-5 text-left text-[19px] leading-relaxed text-[#c9cfc9] sm:text-xl">
+              &ldquo;I played high school football, and I watched our coaching staff stay until
+              midnight hand-drawing scout team cards off a stack of Hudl printouts — hours that
+              should&apos;ve gone into actual gameplanning, film work, or just going home.
+              That&apos;s the whole reason this exists: turn a breakdown into practice-ready cards
+              in minutes, so a coordinator can walk out of the office instead of tracing X&apos;s
+              and O&apos;s by hand.&rdquo;
+            </blockquote>
+
+            <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              {ABOUT_CARDS.map(({ icon: Icon, title, detail }) => (
                 <Card
                   key={title}
                   className="h-full gap-3 rounded-2xl py-6 transition-transform hover:-translate-y-1"
