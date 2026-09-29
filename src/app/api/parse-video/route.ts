@@ -18,13 +18,14 @@ import { GoogleGenAI } from "@google/genai";
 import { NextResponse } from "next/server";
 import { requireEntitlement } from "@/lib/entitlement";
 import { checkBlobRateLimit } from "@/lib/rateLimit";
+import { TIER_LIMITS } from "@/lib/usageLimits";
 import { detectPlayFromClip, VideoDetectionError } from "@/lib/videoDetection";
 
-// Each Gemini call here costs real money — kept tight. checkRateLimit() only
-// enforces anything once a matching Vercel Firewall rule exists (see
-// src/lib/rateLimit.ts for why that isn't available on this project yet);
-// checkBlobRateLimit() is what's actually enforcing this limit right now.
-const PARSE_VIDEO_RATE_LIMIT = { limit: 3, windowMs: 10 * 60 * 1000 }; // 3 per 10 minutes per team
+// Each Gemini call here costs real money: clips per 5 minutes per tier are in
+// src/lib/usageLimits.ts (`clips`). checkRateLimit() only enforces anything
+// once a matching Vercel Firewall rule exists (see src/lib/rateLimit.ts for why
+// that isn't available on this project yet); checkBlobRateLimit() is what's
+// actually enforcing it right now.
 
 export const runtime = "nodejs";
 // Vision analysis of even a short clip can take a while. Raise this if your
@@ -49,16 +50,12 @@ export async function POST(request: Request): Promise<NextResponse> {
     );
   }
 
-  // See the const above and src/lib/rateLimit.ts: checkRateLimit is a no-op
+  // See src/lib/rateLimit.ts: checkRateLimit is a no-op
   // without a Firewall rule this project's plan doesn't support creating;
   // checkBlobRateLimit is the real cap.
   const { rateLimited } = await checkRateLimit("parse-video", { request });
-  const { ok } = await checkBlobRateLimit(
-    "parse-video",
-    entitlement.teamId,
-    PARSE_VIDEO_RATE_LIMIT.limit,
-    PARSE_VIDEO_RATE_LIMIT.windowMs,
-  );
+  const { limit, windowMs } = TIER_LIMITS[entitlement.tier].clips;
+  const { ok } = await checkBlobRateLimit(`parse-video-${entitlement.tier}`, entitlement.teamId, limit, windowMs);
   if (rateLimited || !ok) {
     return NextResponse.json(
       { error: "Too many clips submitted recently. Wait a few minutes and try again." },

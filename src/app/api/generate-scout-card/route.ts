@@ -26,10 +26,9 @@ import {
   type GeneratedPlay,
 } from "@/lib/generatedCard";
 import { checkBlobRateLimit } from "@/lib/rateLimit";
+import { TIER_LIMITS } from "@/lib/usageLimits";
 
-// Text-only calls are cheaper than video, but still real money per call.
-const GENERATE_RATE_LIMIT = { limit: 10, windowMs: 10 * 60 * 1000 }; // 10 per 10 minutes per team
-
+// Cards per minute per tier: src/lib/usageLimits.ts `cards`.
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
@@ -102,11 +101,12 @@ export async function POST(request: Request): Promise<NextResponse> {
   // rule this project's plan doesn't support creating; checkBlobRateLimit is
   // the real cap.
   const { rateLimited } = await checkRateLimit("generate-scout-card", { request });
+  const { limit, windowMs } = TIER_LIMITS[entitlement.tier].cards;
   const { ok } = await checkBlobRateLimit(
-    "generate-scout-card",
+    `generate-scout-card-${entitlement.tier}`,
     entitlement.teamId,
-    GENERATE_RATE_LIMIT.limit,
-    GENERATE_RATE_LIMIT.windowMs,
+    limit,
+    windowMs,
   );
   if (rateLimited || !ok) {
     return NextResponse.json(

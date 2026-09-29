@@ -35,7 +35,7 @@ describe("evaluateEntitlement", () => {
       userId: "user-1",
       team: { id: "team-1", subscriptionStatus },
     });
-    expect(result).toEqual({ ok: true, userId: "user-1", teamId: "team-1" });
+    expect(result).toEqual({ ok: true, userId: "user-1", teamId: "team-1", tier: "paid" });
   });
 });
 

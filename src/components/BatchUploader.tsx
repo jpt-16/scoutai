@@ -109,10 +109,24 @@ function useBatchUpload() {
       }
 
       const total = matchedEntries.length;
+      // Refuse a game over the plan's plays-per-batch before uploading anything.
+      const access = (await fetch("/api/ai-access", { cache: "no-store" })
+        .then((res) => res.json())
+        .catch(() => null)) as { limits?: { batch?: { maxPlays?: number } } } | null;
+      const maxPlays = access?.limits?.batch?.maxPlays;
+      if (maxPlays && total > maxPlays) {
+        throw new Error(
+          `This game has ${total} matched plays; a batch can have at most ${maxPlays}. ` +
+            "Split the zip into two uploads.",
+        );
+      }
       let cards = parsedCards;
       let done = 0;
       let failedCount = 0;
 
+      // One game is one job on the server: every chunk carries its id, and the
+      // last one says it's done so the staff's job slot frees up right away.
+      const jobId = `job-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
       for (let start = 0; start < matchedEntries.length; start += MAX_BATCH_CLIPS) {
         const chunk = matchedEntries.slice(start, start + MAX_BATCH_CLIPS);
 
@@ -137,6 +151,9 @@ function useBatchUpload() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             clips: uploaded.map(({ videoUrl, fileName, playCall }) => ({ videoUrl, fileName, playCall })),
+            jobId,
+            totalPlays: total,
+            final: start + MAX_BATCH_CLIPS >= matchedEntries.length,
           }),
         });
         const payload = (await res.json()) as { results?: BatchClipResult[]; error?: string };

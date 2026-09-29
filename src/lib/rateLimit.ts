@@ -32,6 +32,13 @@
  */
 
 import { list, put } from "@vercel/blob";
+import {
+  batchMarkerName,
+  decideBatchChunk,
+  summarizeBatchJobs,
+  type BatchDecision,
+  type TierLimits,
+} from "./usageLimits";
 
 /**
  * Best-effort client IP from the standard proxy header Vercel sets
@@ -84,6 +91,45 @@ export async function checkBlobRateLimit(
     // but log it, since that also means uploads/analysis are about to fail
     // anyway for the same reason.
     console.error(`checkBlobRateLimit(${bucket}) failed, allowing the request`, error);
+    return { ok: true };
+  }
+}
+
+const HOUR = 60 * 60 * 1000;
+
+/**
+ * Batch import's job limit (see usageLimits.ts): how many games a staff can
+ * have running at once, and how many plays one game may have. Each allowed
+ * chunk writes a marker `ratelimit/batch-jobs/<team>/<hour>/<jobId>/<time>-<clips>[-done]`;
+ * the check lists this hour's and the last hour's markers (a job is done in
+ * well under an hour) and rolls them up per job. Fails open like
+ * `checkBlobRateLimit`.
+ */
+export async function checkBatchJob(
+  identity: string,
+  job: { jobId: string; clips: number; totalPlays: number; final: boolean },
+  limits: TierLimits["batch"],
+): Promise<BatchDecision> {
+  const now = Date.now();
+  const hour = Math.floor(now / HOUR) * HOUR;
+  const base = `ratelimit/batch-jobs/${hashKey(identity)}/`;
+  try {
+    const names: string[] = [];
+    for (const h of [hour - HOUR, hour]) {
+      const prefix = `${base}${h}/`;
+      const { blobs } = await list({ prefix, limit: 1000 });
+      names.push(...blobs.map((b) => b.pathname.slice(prefix.length)));
+    }
+    const decision = decideBatchChunk(summarizeBatchJobs(names), job.jobId, job.clips, job.totalPlays, limits, now);
+    if (!decision.ok) return decision;
+    await put(`${base}${hour}/${batchMarkerName(job.jobId, now, job.clips, job.final)}`, "", {
+      access: "private",
+      addRandomSuffix: false,
+      contentType: "text/plain",
+    });
+    return decision;
+  } catch (error) {
+    console.error("checkBatchJob failed, allowing the chunk", error);
     return { ok: true };
   }
 }

@@ -431,10 +431,21 @@ anything once a matching Vercel Firewall rule exists (a `rate_limit_api_id` cond
 Config not found") on every attempt, consistent with custom WAF rules being a paid-plan feature.
 The actual cap right now is `src/lib/rateLimit.ts`'s `checkBlobRateLimit`: a counter (keyed by the
 entitled **team id**, not IP — see below) kept as tiny marker blobs in the same private Blob store
-(`ratelimit/<bucket>/<hashed team id>/<window>/`, counted with `list()`), 3 clips / 10 min on
-`/api/parse-video`, 1 batch / 10 min on `/api/parse-video-batch` (see below), and 10 uploads /
-10 min on `/api/blob-upload` (raised from 5 so a full batch's uploads don't trip it partway
-through). Not perfectly atomic under concurrent hits from one team — fine for a small coaching
+(`ratelimit/<bucket>/<hashed team id>/<window>/`, counted with `list()`). The limits are **per
+access tier** (`src/lib/usageLimits.ts`'s `TIER_LIMITS`; `requireEntitlement()` returns the tier):
+
+| Limit | Demo (allow-listed / test bypass) | Paid (subscribed staff) |
+| ----- | --------------------------------- | ----------------------- |
+| AI text cards (`/api/generate-scout-card`) | 20 / minute | 120 / minute |
+| Single clips (`/api/parse-video`) | 10 / 5 min | 50 / 5 min |
+| Batch jobs (`/api/parse-video-batch`) | 1 running, max 50 plays | 3 running, max 100 plays |
+| Clip uploads (`/api/blob-upload`) | 60 / 5 min | 350 / 5 min |
+
+Uploads are sized to the clip limit plus every running job's full game, so a batch never stalls on
+uploads. Each tier has its own bucket name (`parse-video-demo` / `-paid`), so a staff that
+upgrades starts on the paid counts right away. At these rates the counter itself costs Blob
+operations (one `list` + one `put` per request), which count against the Blob plan's advanced
+operations. Not perfectly atomic under concurrent hits from one team — fine for a small coaching
 staff's traffic, and it's defense-in-depth layered on top of the auth/billing gate below, not the
 primary defense against strangers anymore. If this project ever moves to a plan with Firewall
 rate limiting, add the matching rules (dashboard or `vercel firewall rules add`) and
@@ -453,10 +464,15 @@ filename to a CSV row by the number embedded in it (`"Clip_4.mp4"` → `PLAY #` 
 stripped first, since `.mp4` itself contains a digit) — a clip whose number doesn't match a row,
 or has no number, is skipped and counted in the script's warnings rather than guessed at.
 
-Matched clips are processed in chunks of `MAX_BATCH_CLIPS` (`src/lib/batchConfig.ts`, currently
-10) — a deliberate cost cap, not just a technical one: an uncapped batch could fire dozens of
-Gemini calls at once with no ceiling, so a 50-play script takes ~5 batches instead of one
-unpredictable bill. Each chunk's clips upload to private Blob storage client-side (same
+One game is one **job**. Its matched clips go up in chunks of `MAX_BATCH_CLIPS`
+(`src/lib/batchConfig.ts`, 10: a serverless call has to finish in time), every chunk tagged with
+the same client-made `jobId`, the game's `totalPlays`, and `final: true` on the last one.
+`checkBatchJob` (`src/lib/rateLimit.ts`, pure logic in `usageLimits.ts`'s `decideBatchChunk`)
+keeps a marker per chunk (`ratelimit/batch-jobs/<team>/<hour>/<jobId>/<time>-<clips>[-done]`)
+and enforces the tier's running-jobs and plays-per-batch limits; a finished job frees its slot at
+once, and one that goes quiet for `BATCH_JOB_IDLE_MS` (15 min) stops counting. Before uploading
+anything the uploader asks `/api/ai-access` for the tier's limits and refuses a game over its
+plays-per-batch, so no clips are uploaded for a batch that would be refused. Each chunk's clips upload to private Blob storage client-side (same
 `@vercel/blob/client` path the single-clip flow uses), then one call to
 `/api/parse-video-batch` processes the chunk with `src/lib/concurrency.ts`'s `mapWithConcurrency`
 capping it at 4 Gemini calls in flight at once. One clip failing never sinks the batch — each
@@ -485,7 +501,7 @@ and capped at 80 characters before it goes in the prompt.
 an optional defensive call ("COVER 3", or "3-4 COVER 1" to set the front too). The route asks
 Gemini 2.5 Flash, under a strict `responseSchema`, for 0-100 grid coordinates of all 22 players,
 and returns a finished card that's appended to the script and shown. Gated and rate limited like
-the film AI (`requireEntitlement()` first, then 10 cards / 10 min per team), since every call
+the film AI (`requireEntitlement()` first, then the tier's cards per minute), since every call
 costs money.
 
 The pure half is `src/lib/generatedCard.ts`, and it keeps the AI inside the app's own drawing
@@ -566,7 +582,8 @@ there's still no separate database for this either.
   comma-separated server-only env var of coaches' emails. `requireEntitlement()` checks the
   signed-in user's **verified** Clerk emails against it (`isAllowListed`, unit-tested) before the
   team/subscription checks, so an allow-listed coach needs neither a team nor a subscription;
-  their rate-limit bucket is their team, or `user-<id>` without one. Delete the env var and the
+  they get the **demo** tier's limits, bucketed by their team, or `user-<id>` without one. A
+  subscribed staff gets the **paid** tier even if a coach is also on the list. Delete the env var and the
   paywall applies to everyone again, no code change. The client can't see the list, so
   `useTeamAccount` also asks `GET /api/ai-access` (the same `requireEntitlement()`, costs
   nothing) once per user + team, and the upload buttons go straight to uploading when either the

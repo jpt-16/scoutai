@@ -7,11 +7,13 @@
  * private-blob-URL shape `/api/parse-video` takes for one clip, uploaded
  * beforehand through the same `/api/blob-upload`.
  *
- * Capped at `MAX_BATCH_CLIPS` per call (a deliberate product decision, not
- * just a technical limit — a 50-play script needs several batches rather
- * than one uncapped, unpredictably expensive Gemini bill) and processed
- * with bounded concurrency so it doesn't fire dozens of Gemini calls at
- * once. One clip failing never sinks the rest — each comes back with either
+ * One game is one **job**: the client sends it as chunks of up to
+ * `MAX_BATCH_CLIPS` (a serverless call has to finish in time) tagged with the
+ * same `jobId`, plus `totalPlays` and `final` on the last chunk. Per tier
+ * (src/lib/usageLimits.ts `batch`), a staff can run so many jobs at once and
+ * each job can have so many plays; `checkBatchJob` enforces both. Clips are
+ * processed with bounded concurrency so a chunk doesn't fire all its Gemini
+ * calls at once. One clip failing never sinks the rest — each comes back with either
  * a `detection` or an `error`, in the same order they were sent, so the
  * caller can match results back to clips by index.
  */
@@ -22,15 +24,10 @@ import { NextResponse } from "next/server";
 import { MAX_BATCH_CLIPS } from "@/lib/batchConfig";
 import { mapWithConcurrency } from "@/lib/concurrency";
 import { requireEntitlement } from "@/lib/entitlement";
-import { checkBlobRateLimit } from "@/lib/rateLimit";
+import { checkBatchJob } from "@/lib/rateLimit";
+import { isValidJobId, TIER_LIMITS } from "@/lib/usageLimits";
 import { detectPlayFromClip, VideoDetectionError, type DetectClipOptions } from "@/lib/videoDetection";
 import type { DetectedPlay } from "@/lib/videoImport";
-
-// One batch (up to MAX_BATCH_CLIPS Gemini calls) per team per window — a
-// separate, coarser bucket than /api/parse-video's per-clip 3/10min, since
-// a single batch already bundles up to MAX_BATCH_CLIPS of those calls. A
-// full 50-play script needs ~5 batches, roughly 10 minutes apart.
-const PARSE_VIDEO_BATCH_RATE_LIMIT = { limit: 1, windowMs: 10 * 60 * 1000 };
 
 /** How many clips are sent to Gemini at once within one batch. */
 const BATCH_CONCURRENCY = 4;
@@ -51,6 +48,12 @@ interface RequestClip {
 
 interface RequestBody {
   clips?: RequestClip[];
+  /** Same for every chunk of one game. */
+  jobId?: unknown;
+  /** Plays in the whole game, so an over-limit game is refused before it starts. */
+  totalPlays?: unknown;
+  /** True on the game's last chunk, which frees its job slot right away. */
+  final?: unknown;
 }
 
 export interface BatchClipResult {
@@ -85,16 +88,10 @@ export async function POST(request: Request): Promise<NextResponse> {
   }
 
   // See src/lib/rateLimit.ts: checkRateLimit is a no-op without a Firewall
-  // rule this project's plan doesn't support creating; checkBlobRateLimit is
-  // the real cap.
+  // rule this project's plan doesn't support creating; checkBatchJob (below,
+  // once the body says which job this is) is the real cap.
   const { rateLimited } = await checkRateLimit("parse-video-batch", { request });
-  const { ok } = await checkBlobRateLimit(
-    "parse-video-batch",
-    entitlement.teamId,
-    PARSE_VIDEO_BATCH_RATE_LIMIT.limit,
-    PARSE_VIDEO_BATCH_RATE_LIMIT.windowMs,
-  );
-  if (rateLimited || !ok) {
+  if (rateLimited) {
     return NextResponse.json(
       { error: "Too many batches submitted recently. Wait a few minutes and try again." },
       { status: 429 },
@@ -120,6 +117,22 @@ export async function POST(request: Request): Promise<NextResponse> {
   const missingUrl = clips.find((c) => !c.videoUrl);
   if (missingUrl) {
     return NextResponse.json({ error: "Every clip needs a videoUrl" }, { status: 400 });
+  }
+  if (!isValidJobId(body.jobId)) {
+    return NextResponse.json({ error: "Every chunk needs the batch's jobId" }, { status: 400 });
+  }
+  const totalPlays =
+    typeof body.totalPlays === "number" && Number.isInteger(body.totalPlays) && body.totalPlays > 0
+      ? body.totalPlays
+      : clips.length;
+
+  const job = await checkBatchJob(
+    entitlement.teamId,
+    { jobId: body.jobId, clips: clips.length, totalPlays, final: body.final === true },
+    TIER_LIMITS[entitlement.tier].batch,
+  );
+  if (!job.ok) {
+    return NextResponse.json({ error: job.message }, { status: 429 });
   }
 
   const apiKey = process.env.GEMINI_API_KEY;

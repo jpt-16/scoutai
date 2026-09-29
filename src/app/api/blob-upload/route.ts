@@ -14,15 +14,13 @@ import { checkRateLimit } from "@vercel/firewall";
 import { NextResponse } from "next/server";
 import { requireEntitlement } from "@/lib/entitlement";
 import { checkBlobRateLimit } from "@/lib/rateLimit";
+import { TIER_LIMITS } from "@/lib/usageLimits";
 
-// Every upload here is normally followed by a paid /api/parse-video call, so
-// this gets its own cap too, a bit looser than that route's. See
-// src/lib/rateLimit.ts for why checkBlobRateLimit, not just checkRateLimit,
-// is what actually enforces this. 10, not 5, so a single batch upload (see
-// /api/parse-video-batch's MAX_BATCH_CLIPS) doesn't trip this cap partway
-// through — blob storage itself costs bandwidth, not a per-call Gemini bill,
-// so the real cost ceiling is parse-video-batch's own rate limit, not this one.
-const BLOB_UPLOAD_RATE_LIMIT = { limit: 10, windowMs: 10 * 60 * 1000 }; // 10 per 10 minutes per team
+// Every upload here is followed by a paid analysis call, so it has its own
+// cap per tier (src/lib/usageLimits.ts `uploads`), sized to fit the clip limit
+// plus every running batch's full game so a batch never stalls on uploads. The
+// real cost ceilings are the analysis routes' own limits. See
+// src/lib/rateLimit.ts for why checkBlobRateLimit is what actually enforces it.
 
 export async function POST(request: Request): Promise<NextResponse> {
   // Middleware already fast-fails an unauthenticated request; this re-check
@@ -36,12 +34,8 @@ export async function POST(request: Request): Promise<NextResponse> {
   }
 
   const { rateLimited } = await checkRateLimit("blob-upload", { request });
-  const { ok } = await checkBlobRateLimit(
-    "blob-upload",
-    entitlement.teamId,
-    BLOB_UPLOAD_RATE_LIMIT.limit,
-    BLOB_UPLOAD_RATE_LIMIT.windowMs,
-  );
+  const { limit, windowMs } = TIER_LIMITS[entitlement.tier].uploads;
+  const { ok } = await checkBlobRateLimit(`blob-upload-${entitlement.tier}`, entitlement.teamId, limit, windowMs);
   if (rateLimited || !ok) {
     return NextResponse.json(
       { error: "Too many uploads recently. Wait a few minutes and try again." },

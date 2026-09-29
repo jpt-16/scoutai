@@ -13,9 +13,10 @@
 import { auth, clerkClient } from "@clerk/nextjs/server";
 import { isClerkConfigured } from "./clerkConfig";
 import { isAiGateDisabled } from "./featureFlags";
+import type { AccessTier } from "./usageLimits";
 
 export type EntitlementResult =
-  | { ok: true; userId: string; teamId: string }
+  | { ok: true; userId: string; teamId: string; tier: AccessTier }
   | { ok: false; status: 401 | 402 | 403; error: string; message: string };
 
 export function evaluateEntitlement(input: {
@@ -41,7 +42,7 @@ export function evaluateEntitlement(input: {
       message: "Your team's subscription isn't active. Subscribe to unlock the AI features.",
     };
   }
-  return { ok: true, userId: input.userId, teamId: input.team.id };
+  return { ok: true, userId: input.userId, teamId: input.team.id, tier: "paid" };
 }
 
 /**
@@ -64,7 +65,7 @@ export async function requireEntitlement(): Promise<EntitlementResult> {
   // Testing-only escape hatch — see src/lib/featureFlags.ts for the safety
   // conditions (local-only in practice, a no-op on Vercel production).
   if (isAiGateDisabled()) {
-    return { ok: true, userId: "test-bypass", teamId: "test-bypass" };
+    return { ok: true, userId: "test-bypass", teamId: "test-bypass", tier: "demo" };
   }
 
   // No Clerk keys on this deployment: nobody can sign in, so nobody is entitled
@@ -76,23 +77,28 @@ export async function requireEntitlement(): Promise<EntitlementResult> {
   if (!userId) return evaluateEntitlement({ userId, team: null });
 
   const clerk = await clerkClient();
+
+  // A subscribed staff gets the paid tier, even if a coach is also allow-listed.
+  let paid: EntitlementResult | null = null;
+  if (orgId) {
+    const org = await clerk.organizations.getOrganization({ organizationId: orgId });
+    const subscriptionStatus =
+      (org.publicMetadata as { subscriptionStatus?: string | null }).subscriptionStatus ?? null;
+    paid = evaluateEntitlement({ userId, team: { id: orgId, subscriptionStatus } });
+    if (paid.ok) return paid;
+  }
+
   if (process.env.AI_ALLOWED_EMAILS) {
     const user = await clerk.users.getUser(userId);
     const verified = user.emailAddresses
       .filter((e) => e.verification?.status === "verified")
       .map((e) => e.emailAddress);
-    // Allow-listed: no team or subscription needed. Rate limits still bucket
-    // by team, or by the user when there's no team.
+    // Allow-listed: the demo tier, no team or subscription needed. Rate limits
+    // bucket by team, or by the user when there's no team.
     if (isAllowListed(verified, process.env.AI_ALLOWED_EMAILS)) {
-      return { ok: true, userId, teamId: orgId ?? `user-${userId}` };
+      return { ok: true, userId, teamId: orgId ?? `user-${userId}`, tier: "demo" };
     }
   }
 
-  if (!orgId) return evaluateEntitlement({ userId, team: null });
-
-  const org = await clerk.organizations.getOrganization({ organizationId: orgId });
-  const subscriptionStatus = (org.publicMetadata as { subscriptionStatus?: string | null })
-    .subscriptionStatus ?? null;
-
-  return evaluateEntitlement({ userId, team: { id: orgId, subscriptionStatus } });
+  return paid ?? evaluateEntitlement({ userId, team: null });
 }
