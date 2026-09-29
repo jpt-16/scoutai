@@ -637,12 +637,13 @@ export default function UploadPage() {
             </div>
 
             <blockquote className="mx-auto mt-8 max-w-2xl border-l-4 border-primary pl-5 text-left text-[19px] leading-relaxed text-[#c9cfc9] sm:text-xl">
-              &ldquo;I played high school football, and I watched our coaching staff stay until
-              midnight hand-drawing scout team cards off a stack of Hudl printouts — hours that
+              &ldquo;I played high school football, and I watched our coaching staff stay late
+              hand-drawing scout team cards off a stack of Hudl printouts — hours that
               should&apos;ve gone into actual gameplanning, film work, or just going home.
               That&apos;s the whole reason this exists: turn a breakdown into practice-ready cards
               in minutes, so a coordinator can walk out of the office instead of tracing X&apos;s
               and O&apos;s by hand.&rdquo;
+              <footer className="mt-4 text-base font-bold text-foreground not-italic">— Jake, Founder</footer>
             </blockquote>
 
             <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -717,6 +718,14 @@ export default function UploadPage() {
         <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 sm:flex-row">
           <BrandMark />
           <p className="text-sm text-muted-foreground">Built for high school football staffs.</p>
+          <div className="flex items-center gap-5 text-sm text-muted-foreground">
+            <a href="/privacy" className="transition-colors hover:text-foreground">
+              Privacy
+            </a>
+            <a href="/terms" className="transition-colors hover:text-foreground">
+              Terms
+            </a>
+          </div>
         </div>
       </footer>
 
