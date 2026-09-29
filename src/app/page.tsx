@@ -438,7 +438,7 @@ export default function UploadPage() {
           <div className="mx-auto grid max-w-6xl items-center gap-12 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] lg:gap-16">
             <Reveal>
               <div className="flex flex-col gap-6">
-                <SectionHeading eyebrow="ON THE FIELD" title="Built to run on the sideline" align="left">
+                <SectionHeading eyebrow="AT PRACTICE" title="Built to run in practice" align="left">
                   High-contrast vector cards made for direct sun. Swipe plays, filter by down or formation,
                   and flip between Scout O and Scout D.
                 </SectionHeading>
