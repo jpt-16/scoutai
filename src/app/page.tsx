@@ -47,7 +47,7 @@ import { importFilms } from "@/lib/importFilms";
 import { saveScript, storeScript } from "@/lib/scriptStore";
 
 const PREVIEW_CARD = parseHudlCsvText(
-  "PLAY #,DN,DIST,HASH,YARD LN,OFF FORM,OFF PLAY,DEF FRONT\n7,3,6,L,-35,TRIPS RT,4 VERTS,4-3\n",
+  "PLAY #,DN,DIST,HASH,YARD LN,OFF FORM,OFF PLAY,DEF FRONT\n7,2,7,M,Opp 38,TRIPS RT,2960,3-4\n",
 ).cards[0];
 
 const FIELD_LABELS: Record<HudlField, string> = {
