@@ -455,7 +455,12 @@ handles on the card) is identical either way.
 
 The Gemini call itself (prompt, response schema, per-step error handling) lives in
 `src/lib/videoDetection.ts`'s `detectPlayFromClip`, shared by `/api/parse-video` (one clip) and
-`/api/parse-video-batch` (several) so there's exactly one place that logic can drift.
+`/api/parse-video-batch` (several) so there's exactly one place that logic can drift. The prompt
+(`buildDetectionPrompt`) carries `FOOTBALL_CONCEPT_RULES`, route geometry for MESH (drags at 3-5
+yards), RAIL / WHEEL (flat, then up the sideline) and CORNER / OUT (10-yard stem, 45° / 90°),
+matching the route tree above. Batch import also sends each clip's play call from its matched CSV
+row, so a called concept is drawn with that geometry; the call is flattened to one quote-free line
+and capped at 80 characters before it goes in the prompt.
 
 ## Auth, teams, and billing (Clerk + Stripe)
 
