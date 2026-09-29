@@ -193,6 +193,13 @@ Card look (`ScoutCard.tsx`, PlayIQ-style):
 
 - **Header:** card #, a centered play title (formation · play call, or formation vs front),
   the hash and period, and a RUN / PASS / RPO / PLAY ACTION / DEF tag.
+- **Tendency badges** (field variant only, never on print): a row under the header showing this
+  card's own slice of the whole script's tendencies (`src/lib/tendencies.ts`'s
+  `computeTendencies`, computed once by `script/page.tsx` and passed to every card as the
+  `tendencies` prop) — this formation's share of all plays, this down/distance situation's
+  run/pass split (hidden below `MIN_SITUATION_REPS` reps so a one-off play doesn't look like a
+  100% tendency), and the script's preferred play direction. These are read-only scouting
+  numbers, not something a coach edits on the card.
 - **Field:** white, with light gray 5-yard lines, left/middle/right hash ticks, field numbers
   (turned 90° to face their own sideline, like a real field) and a **blue LOS bar**.
 - **Symbols:** the center is a square, other linemen are unlabeled circles, and skill players

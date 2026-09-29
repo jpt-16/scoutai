@@ -23,6 +23,7 @@ import { EditPlayDialog } from "@/components/EditPlayDialog";
 import { ImportNotice } from "@/components/ImportNotice";
 import { PrintGrid } from "@/components/PrintGrid";
 import { ScoutCard, SCOUT_CARD_ASPECT } from "@/components/ScoutCard";
+import { computeTendencies } from "@/lib/tendencies";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MOCK_HUDL_CSV, DEMO_FILE_NAME } from "@/lib/demoScript";
@@ -108,6 +109,9 @@ export default function ScriptPage() {
   }, []);
 
   const cards = useMemo(() => script?.cards ?? [], [script]);
+  // Whole-script tendencies, not the currently filtered view -- "how often
+  // does this team run Trips" means the whole game, not just this filter.
+  const tendencies = useMemo(() => computeTendencies(cards), [cards]);
   const multiFilm = (script?.films.length ?? 0) > 1;
   const modeCards = useMemo(
     () => cards.filter((c) => inPeriod(c, mode, unit) && (film === "all" || c.source === film)),
@@ -617,6 +621,7 @@ export default function ScriptPage() {
                     card={current}
                     mode={cardMode}
                     unit={unit}
+                    tendencies={tendencies}
                     onMoveDefender={
                       adjusting && unit === "defense"
                         ? (id, at) =>

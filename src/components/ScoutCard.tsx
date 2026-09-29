@@ -13,6 +13,7 @@ import {
   type Point,
   type ScoutUnit,
 } from "@/lib/formations";
+import { formationSharePct, preferredDirection, situationRunPct, type ScriptTendencies } from "@/lib/tendencies";
 import { cn } from "@/lib/utils";
 
 export type ScoutCardVariant = "field" | "print";
@@ -47,6 +48,16 @@ interface ScoutCardProps {
    * `RouteOverride.path` — deltas from the player's own position).
    */
   onEditDetectedRoute?: (letter: string, path: [number, number][]) => void;
+  /**
+   * Scout-report tendencies for the whole loaded script (see
+   * `src/lib/tendencies.ts`), computed once by the caller and handed to
+   * every card — `ScoutCard` only reads this one card's own slice of it
+   * (its formation's share, its down/distance situation's run%, and the
+   * script's overall preferred direction). Field variant only; omitted
+   * shows no badge row, so most callers (the landing-page preview, Print
+   * Grid) render exactly as before.
+   */
+  tendencies?: ScriptTendencies;
   className?: string;
 }
 
@@ -152,6 +163,7 @@ export function ScoutCard({
   onAssignmentChange,
   ink,
   onEditDetectedRoute,
+  tendencies,
   className,
 }: ScoutCardProps) {
   const c = PALETTES[variant];
@@ -183,6 +195,13 @@ export function ScoutCard({
   const tag = isDefense ? "DEF" : PLAY_KIND_LABELS[diagram.kind];
   const tagColor = isDefense ? c.defense : diagram.kind === "run" ? c.ball : c.los;
   const marker = (name: string) => `url(#${uid}-${name})`;
+
+  // Tendency badges: only on the field variant, and only once there's a
+  // script's worth of plays to compute them from (see src/lib/tendencies.ts).
+  const shareBadge = tendencies && variant === "field" ? formationSharePct(tendencies, card) : null;
+  const runBadge = tendencies && variant === "field" ? situationRunPct(tendencies, card) : null;
+  const directionBadge = tendencies && variant === "field" ? preferredDirection(tendencies) : null;
+  const hasBadges = shareBadge != null || runBadge != null || directionBadge != null;
 
   /** Pointer positions in SVG coordinates, including the Pencil's in-between samples. */
   const inkPoints = (e: React.PointerEvent): [number, number][] => {
@@ -268,6 +287,39 @@ export function ScoutCard({
           {tag}
         </span>
       </header>
+
+      {hasBadges && (
+        <div
+          className="flex flex-wrap items-center gap-[max(4px,0.8cqw)] border-b-2 px-[max(8px,1.6cqw)] py-[max(3px,0.7cqw)]"
+          style={{ borderColor: c.rule }}
+        >
+          {shareBadge != null && (
+            <span
+              className="rounded-full px-[max(6px,1.2cqw)] py-[max(1px,0.35cqw)] text-[max(8px,1.35cqw)] leading-none font-bold tracking-[0.03em] whitespace-nowrap"
+              style={{ background: c.badgeBg, color: c.badgeInk }}
+            >
+              {card.formation || "Formation"} · {shareBadge}% usage
+            </span>
+          )}
+          {runBadge != null && (
+            <span
+              className="rounded-full px-[max(6px,1.2cqw)] py-[max(1px,0.35cqw)] text-[max(8px,1.35cqw)] leading-none font-bold tracking-[0.03em] whitespace-nowrap"
+              style={{ background: runBadge >= 50 ? c.ball : c.los, color: "#ffffff" }}
+            >
+              {runBadge >= 50 ? runBadge : 100 - runBadge}% {runBadge >= 50 ? "RUN" : "PASS"} THIS DOWN/DIST
+            </span>
+          )}
+          {directionBadge != null && (
+            <span
+              className="rounded-full px-[max(6px,1.2cqw)] py-[max(1px,0.35cqw)] text-[max(8px,1.35cqw)] leading-none font-bold tracking-[0.03em] whitespace-nowrap"
+              style={{ background: c.badgeBg, color: c.badgeInk }}
+            >
+              {directionBadge.side === "left" ? "←" : "→"} {directionBadge.pct}%{" "}
+              {directionBadge.side.toUpperCase()}
+            </span>
+          )}
+        </div>
+      )}
 
       <svg
         ref={svgRef}
