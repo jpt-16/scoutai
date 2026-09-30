@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildDiagram, playKind } from "./formations";
 import { parseHudlCsvText, updateCard } from "./hudlParser";
-import { applyReview, buildReviewPrompt, needsReview, reviewRows, sanitizeReviewRow, unplaced } from "./importReview";
+import { applyReview, buildReviewPrompt, needsReview, reviewRows, sanitizeReviewRow, unplaced, parseRouteList } from "./importReview";
 
 const CSV = [
   "PLAY #,OFF FORM,OFF PLAY,DEF FRONT",
@@ -118,5 +118,22 @@ describe("route concepts", () => {
     const { cards: out } = applyReview(cards, [quick.id], [{ id: quick.id, routes: same }]);
     expect(out[0].routeOverrides).toBeUndefined();
     expect(out[0].aiReviewed).toBe(true);
+  });
+});
+
+describe("parseRouteList", () => {
+  it("reads the model's one-line route list per position", () => {
+    expect(parseRouteList("ps1 slant, ps2 flat, ps3: hitch, back=protect")).toEqual({
+      ps1: "slant",
+      ps2: "flat",
+      ps3: "hitch",
+      back: "protect",
+    });
+  });
+
+  it("ignores positions that don't exist and empty answers", () => {
+    expect(parseRouteList("qb slant, ps1 go")).toEqual({ ps1: "go" });
+    expect(parseRouteList("")).toBeUndefined();
+    expect(parseRouteList(undefined)).toBeUndefined();
   });
 });

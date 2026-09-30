@@ -23,6 +23,8 @@ import {
   parseHudlCsvText,
   parseYardLine,
   repairCsvLine,
+  findRunPassColumn,
+  realignRow,
 } from "./hudlParser";
 
 describe("mapColumns", () => {
@@ -1067,5 +1069,53 @@ describe("Excel import", () => {
     const result = await parseHudlCsv(file);
     expect(result.cards).toHaveLength(0);
     expect(result.warnings[0]).toMatch(/couldn't read this excel file/i);
+  });
+});
+
+describe("hand-typed breakdowns that slid out of their columns", () => {
+  // Rows from a staff's own Google Sheet: Run / Pass typed under G/L, play calls
+  // typed across several cells, and an extra blank cell before the front.
+  const CSV = `Untitled spreadsheet - Sheet1 (2)
+PLAY #,ODK,DN,DIST,YARD LN,TYPE,G/L,OFF FORM,OFF PLAY,OFF STR,PLAY DIR,GAP,DEF FRONT,COVERAGE,RUTZ,,
+1,O,1,10,-21,,Run,ACES,G ISO,L,R,,,,,,
+7,O,2,8,-36,,Run,TRIO,G ISO,L,L,,EVEN,6 - DOUBLE FIRE,1,,
+8,O,3,8,-36,,Pass,TRIO,,,L,N,,EVEN,5 - DOUBLE FIRE,1,
+15,O,4,1,-25,,Pass,BLACK,POST,SEAM,UNDER,WHEEL,RAIL,BAL,R,,
+90,O,3,7,43,,Pass,TRIO,DIG,OUT,R,L,,ODD,4,4,
+97,O,2,10,3,,Run,29,SLOT,,,R,L,,ODD,4,4
+`;
+  const result = parseHudlCsvText(CSV);
+  const byNumber = (n: number) => result.cards.find((c) => c.playNumber === n)!;
+
+  it("reads Run / Pass from whatever column it was typed in", () => {
+    expect(result.columns.playType).toBe("G/L");
+    expect(byNumber(8).playType).toBe("Pass");
+    expect(byNumber(1).playType).toBe("Run");
+    expect(result.warnings.some((w) => w.includes('"G/L"'))).toBe(true);
+  });
+
+  it("joins a play call typed across cells and puts strength / direction back", () => {
+    expect(byNumber(15)).toMatchObject({ playCall: "POST SEAM UNDER WHEEL RAIL", offStrength: "BAL", playDir: "R", defFront: "" });
+    expect(byNumber(90)).toMatchObject({ playCall: "DIG OUT", offStrength: "R", playDir: "L", defFront: "ODD", coverage: "4" });
+  });
+
+  it("drops an extra blank cell so the front lands under DEF FRONT", () => {
+    expect(byNumber(8)).toMatchObject({ offStrength: "L", playDir: "N", defFront: "EVEN", coverage: "5 - DOUBLE FIRE" });
+    expect(byNumber(97)).toMatchObject({ offStrength: "R", playDir: "L", defFront: "ODD", coverage: "4" });
+  });
+
+  it("leaves rows that were already right alone", () => {
+    expect(byNumber(7)).toMatchObject({ playCall: "G ISO", offStrength: "L", playDir: "L", defFront: "EVEN", coverage: "6 - DOUBLE FIRE" });
+    expect(result.warnings.some((w) => w.startsWith("Lined up 4 rows"))).toBe(true);
+  });
+
+  it("never realigns a plain Hudl export", () => {
+    const at = { playCall: 1, offStrength: 2, playDir: 3, defFront: 4 };
+    expect(realignRow(["TRIO", "G ISO", "L", "R", "4-3"], at)).toEqual({ values: ["TRIO", "G ISO", "L", "R", "4-3"], fixed: false });
+    expect(realignRow(["TRIO", "G ISO", "", "", ""], at).fixed).toBe(false);
+  });
+
+  it("doesn't mistake a direction column for Run / Pass", () => {
+    expect(findRunPassColumn(["DIR"], [["R"], ["R"], ["L"], ["R"]], {})).toBeNull();
   });
 });

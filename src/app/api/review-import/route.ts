@@ -11,15 +11,17 @@ import { checkRateLimit } from "@vercel/firewall";
 import { GoogleGenAI, Type, type Schema } from "@google/genai";
 import { NextResponse } from "next/server";
 import { requireEntitlement } from "@/lib/entitlement";
+import { mapWithConcurrency } from "@/lib/concurrency";
 import {
   buildReviewPrompt,
   MAX_REVIEW_ROWS,
+  parseRouteList,
+  REVIEW_CHUNK,
   REVIEW_FORMATIONS,
   REVIEW_FRONTS,
-  REVIEW_ROUTES,
-  REVIEW_SLOTS,
   sanitizeReviewRow,
   validateReview,
+  type ReviewResult,
   type ReviewRow,
 } from "@/lib/importReview";
 import { checkBlobRateLimit } from "@/lib/rateLimit";
@@ -28,8 +30,9 @@ import { TIER_LIMITS } from "@/lib/usageLimits";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-const routeChoice: Schema = { type: Type.STRING, enum: [...REVIEW_ROUTES, "protect", "none"] };
-
+// Kept small on purpose: a route enum per position (nested, optional) made
+// the schema too big for Gemini to serve, and every review failed. Routes are
+// one string per row, parsed by `parseRouteList`.
 const RESPONSE_SCHEMA: Schema = {
   type: Type.OBJECT,
   properties: {
@@ -44,9 +47,8 @@ const RESPONSE_SCHEMA: Schema = {
           playType: { type: Type.STRING, enum: ["run", "pass", "unknown"] },
           front: { type: Type.STRING, enum: [...REVIEW_FRONTS, "unknown"] },
           routes: {
-            type: Type.OBJECT,
-            description: "Only for rows marked 'build routes for': a route per position",
-            properties: Object.fromEntries(REVIEW_SLOTS.map((slot) => [slot, routeChoice])),
+            type: Type.STRING,
+            description: "Only for rows marked 'build routes for': 'ps1 slant, ps2 flat, back protect'; else ''",
           },
         },
         required: ["id", "formation", "side", "playType", "front"],
@@ -55,6 +57,53 @@ const RESPONSE_SCHEMA: Schema = {
   },
   required: ["results"],
 };
+
+type ChunkAnswer = { results: ReviewResult[] } | { error: string };
+
+/** Gemini's own reason, short and one line, for the coach's notice and the logs. */
+function reason(error: unknown): string {
+  const text = error instanceof Error ? error.message : String(error);
+  const status = text.match(/"status":\s*"([A-Z_]+)"/)?.[1] ?? text.match(/\b(4\d\d|5\d\d)\b/)?.[1];
+  const message = text.match(/"message":\s*"([^"]{1,160})/)?.[1] ?? text.slice(0, 160);
+  return [status, message].filter(Boolean).join(": ").replace(/\s+/g, " ");
+}
+
+/**
+ * One chunk of rows. Thinking is off (this is lookup, not reasoning, and it
+ * keeps a full game well inside the function's time); if Gemini refuses the
+ * schema, it's asked again with plain JSON and the answer is checked here.
+ */
+async function reviewChunk(ai: GoogleGenAI, rows: ReviewRow[]): Promise<ChunkAnswer> {
+  const prompt = buildReviewPrompt(rows);
+  let lastError = "";
+  for (const schema of [RESPONSE_SCHEMA, undefined]) {
+    try {
+      const result = await ai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        config: {
+          responseMimeType: "application/json",
+          ...(schema ? { responseSchema: schema } : {}),
+          thinkingConfig: { thinkingBudget: 0 },
+        },
+      });
+      const review: unknown = JSON.parse(result.text ?? "");
+      const problem = validateReview(review);
+      if (problem) {
+        lastError = `unusable answer (${problem})`;
+        continue;
+      }
+      const results = (review as { results: (Omit<ReviewResult, "routes"> & { routes?: unknown })[] }).results.map(
+        (r) => ({ ...r, routes: parseRouteList(r.routes) }),
+      );
+      return { results };
+    } catch (error) {
+      lastError = error instanceof SyntaxError ? "the AI returned invalid JSON" : reason(error);
+      console.error(`review-import: Gemini ${schema ? "with schema" : "plain JSON"} failed`, error);
+    }
+  }
+  return { error: lastError };
+}
 
 export async function POST(request: Request): Promise<NextResponse> {
   const entitlement = await requireEntitlement();
@@ -94,31 +143,20 @@ export async function POST(request: Request): Promise<NextResponse> {
     return NextResponse.json({ error: "Server is missing GEMINI_API_KEY" }, { status: 500 });
   }
 
-  let responseText: string | undefined;
-  try {
-    const result = await new GoogleGenAI({ apiKey }).models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: [{ role: "user", parts: [{ text: buildReviewPrompt(rows) }] }],
-      config: { responseMimeType: "application/json", responseSchema: RESPONSE_SCHEMA },
-    });
-    responseText = result.text;
-  } catch (error) {
-    console.error("review-import: Gemini generateContent failed", error);
-    return NextResponse.json({ error: "The AI couldn't review this import" }, { status: 502 });
+  const ai = new GoogleGenAI({ apiKey });
+  const chunks: ReviewRow[][] = [];
+  for (let i = 0; i < rows.length; i += REVIEW_CHUNK) chunks.push(rows.slice(i, i + REVIEW_CHUNK));
+  const answers = await mapWithConcurrency(chunks, 4, (chunk) => reviewChunk(ai, chunk));
+  const failed = answers.find((a): a is { error: string } => "error" in a);
+  if (answers.every((a) => "error" in a)) {
+    return NextResponse.json({ error: `The AI couldn't review this import (${failed?.error}).` }, { status: 502 });
   }
+  const answered = answers.flatMap((a, i) => ("results" in a ? chunks[i] : []));
+  const review = { results: answers.flatMap((a) => ("results" in a ? a.results : [])) };
 
-  let review: unknown;
-  try {
-    review = JSON.parse(responseText ?? "");
-  } catch {
-    return NextResponse.json({ error: "The AI returned invalid JSON" }, { status: 502 });
-  }
-  const problem = validateReview(review);
-  if (problem) {
-    return NextResponse.json({ error: `The AI's review was unusable: ${problem}` }, { status: 502 });
-  }
   // Only answers for rows that were actually sent.
-  const sent = new Set(rows.map((r) => r.id));
-  const results = (review as { results: { id: string }[] }).results.filter((r) => sent.has(r.id));
+  // A chunk that failed isn't marked reviewed, so the next import tries it again.
+  const sent = new Set(answered.map((r) => r.id));
+  const results = review.results.filter((r) => sent.has(r.id));
   return NextResponse.json({ reviewedIds: [...sent], results });
 }

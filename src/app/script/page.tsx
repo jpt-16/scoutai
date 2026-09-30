@@ -410,9 +410,12 @@ function ScriptApp({ demoMode = false }: { demoMode?: boolean }) {
         body: JSON.stringify({ rows }),
       });
       status = res.status;
-      payload = await res.json();
+      // A timeout or server crash answers with a page, not JSON.
+      payload = await res.json().catch(() => ({
+        error: status === 504 ? "The AI took too long." : `The server answered ${status}.`,
+      }));
     } catch {
-      return;
+      return; // Offline: the plays load exactly as the file reads.
     }
     if (status === 401 || status === 402 || status === 403) return;
     if (status !== 200 || !payload.reviewedIds || !payload.results) {

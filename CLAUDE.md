@@ -120,6 +120,11 @@ Parsing pipeline (`parseHudlCsvText`, never throws):
 4. `rowToRecord` maps each later row by column index. Short rows read as blanks and extra
    cells are ignored. Keys and values are trimmed.
 5. Parse problems become `warnings`. Valid rows always load.
+6. Hand-typed sheets get two repairs. `findRunPassColumn`: with no PLAY TYPE column, a column that's
+   mostly Run / Pass under any other header (a staff typing it under `G/L` or `TYPE`) becomes the
+   play type. `realignRow`: a play call typed across several cells (`POST,SEAM,UNDER,WHEEL,RAIL`)
+   is joined back until OFF STR / PLAY DIR read as a strength and a direction, and an extra blank
+   cell that pushed the front under COVERAGE is dropped (never a filled cell). Both add a warning.
 
 Validation is relaxed. A row is a play if **any** of play #, down, formation, play call, play
 type, or result is filled in. Blank fronts, play calls, hashes, and similar fields show as
@@ -358,7 +363,13 @@ from the route tree plus the named routes, stored as per-letter `routeOverrides`
 everyone is rejected, and a new play call drops the AI's routes. Filled plays show "· AI" in the
 play list, with a notice to check them. Silent when the AI isn't available (no access, offline):
 the plays load exactly as the file reads. One call per import, up to `MAX_REVIEW_ROWS` (150) rows,
-rate limited per tier (`reviews`).
+rate limited per tier (`reviews`). The route splits the rows into chunks of `REVIEW_CHUNK` (40) run
+side by side, with Gemini's thinking off (it's lookup, and a full game has to finish inside the
+function's time). The response schema is kept flat on purpose: routes come back as one string per
+row ("ps1 slant, ps2 flat, back protect", `parseRouteList`), because a route enum per position
+nested in each result made the schema "too big to serve" and every review failed. If Gemini still
+refuses the schema, the chunk is asked again as plain JSON and checked by `validateReview`. A
+failure shows Gemini's own reason in the notice; a chunk that failed isn't marked reviewed.
 
 **Several films:** drop or pick several CSVs at once, or use **Add film** on the script page.
 Each play keeps its film (`card.source`), ids never collide across films, and a **Film**

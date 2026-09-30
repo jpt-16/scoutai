@@ -412,7 +412,7 @@ export function classifyConcept(playCall: string, playType = ""): PlayConcept {
     if (has(p, /\s(SWEEP|TOSS|PITCH|JET|FLY|BUCK SWEEP|REVERSE|OPTION|SPEED OPTION|SPEED)\s/)) return "sweep";
     if (has(p, /\s(OZ|OUTSIDE ZONE|STRETCH|WIDE ZONE|OUTSIDE)\s/)) return "outside-zone";
     if (has(p, /\s(POWER|COUNTER|TREY|GT|TRAP|ISO|LEAD|BELLY|DART|G)\s/)) return "power";
-    if (has(p, /\s(SNEAK|QB DRAW|QB RUN|QB POWER|QB COUNTER|DRAW)\s/)) return "qb-run";
+    if (has(p, /\s(SNEAK|QB DRAW|QB RUN|QB POWER|QB COUNTER|DRAW|VEER|INVERTED VEER|SCRAMBLE)\s/)) return "qb-run";
     if (has(p, /\s(IZ|INSIDE ZONE|ZONE|DIVE|MID ZONE|SPLIT ZONE|ZONE READ|RPO)\s/)) return "inside-zone";
     if (has(p, /\s(PASS|DROPBACK|DROP|SMASH|CURL|FLAT|FLOOD|MESH|SAIL|DIG|POST|CORNER|OUT|DAGGER|Y CROSS|CROSS|SHALLOW)\s/)) return "dropback";
     if (has(p, /\sRUN\s/)) return "inside-zone";
@@ -575,6 +575,100 @@ function headerKeys(headerRow: string[]): string[] {
     seen.set(key, count + 1);
     return count === 0 ? key : `${key} (${count + 1})`;
   });
+}
+
+const RUN_PASS_VALUE = /^(RUN|PASS|RPO|SCREEN|PA|PLAY ACTION|R|P)$/;
+
+/**
+ * A column of Run / Pass values under some other header ("G/L", "TYPE"): the
+ * play type, wherever the staff typed it. Used when no PLAY TYPE column
+ * exists; mostly Run / Pass (at least 3, and at least 80% of its filled cells).
+ */
+export function findRunPassColumn(
+  keys: string[],
+  dataRows: string[][],
+  columns: Partial<Record<HudlField, string>>,
+): string | null {
+  if (columns.playType) return null;
+  const claimed = new Set(
+    Object.entries(columns)
+      .filter(([field]) => field !== "result")
+      .map(([, key]) => key),
+  );
+  for (let i = 0; i < keys.length; i++) {
+    if (claimed.has(keys[i])) continue;
+    const filled = dataRows.map((r) => (r[i] ?? "").trim().toUpperCase()).filter(Boolean);
+    const runPass = filled.filter((v) => RUN_PASS_VALUE.test(v));
+    // "R" / "P" alone could be a direction column: needs real words too.
+    const words = runPass.filter((v) => v.length > 1);
+    if (words.length >= 3 && runPass.length >= filled.length * 0.8) return keys[i];
+  }
+  return null;
+}
+
+const STRENGTH_VALUE = /^(L|R|LT|RT|LEFT|RIGHT|BAL|BALANCED|B|NONE)?$/;
+const DIRECTION_VALUE = /^(L|R|N|M|LT|RT|LEFT|RIGHT|MID|MIDDLE|NONE|NA)?$/;
+
+/**
+ * Fixes the two ways a hand-typed breakdown row slides out of its columns:
+ *
+ * - A play call typed across several cells ("POST,SEAM,UNDER,WHEEL,RAIL"),
+ *   which pushes OFF STR, PLAY DIR and everything after them to the right:
+ *   the extra cells join the play call until OFF STR and PLAY DIR read as a
+ *   strength and a direction again.
+ * - An extra blank cell before the front, which leaves the front column
+ *   empty and the front ("EVEN") under COVERAGE: the blank is dropped.
+ *
+ * Only runs where the file has OFF PLAY, OFF STR and PLAY DIR in that order,
+ * and never drops a filled cell. Returns the row unchanged when nothing fits.
+ */
+export function realignRow(
+  values: string[],
+  at: { playCall: number; offStrength: number; playDir: number; defFront: number },
+): { values: string[]; fixed: boolean } {
+  const { playCall: pc, offStrength: str, playDir: dir, defFront: front } = at;
+  if (pc < 0 || str !== pc + 1 || dir <= str) return { values, fixed: false };
+  const v = (row: string[], i: number) => (row[i] ?? "").trim().toUpperCase();
+  const sideOk = (row: string[]) => STRENGTH_VALUE.test(v(row, str)) && DIRECTION_VALUE.test(v(row, dir));
+  let row = values;
+  let fixed = false;
+
+  // 1. A play call split across cells.
+  if (v(row, str) && !STRENGTH_VALUE.test(v(row, str))) {
+    for (let k = 1; k <= 6; k++) {
+      const extra = row.slice(pc + 1, pc + 1 + k);
+      if (extra.some((c) => !c.trim() || STRENGTH_VALUE.test(c.trim().toUpperCase()))) break;
+      const next = [
+        ...row.slice(0, pc),
+        [row[pc], ...extra].map((c) => c.trim()).filter(Boolean).join(" "),
+        ...row.slice(pc + 1 + k),
+      ];
+      if (sideOk(next)) {
+        row = next;
+        fixed = true;
+        break;
+      }
+    }
+  }
+
+  // 2. Extra blank cells before the front (the front sits 1-2 cells late).
+  const isFront = (c: string) => classifyFront(c) !== "unknown";
+  if (front > dir && !isFront(row[front] ?? "")) {
+    for (const drop of [1, 2]) {
+      if (!isFront(row[front + drop] ?? "")) continue;
+      // The earliest blanks after the play call go.
+      const blanks: number[] = [];
+      for (let i = pc + 1; i <= front && blanks.length < drop; i++) if (!(row[i] ?? "").trim()) blanks.push(i);
+      if (blanks.length < drop) break;
+      const next = row.filter((_, i) => !blanks.includes(i));
+      if (sideOk(next) && isFront(next[front] ?? "")) {
+        row = next;
+        fixed = true;
+      }
+      break;
+    }
+  }
+  return { values: row, fixed };
 }
 
 /**
@@ -828,6 +922,19 @@ export function parseHudlCsvText(text: string): HudlParseResult {
   const keys = headerKeys(rows[headerIndex] ?? []);
   const dataRows = rows.slice(headerIndex + 1);
   const columns = resolveBarePlayColumn(mapColumns(keys), keys, dataRows);
+  // Run / Pass typed under another header ("G/L", "TYPE") is the play type.
+  const runPass = findRunPassColumn(keys, dataRows, columns);
+  if (runPass) {
+    columns.playType = runPass;
+    if (columns.result === runPass) delete columns.result;
+  }
+  const at = {
+    playCall: columns.playCall ? keys.indexOf(columns.playCall) : -1,
+    offStrength: columns.offStrength ? keys.indexOf(columns.offStrength) : -1,
+    playDir: columns.playDir ? keys.indexOf(columns.playDir) : -1,
+    defFront: columns.defFront ? keys.indexOf(columns.defFront) : -1,
+  };
+  let realigned = 0;
 
   const warnings: string[] = [];
   if (found > 0) {
@@ -863,7 +970,9 @@ export function parseHudlCsvText(text: string): HudlParseResult {
   let unreadable = 0;
   dataRows.forEach((values, rowIndex) => {
     try {
-      const row = rowToRecord(keys, values);
+      const fix = realignRow(values, at);
+      if (fix.fixed) realigned += 1;
+      const row = rowToRecord(keys, fix.values);
       if (cell(row, columns.odk).toUpperCase() === "K") {
         specialTeams += 1;
         return;
@@ -878,6 +987,14 @@ export function parseHudlCsvText(text: string): HudlParseResult {
     }
   });
 
+  if (runPass) {
+    warnings.push(`Read Run / Pass from the "${runPass}" column as the play type.`);
+  }
+  if (realigned > 0) {
+    warnings.push(
+      `Lined up ${plural(realigned, "row")} that slid out of their columns (a play call typed across several cells, or an extra blank cell). Check them with Edit play.`,
+    );
+  }
   if (unreadable > 0) {
     warnings.push(`Couldn't read ${plural(unreadable, "row")}; the rest loaded normally.`);
   }
