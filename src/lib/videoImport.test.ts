@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { buildDiagram, hasCoachRoutes } from "./formations";
-import { buildCardFromDetection, validateDetectedPlay, type DetectedPlay } from "./videoImport";
+import { parseHudlCsvText } from "./hudlParser";
+import {
+  applyDetectionToCard,
+  ballFromDetection,
+  buildCardFromDetection,
+  validateDetectedPlay,
+  type DetectedPlay,
+} from "./videoImport";
 
 // Deliberately no run/pass/RPO keyword in the play name, so `diagram.kind`
 // below can only come from the detected route itself (via `hasCoachRoutes`),
@@ -81,5 +88,39 @@ describe("buildCardFromDetection", () => {
     };
     const card = buildCardFromDetection(detection, "clip.mp4", 1);
     expect(card.routeOverrides?.RB).toBeUndefined();
+  });
+});
+
+describe("the QB anchor: who got the ball and where", () => {
+  const withBall: DetectedPlay = { ...VALID_DETECTION, playType: "pass", ballCarrier: "X", ballDirection: "left" };
+
+  it("reads the ball off the film for a single clip", () => {
+    const card = buildCardFromDetection(withBall, "clip.mp4");
+    expect(card.playDir).toBe("L");
+    expect(card.playDirection).toBe("left");
+    expect(card.playType).toBe("Pass");
+    expect(card.notes).toBe("Ball: X, left (from film)");
+    // The carrier's arrow is marked BALL.
+    expect(card.routeOverrides?.X?.tag).toBe("BALL");
+  });
+
+  it("ignores a carrier that isn't one of the staff's letters, and leaves a run's type blank", () => {
+    const card = buildCardFromDetection({ ...withBall, playType: "run", ballCarrier: "RB", ballDirection: "unknown" }, "c");
+    expect(card.playType).toBe("");
+    expect(card.playDir).toBe("");
+    expect(card.notes).toBe("");
+    expect(card.routeOverrides?.X?.tag).toBe("SLANT");
+  });
+
+  it("never overrides what the CSV says; only fills blanks", () => {
+    const csv = parseHudlCsvText("PLAY #,OFF FORM,OFF PLAY,PLAY DIR\n1,SPREAD,MESH,R\n2,SPREAD,MESH,\n").cards;
+    const tagged = applyDetectionToCard(csv[0], withBall);
+    expect(tagged.playDir).toBe("R");
+    expect(tagged.notes).toBe("Ball: X, left (from film)");
+    const blank = applyDetectionToCard(csv[1], withBall);
+    expect(blank.playDir).toBe("L");
+    expect(ballFromDetection({ ...withBall, ballCarrier: "none", ballDirection: "middle" }).note).toBe(
+      "Ball: middle (from film)",
+    );
   });
 });

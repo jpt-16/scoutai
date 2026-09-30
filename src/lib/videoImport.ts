@@ -28,6 +28,30 @@ export interface DetectedPlay {
   playName: string;
   formation: string;
   players: DetectedPlayer[];
+  /** From the QB anchor rule: what the QB did with the ball. */
+  playType?: "run" | "pass" | "unknown";
+  /** Who got the ball from the QB ("Q" if he kept it, "none" if unclear). */
+  ballCarrier?: string;
+  /** Where the ball went, the offense's left / right facing upfield. */
+  ballDirection?: "left" | "right" | "middle" | "unknown";
+}
+
+/** What the film says about the ball, as card fields; only what the model actually saw. */
+export function ballFromDetection(detection: DetectedPlay): {
+  carrier: string | null;
+  playDir: "L" | "R" | "";
+  playType: "Run" | "Pass" | "";
+  note: string;
+} {
+  const carrier =
+    detection.ballCarrier && DETECTED_PLAYER_LABELS.includes(detection.ballCarrier as DetectedPlayerLabel)
+      ? detection.ballCarrier
+      : null;
+  const playDir = detection.ballDirection === "left" ? "L" : detection.ballDirection === "right" ? "R" : "";
+  const playType = detection.playType === "run" ? "Run" : detection.playType === "pass" ? "Pass" : "";
+  const where = detection.ballDirection === "middle" ? "middle" : playDir === "L" ? "left" : playDir === "R" ? "right" : "";
+  const note = carrier || where ? `Ball: ${[carrier, where].filter(Boolean).join(", ")} (from film)` : "";
+  return { carrier, playDir, playType, note };
 }
 
 function isPercentPoint(v: unknown): v is PercentPoint {
@@ -76,15 +100,14 @@ function detectionToRouteOverrides(
   existing: HudlPlayCard["routeOverrides"] = {},
 ): NonNullable<HudlPlayCard["routeOverrides"]> {
   const routeOverrides: NonNullable<HudlPlayCard["routeOverrides"]> = { ...existing };
+  const { carrier } = ballFromDetection(detection);
   for (const player of detection.players) {
     if (!DETECTED_PLAYER_LABELS.includes(player.label as DetectedPlayerLabel)) continue; // unlabeled/unknown role: skip rather than guess
     const path = detectedRouteToPathDeltas(player, { width: FIELD.width, height: FIELD.height });
     if (path.length === 0) continue;
-    routeOverrides[player.label] = {
-      path,
-      source: "video",
-      ...(player.routeType ? { tag: player.routeType.toUpperCase().slice(0, 10) } : {}),
-    };
+    // The ball carrier's arrow says so; everyone else keeps the model's route name.
+    const tag = player.label === carrier ? "BALL" : player.routeType?.toUpperCase().slice(0, 10);
+    routeOverrides[player.label] = { path, source: "video", ...(tag ? { tag } : {}) };
   }
   return routeOverrides;
 }
@@ -102,6 +125,7 @@ export function buildCardFromDetection(
   playNumber = 1,
 ): HudlPlayCard {
   const routeOverrides = detectionToRouteOverrides(detection);
+  const ball = ballFromDetection(detection);
 
   const base: PlaySource = {
     id: `video-${Date.now().toString(36)}-${counter++}`,
@@ -115,13 +139,14 @@ export function buildCardFromDetection(
     hash: null,
     formation: detection.formation,
     playCall: detection.playName,
-    playType: "",
+    // Only "Pass": a run's card stays drawn from the film's own paths, not a blocking scheme.
+    playType: ball.playType === "Pass" ? "Pass" : "",
     defFront: "",
     result: "",
     coverage: "",
     offStrength: "",
-    playDir: "",
-    notes: "",
+    playDir: ball.playDir,
+    notes: ball.note,
     source,
     routeOverrides,
     raw: {},
@@ -139,5 +164,11 @@ export function buildCardFromDetection(
  * other letters (a coach's manual edit, say) are preserved.
  */
 export function applyDetectionToCard(card: HudlPlayCard, detection: DetectedPlay): HudlPlayCard {
-  return updateCard(card, { routeOverrides: detectionToRouteOverrides(detection, card.routeOverrides) });
+  const ball = ballFromDetection(detection);
+  return updateCard(card, {
+    routeOverrides: detectionToRouteOverrides(detection, card.routeOverrides),
+    // The CSV is ground truth: the film only fills a PLAY DIR or note the row left blank.
+    ...(!card.playDir.trim() && ball.playDir ? { playDir: ball.playDir } : {}),
+    ...(!card.notes.trim() && ball.note ? { notes: ball.note } : {}),
+  });
 }

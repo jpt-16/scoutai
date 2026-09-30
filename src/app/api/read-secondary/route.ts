@@ -16,7 +16,7 @@ import { generateJson } from "@/lib/gemini";
 import { checkBlobRateLimit } from "@/lib/rateLimit";
 import { alignmentFromFilm, DB_SLOTS, FILM_ANCHORS } from "@/lib/secondary";
 import { TIER_LIMITS } from "@/lib/usageLimits";
-import { uploadClipToGemini, VideoDetectionError } from "@/lib/videoDetection";
+import { QB_ANCHOR_RULES, uploadClipToGemini, VideoDetectionError } from "@/lib/videoDetection";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -43,8 +43,12 @@ const RESPONSE_SCHEMA: Schema = {
   required: ["dbs"],
 };
 
-const PROMPT = `You are a high school defensive coordinator breaking down film. Look at the moment just
-before the snap and find the defense's secondary: the two cornerbacks and the two safeties.
+const PROMPT = `You are a high school defensive coordinator breaking down film.
+
+${QB_ANCHOR_RULES}
+
+Using that anchor, look at the moment just before the snap and find the defense's secondary (the
+team across the line facing the QB): the two cornerbacks and the two safeties.
 
 For each, give:
 - slot: "cs" = the corner on the offense's strong side (the side with more receivers; the tight end

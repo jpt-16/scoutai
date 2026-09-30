@@ -40,6 +40,17 @@ export const DETECTION_RESPONSE_SCHEMA: Schema = {
   properties: {
     playName: { type: Type.STRING, description: "Short label for the play concept" },
     formation: { type: Type.STRING, description: "e.g. \"Spread 2x2\", \"Trips Right\"" },
+    playType: { type: Type.STRING, enum: ["run", "pass", "unknown"], description: "What the QB did with the ball" },
+    ballCarrier: {
+      type: Type.STRING,
+      enum: ["Q", "F", "H", "X", "Y", "Z", "none"],
+      description: "Who got the ball from the QB (handoff or catch); Q if he kept it; none if unclear",
+    },
+    ballDirection: {
+      type: Type.STRING,
+      enum: ["left", "right", "middle", "unknown"],
+      description: "Where the ball went, as the offense's left/right facing upfield the way the QB faces",
+    },
     players: {
       type: Type.ARRAY,
       items: {
@@ -62,7 +73,26 @@ export const DETECTION_RESPONSE_SCHEMA: Schema = {
   required: ["playName", "formation", "players"],
 };
 
+/**
+ * How the film AI tells offense from defense and follows the ball: find the
+ * quarterback first and anchor everything on him. Shared by the route
+ * detection prompt and the secondary read (`/api/read-secondary`).
+ */
+export const QB_ANCHOR_RULES = `ANCHOR RULE: LOCATE THE QUARTERBACK FIRST.
+1. Identify the QB: the player who receives the snap directly behind the offensive line, either
+   under center or 4-5 yards back in the shotgun.
+2. Offense vs. defense, by the QB: the team in the QB's jersey is the OFFENSE. The direction the QB
+   faces before the snap is UPFIELD. Every player on the QB's side of the line of scrimmage is
+   offense (QB, backs, receivers, linemen); every player across the line facing the QB is defense.
+   Left and right always mean the offense's left and right, facing upfield the way the QB faces,
+   not the camera's.
+3. Follow the ball: trace it from the snap. The player who takes it from the QB (a handoff, a
+   pitch or a catch) is the ball carrier; the QB is the ball carrier if he keeps it. If the QB
+   hands off or throws to his left, the play goes LEFT (the left flat / field); to his right, RIGHT.`;
+
 export const DETECTION_PROMPT = `You are watching one football play from a single clip (sideline or endzone camera).
+
+${QB_ANCHOR_RULES}
 
 Identify only the offensive skill players — never linemen — using exactly these letters, this
 staff's own convention (not QB/RB/TE): Q = quarterback, F and H = the running backs (F usually
@@ -79,7 +109,9 @@ For each player give:
   omit if you're not confident
 
 Also give playName (a short label for what the offense ran) and formation (e.g. "Spread 2x2",
-"Trips Right", "I-Form").`;
+"Trips Right", "I-Form"), plus, from the anchor rule: playType ("run" or "pass"), ballCarrier (the
+letter of the player who got the ball from the QB, "Q" if he kept it, "none" if you can't tell) and
+ballDirection ("left", "right" or "middle", the offense's side).`;
 
 /**
  * Route geometry for named concepts, so a recognized call comes back shaped

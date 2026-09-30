@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildDetectionPrompt, DETECTION_PROMPT, FOOTBALL_CONCEPT_RULES } from "./videoDetection";
+import { buildDetectionPrompt, DETECTION_PROMPT, FOOTBALL_CONCEPT_RULES, QB_ANCHOR_RULES } from "./videoDetection";
 
 describe("buildDetectionPrompt", () => {
   it("always carries the concept rules after the base prompt", () => {
@@ -24,5 +24,17 @@ describe("buildDetectionPrompt", () => {
 
   it("treats a blank play call like no play call", () => {
     expect(buildDetectionPrompt("   ")).toBe(buildDetectionPrompt());
+  });
+});
+
+describe("QB anchor rule", () => {
+  it("comes first in the film prompt and asks for the ball carrier and direction", () => {
+    const prompt = buildDetectionPrompt("MESH RAIL");
+    expect(prompt).toContain(QB_ANCHOR_RULES);
+    expect(prompt.indexOf("LOCATE THE QUARTERBACK FIRST")).toBeLessThan(prompt.indexOf("For each player give"));
+    expect(QB_ANCHOR_RULES).toContain("the team in the QB's jersey is the OFFENSE");
+    expect(QB_ANCHOR_RULES).toContain("not the camera's");
+    expect(prompt).toContain("ballCarrier");
+    expect(prompt).toContain("ballDirection");
   });
 });

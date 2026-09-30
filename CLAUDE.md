@@ -602,7 +602,15 @@ The Gemini call itself (prompt, response schema, per-step error handling) lives 
 `/api/parse-video-batch` (several) so there's exactly one place that logic can drift. The prompt
 (`buildDetectionPrompt`) carries `FOOTBALL_CONCEPT_RULES`, route geometry for MESH (drags at 3-5
 yards), RAIL / WHEEL (flat, then up the sideline) and CORNER / OUT (10-yard stem, 45° / 90°),
-matching the route tree above. Batch import also sends each clip's play call from its matched CSV
+matching the route tree above. Every film prompt (route detection and the secondary read) opens
+with `QB_ANCHOR_RULES`: find the quarterback first (the player taking the snap under center or 4-5
+yards deep); his jersey is the offense and the way he faces is upfield; everyone across the line
+facing him is defense; left / right are the offense's, never the camera's; then follow the ball
+from the snap to whoever takes it from the QB. The detection answers `playType`, `ballCarrier`
+and `ballDirection` from that (`ballFromDetection`): on a single-clip card the carrier's arrow is
+tagged BALL, `PLAY DIR` is set from the direction, a pass is typed Pass (a run stays drawn from the
+film's own paths) and NOTES reads "Ball: H, left (from film)"; in batch import the film only fills a
+PLAY DIR or note the CSV row left blank. Batch import also sends each clip's play call from its matched CSV
 row, so a called concept is drawn with that geometry; the call is flattened to one quote-free line
 and capped at 80 characters before it goes in the prompt.
 
