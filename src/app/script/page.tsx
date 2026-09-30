@@ -16,6 +16,7 @@ import {
   Undo2,
   Eraser,
   RectangleVertical,
+  Shield,
   Sparkles,
   Upload,
 } from "lucide-react";
@@ -24,6 +25,7 @@ import { BrandMark } from "@/components/BrandMark";
 import { FilterGroup, type FilterOption } from "@/components/FilterBar";
 import { EditPlayDialog } from "@/components/EditPlayDialog";
 import { GenerateCardDialog } from "@/components/GenerateCardDialog";
+import { SecondaryDialog } from "@/components/SecondaryDialog";
 import { ImportNotice } from "@/components/ImportNotice";
 import { PrintGrid } from "@/components/PrintGrid";
 import { ScoutCard, SCOUT_CARD_ASPECT } from "@/components/ScoutCard";
@@ -144,6 +146,7 @@ function ScriptApp({ demoMode = false }: { demoMode?: boolean }) {
   const [index, setIndex] = useState(0);
   const [editing, setEditing] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [secondaryOpen, setSecondaryOpen] = useState(false);
   const [adjusting, setAdjusting] = useState(false);
   const [drawing, setDrawing] = useState(false);
   const [inkColor, setInkColor] = useState(INK_COLORS[0].value);
@@ -203,17 +206,19 @@ function ScriptApp({ demoMode = false }: { demoMode?: boolean }) {
         : cards.filter((c) => inPeriod(c, mode, unit) && (film === "all" || c.source === film)),
     [cards, mode, unit, film, practicePeriod, periodCards, periodIndex],
   );
-  const filtered = useMemo(
-    () =>
-      practicePeriod
-        ? modeCards
-        : modeCards.filter(
-            (c) =>
-              (down === "all" || c.down === down) &&
-              (formation === "all" || c.formationKey === formation),
-          ),
-    [modeCards, down, formation, practicePeriod],
-  );
+  const dbAlignments = script?.dbAlignments;
+  const filtered = useMemo(() => {
+    const list = practicePeriod
+      ? modeCards
+      : modeCards.filter(
+          (c) =>
+            (down === "all" || c.down === down) &&
+            (formation === "all" || c.formationKey === formation),
+        );
+    // Scout D: the staff's secondary for each card's formation (src/lib/secondary.ts).
+    if (unit !== "defense" || !dbAlignments) return list;
+    return list.map((c) => (dbAlignments[c.formationKey] ? { ...c, secondary: dbAlignments[c.formationKey] } : c));
+  }, [modeCards, down, formation, practicePeriod, unit, dbAlignments]);
   const cardMode = mode === "7v7" ? "7v7" : "team";
 
   const downOptions: FilterOption<DownFilter>[] = [
@@ -311,7 +316,13 @@ function ScriptApp({ demoMode = false }: { demoMode?: boolean }) {
 
   const saveCards = (nextCards: HudlPlayCard[]) => {
     if (!script) return;
-    setScript(storeScript({ ...script, cards: nextCards }));
+    // `secondary` is attached for display only; the table lives on the script.
+    const stored = nextCards.map((c) => {
+      const copy = { ...c };
+      delete copy.secondary;
+      return copy;
+    });
+    setScript(storeScript({ ...script, cards: stored }));
   };
 
   /** Replaces the current card's pencil strokes for the unit on screen. */
@@ -738,6 +749,12 @@ function ScriptApp({ demoMode = false }: { demoMode?: boolean }) {
               {drawing ? "Done" : "Draw"}
             </Button>
           )}
+          {unit === "defense" && view === "field" && !drawing && !demoMode && (
+            <Button size="lg" variant="outline" onClick={() => setSecondaryOpen(true)}>
+              <Shield aria-hidden="true" />
+              Secondary
+            </Button>
+          )}
           {unit === "defense" && view === "field" && !drawing && (
             <>
               <Button
@@ -834,6 +851,24 @@ function ScriptApp({ demoMode = false }: { demoMode?: boolean }) {
       />
 
       {generateDialog}
+
+      {secondaryOpen && (
+        <SecondaryDialog
+          open={secondaryOpen}
+          onOpenChange={setSecondaryOpen}
+          cards={cards}
+          initialFormation={current?.formationKey ?? "spread"}
+          alignments={script.dbAlignments ?? {}}
+          mode={cardMode}
+          onSave={(key, alignment) => {
+            const next = { ...script.dbAlignments };
+            if (alignment) next[key] = alignment;
+            else delete next[key];
+            setScript(storeScript({ ...script, dbAlignments: next }));
+            setSecondaryOpen(false);
+          }}
+        />
+      )}
 
       {current && editing && (
         <EditPlayDialog

@@ -137,12 +137,17 @@ export interface DetectClipOptions {
  * schema validation) with the HTTP status that failure maps to, for the
  * caller to relay (single-clip route) or record per-item (batch route).
  */
-export async function detectPlayFromClip({
-  ai,
-  blobToken,
-  videoUrl,
-  playCall,
-}: DetectClipOptions): Promise<DetectedPlay> {
+/**
+ * Fetches a private blob clip and uploads it to Gemini's file store, for any
+ * route that sends film to the model (route detection here, the secondary
+ * read in /api/read-secondary). Throws `VideoDetectionError` with the HTTP
+ * status each failure maps to.
+ */
+export async function uploadClipToGemini(
+  ai: GoogleGenAI,
+  blobToken: string,
+  videoUrl: string,
+): Promise<{ fileUri: string; mimeType: string }> {
   let videoResponse: Response;
   try {
     videoResponse = await fetch(videoUrl, { headers: { Authorization: `Bearer ${blobToken}` } });
@@ -170,6 +175,17 @@ export async function detectPlayFromClip({
   if (!fileUri) {
     throw new VideoDetectionError("Vision model upload did not return a file reference", 502);
   }
+
+  return { fileUri, mimeType: mimeType ?? "video/mp4" };
+}
+
+export async function detectPlayFromClip({
+  ai,
+  blobToken,
+  videoUrl,
+  playCall,
+}: DetectClipOptions): Promise<DetectedPlay> {
+  const { fileUri, mimeType } = await uploadClipToGemini(ai, blobToken, videoUrl);
 
   let responseText: string | undefined;
   try {

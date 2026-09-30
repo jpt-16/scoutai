@@ -30,6 +30,7 @@ export const config = {
     "/api/generate-scout-card",
     "/api/ai-access",
     "/api/review-import",
+    "/api/read-secondary",
     "/api/blob-upload",
     "/api/stripe/checkout",
     "/api/stripe/portal",

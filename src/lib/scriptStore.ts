@@ -1,4 +1,5 @@
 import { deriveCard, type HudlParseResult, type HudlPlayCard } from "./hudlParser";
+import type { DbAlignments } from "./secondary";
 
 /**
  * The loaded script lives in localStorage so the reader keeps working on the
@@ -14,6 +15,8 @@ export interface StoredScript {
   savedAt: string;
   cards: HudlPlayCard[];
   warnings: string[];
+  /** The opponent's secondary per formation, for Scout D cards (src/lib/secondary.ts). */
+  dbAlignments?: DbAlignments;
 }
 
 export function scriptTitle(films: string[]): string {
@@ -57,6 +60,7 @@ export function loadScript(): StoredScript | null {
       // Re-derive so scripts saved by older versions pick up new fields.
       cards: script.cards.map((c) => deriveCard({ ...c, source: c.source || films[0] })),
       warnings: script.warnings ?? [],
+      ...(script.dbAlignments ? { dbAlignments: script.dbAlignments } : {}),
     };
   } catch {
     return null;

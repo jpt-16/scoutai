@@ -62,6 +62,7 @@ src/
     scriptStore.ts         Persists the loaded script in localStorage (offline on the field)
     practicePlan.ts        Practice playsheet: line parser, opponent looks, rep → Scout D card
     conceptMapper.ts       Named pass concepts → a route per position; RAIL / WHEEL back tags
+    secondary.ts           Scout D secondary per formation: typed line / film read → DB spots
     generatedCard.ts       Text-to-card: Gemini prompt, answer validation, grid → card overrides
     hudlParser.test.ts     Vitest suite
 ```
@@ -204,6 +205,20 @@ Free-text tags are classified by keyword (`classifyFormation`, `classifyFront`,
     (`fromCardPoint`), so they survive hash, 7v7/Team and orientation changes.
   - **Reset X's** clears a play's moves.
   - Swiping between cards is paused while adjusting.
+
+  **Secondary** (script page, Scout D; `src/lib/secondary.ts`, `SecondaryDialog.tsx`): where the
+  opponent's corners and safeties line up **per formation**, set once and drawn on every Scout D
+  card in that formation (practice playsheet cards included). A table of strong / weak corner,
+  FS and SS, each with a depth in yards off the line, who he's over (#1-#3 on his side, the
+  ball, the hash), a shade, and a side for safeties, so one table covers Trips Right and Left.
+  Two ways in: **type it** ("FS 12 middle, SS 8 #3 inside, corners 7 outside",
+  `parseSecondaryText`, which reports what it couldn't read), or **read it from film**: a
+  pre-snap clip goes through `/api/blob-upload` to `/api/read-secondary`, where Gemini reads each
+  DB's depth from the yard lines, alignment and shade (`alignmentFromFilm` validates it). Either
+  way the coach can fine-tune the table against a live preview card before saving. Saved on the
+  script (`StoredScript.dbAlignments`), attached to cards for display only (`card.secondary`,
+  stripped before saving cards), applied in `buildDefense` via `placeDb`; a per-play Adjust X's
+  drag still wins. The film read is gated and rate limited like single clips.
 - **7v7** drops the linemen on both sides. `inPeriod` decides which plays each period lists:
   - Scout O 7v7: every pass/RPO/PA from team, plus untagged plays as formation reps (the card
     says "no routes tagged").
@@ -592,7 +607,7 @@ there's still no separate database for this either.
   gate anything itself (Clerk's own path-matcher-based `createRouteMatcher` + `auth.protect()`
   pattern is deprecated in favor of per-route checks); its `matcher` only covers
   `/api/parse-video`, `/api/parse-video-batch`, `/api/generate-scout-card`, `/api/ai-access`,
-  `/api/review-import`, `/api/blob-upload`,
+  `/api/review-import`, `/api/read-secondary`, `/api/blob-upload`,
   `/api/stripe/checkout`, `/api/stripe/portal`, and
   `/account/*`, so it never runs on `/` or `/script`.
 - `src/lib/entitlement.ts`: `evaluateEntitlement()` is the pure decision (unit-tested) —

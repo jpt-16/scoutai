@@ -1,5 +1,6 @@
 import type { FormationKey, FrontKey, HudlPlayCard, Side } from "./hudlParser";
 import { matchConcept, type ConceptRoute, type ConceptSlot } from "./conceptMapper";
+import { placeDb, type DbAlignment, type DbSlot } from "./secondary";
 
 /**
  * Coordinate system for every scout card diagram:
@@ -236,6 +237,7 @@ function buildDefense(
   strength: Side,
   dropLine: boolean,
   overrides: Record<string, { x: number; y: number }> = {},
+  alignment?: DbAlignment,
 ): Defender[] {
   const front = FRONTS[frontKey];
   const xs = skill.map(([x]) => x);
@@ -259,6 +261,22 @@ function buildDefense(
           { label: strongDir > 0 ? "SS" : "FS", at: [320 + shade, 52] as Pt },
         ]),
   ];
+  // The staff's own secondary for this formation (src/lib/secondary.ts), if set.
+  if (alignment) {
+    const outsideIn = (a: number, b: number) => Math.abs(b - 250) - Math.abs(a - 250);
+    const receivers = {
+      strong: xs.filter((x) => (x - 250) * strongDir > 0).sort(outsideIn),
+      weak: xs.filter((x) => (x - 250) * strongDir < 0).sort(outsideIn),
+    };
+    secondary.forEach((slotDef, i) => {
+      const slot: DbSlot =
+        slotDef.label === "C" ? ((i === 0 ? -1 : 1) === strongDir ? "cs" : "cw") : slotDef.label === "FS" ? "fs" : "ss";
+      const spot = alignment[slot];
+      if (!spot) return;
+      const at = placeDb(slot, spot, receivers, strongDir > 0 ? 1 : -1);
+      secondary[i] = { ...slotDef, at: [at.x, at.y] };
+    });
+  }
   const box = [...(dropLine ? [] : front.dl), ...front.lb].map((s) => ({
     label: s.label,
     at: mirrorX(s.at, strength),
@@ -1112,6 +1130,7 @@ export function buildDiagram(
     | "playCall"
     | "frontKey"
     | "defenseOverrides"
+    | "secondary"
     | "yardLine"
     | "routeOverrides"
   >,
@@ -1152,6 +1171,7 @@ export function buildDiagram(
           side,
           mode === "7v7",
           card.defenseOverrides,
+          card.secondary,
         )
       : [];
 

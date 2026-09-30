@@ -1,4 +1,5 @@
 import Papa from "papaparse";
+import type { DbAlignment } from "./secondary";
 import type { CellValue } from "exceljs";
 
 /* -------------------------------------------------------------------------- */
@@ -111,6 +112,12 @@ export interface HudlPlayCard {
   aiHints?: AiHints;
   /** True once the AI import review has looked at this play (so it's never sent twice). */
   aiReviewed?: boolean;
+  /**
+   * The opponent's secondary vs this card's formation (src/lib/secondary.ts),
+   * attached when the card is shown from the script's per-formation table,
+   * never saved on the card itself.
+   */
+  secondary?: DbAlignment;
 
   /** Every column of the original row, keyed by the normalized header. */
   raw: Record<string, string>;
