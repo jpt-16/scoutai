@@ -486,6 +486,10 @@ response schema (plus thinking turned down for `fast` lookup calls), then withou
 setting, then plain JSON, on a 400; a bad key, used-up quota or outage stops at once. Failures
 come back as Gemini's own reason ("RESOURCE_EXHAUSTED: …"), which every route puts in its error
 so the coach's notice says what actually went wrong. Callers still validate the JSON themselves.
+The model that answered is shown where a coach can check it: an AI card's source reads "AI
+generated · <model>" (play list and Edit play), and the review notice ends "Read by <model>." —
+so a `GEMINI_MODEL` Google doesn't serve (it falls back silently) is visible. Production and
+preview currently set `GEMINI_MODEL=gemini-3.6-flash`.
 
 ## Video analytics service (`video-service/`)
 

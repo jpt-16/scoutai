@@ -59,7 +59,7 @@ const RESPONSE_SCHEMA: Schema = {
   required: ["results"],
 };
 
-type ChunkAnswer = { results: ReviewResult[] } | { error: string };
+type ChunkAnswer = { results: ReviewResult[]; model: string } | { error: string };
 
 /** One chunk of rows (thinking turned down: this is lookup, and a full game has to finish in time). */
 async function reviewChunk(ai: GoogleGenAI, rows: ReviewRow[]): Promise<ChunkAnswer> {
@@ -81,7 +81,7 @@ async function reviewChunk(ai: GoogleGenAI, rows: ReviewRow[]): Promise<ChunkAns
   const results = (review as { results: (Omit<ReviewResult, "routes"> & { routes?: unknown })[] }).results.map(
     (r) => ({ ...r, routes: parseRouteList(r.routes) }),
   );
-  return { results };
+  return { results, model: answer.model };
 }
 
 export async function POST(request: Request): Promise<NextResponse> {
@@ -137,5 +137,6 @@ export async function POST(request: Request): Promise<NextResponse> {
   // A chunk that failed isn't marked reviewed, so the next import tries it again.
   const sent = new Set(answered.map((r) => r.id));
   const results = review.results.filter((r) => sent.has(r.id));
-  return NextResponse.json({ reviewedIds: [...sent], results });
+  const model = answers.find((a): a is { results: ReviewResult[]; model: string } => "model" in a)?.model;
+  return NextResponse.json({ reviewedIds: [...sent], results, model });
 }

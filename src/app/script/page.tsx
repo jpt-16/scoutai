@@ -413,7 +413,7 @@ function ScriptApp({ demoMode = false }: { demoMode?: boolean }) {
   const reviewImport = useCallback(async (base: StoredScript) => {
     const rows = reviewRows(base.cards);
     if (rows.length === 0) return;
-    let payload: { reviewedIds?: string[]; results?: ReviewResult[]; error?: string };
+    let payload: { reviewedIds?: string[]; results?: ReviewResult[]; error?: string; model?: string };
     let status = 0;
     try {
       const res = await fetch("/api/review-import", {
@@ -446,7 +446,7 @@ function ScriptApp({ demoMode = false }: { demoMode?: boolean }) {
       setNotice((n) => ({
         heading: `AI filled in ${filled} ${filled === 1 ? "play" : "plays"}`,
         detail:
-          "Formations, fronts or run/pass the file didn't make clear. They're marked AI in the play list; check them and fix any with Edit play.",
+          `Formations, fronts or run/pass the file didn't make clear. They're marked AI in the play list; check them and fix any with Edit play.${payload.model ? ` Read by ${payload.model}.` : ""}`,
         warnings: [],
         trigger: n.trigger + 1,
       }));
@@ -1161,7 +1161,8 @@ function ScriptApp({ demoMode = false }: { demoMode?: boolean }) {
                           {card.hash && ` · ${card.hash} hash`}
                         </span>
                         <span className="truncate text-sm text-muted-foreground">
-                          {multiFilm && `${card.source.replace(/\.(csv|xlsx)$/i, "")} · `}
+                          {(multiFilm || card.source.startsWith("AI generated")) &&
+                            `${card.source.replace(/\.(csv|xlsx)$/i, "")} · `}
                           {unit === "defense"
                             ? [card.defFront || "—", card.coverage].filter(Boolean).join(" · ")
                             : card.playCall || "—"}

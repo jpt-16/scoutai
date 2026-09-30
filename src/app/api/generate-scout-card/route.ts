@@ -171,5 +171,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     return NextResponse.json({ error: `The AI's answer was unusable: ${problem}` }, { status: 502 });
   }
 
-  return NextResponse.json({ card: applyGeneratedPlay(card, ctx, generated as GeneratedPlay) });
+  // The model that actually drew it (GEMINI_MODEL, or a fallback), where a coach can see it.
+  const drawn = { ...card, source: `AI generated · ${answer.model}` };
+  return NextResponse.json({ card: applyGeneratedPlay(drawn, ctx, generated as GeneratedPlay), model: answer.model });
 }
