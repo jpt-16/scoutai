@@ -63,6 +63,7 @@ src/
     practicePlan.ts        Practice playsheet: line parser, opponent looks, rep → Scout D card
     conceptMapper.ts       Named pass concepts → a route per position; RAIL / WHEEL back tags
     secondary.ts           Scout D secondary per formation: typed line / film read → DB spots
+    defensiveAligner.ts    Scout D alignment rules: split receivers, safety roll, backers match numbers
     generatedCard.ts       Text-to-card: Gemini prompt, answer validation, grid → card overrides
     hudlParser.test.ts     Vitest suite
 ```
@@ -206,6 +207,27 @@ Free-text tags are classified by keyword (`classifyFormation`, `classifyFront`,
   - **Reset X's** clears a play's moves.
   - Swiping between cards is paused while adjusting.
 
+  **Alignment rules** (`src/lib/defensiveAligner.ts`, run by `buildDefense` on every Scout D card):
+  every split receiver gets a defender leveraged over him. Split receivers are counted per side
+  (not backs, not a TE or wing within 3 yards of the box) and numbered outside in. Corners take the
+  #1s. On a side with **2+ split receivers** the safety on that side rolls down over the #2 (the
+  strong side first; only one safety rolls, the other goes to the middle), and any receiver still
+  alone (the other #2 in 2x2, #3 in trips) gets the nearest backer walked out to him, as long as
+  one backer stays in the box (a lone one bumps over the ball). How the slots are played
+  (`CoverageStyle`) comes from the COVERAGE tag (`coverageStyleFor`): Cover 0/1/man is
+  `MAN_OVER` (head up, a yard inside), Cover 3 or blank `ZONE_APEX` (halfway between #2 and the
+  next man inside), Cover 2/4/6/quarters/Tampa `DEEP_SHELL` (both safeties stay deep, backers
+  apex). What it did shows in the NOTES box ("SS apex Y · S apex H · FS middle") until a coach
+  writes a note. Formations with at most one split receiver a side (Pro, I, Double Eagle) are
+  unchanged.
+  **Safeties / Slots strip** (`SafetyDepthControl.tsx`, under the toolbar while Adjust X's is on):
+  per play, the safety depth (Press 4 / Normal 9 / Deep shell 13, or a 2-18 yard slider) and the
+  slot style, saved in `card.defenseAlignment` (`safetyDepthY` in yards, `coverageStyle`).
+  FS and SS keep their spot across and only change depth; a safety a coach already dragged moves
+  to the new depth too. **Auto** clears it. Order of precedence: the rules, then the staff's
+  secondary table (DBs stay where it says; backers still match what's left uncovered), then the
+  play's safety depth, then Adjust X's drags.
+
   **Secondary** (script page, Scout D; `src/lib/secondary.ts`, `SecondaryDialog.tsx`): where the
   opponent's corners and safeties line up **per formation**, set once and drawn on every Scout D
   card in that formation (practice playsheet cards included). A table of strong / weak corner,
@@ -271,7 +293,7 @@ Card look (`ScoutCard.tsx`, PlayIQ-style):
   the run scheme:
   - Runs: `Y, PST, PSG, C, BSG, BST, NOTES`.
   - Passes: `X, H, Y, Z, F, OL, NOTES` (OL in Team only).
-  - Scout D: `FRONT, COVERAGE, NOTES`.
+  - Scout D: `FRONT, COVERAGE, NOTES` (NOTES defaults to what the alignment rules did).
 
   On the iPad, tap a box and type (`onAssignmentChange`). The text is saved in
   `card.assignmentNotes` and shown in italics; NOTES is the coach note, and an empty box goes
@@ -552,8 +574,12 @@ instead of a second renderer:
   `splitLook`, coverage in the footer).
 - `generationContext` + `buildGenerationPrompt` hand the model the card's **own** spots for all
   11 offensive players (Q/F/H/X/Y/Z + OL, grid units) and the exact defender labels for the front,
-  plus the rules: `FOOTBALL_CONCEPT_RULES` (MESH, RAIL, CORNER/OUT) and
-  coverage alignment rules (Cover 0/1/2/3/4/6). The grid: x 0-100 sideline to sideline, y 0-100
+  plus the rules: `FOOTBALL_CONCEPT_RULES` (MESH, RAIL, CORNER/OUT),
+  coverage alignment rules (Cover 0/1/2/3/4/6), 100% receiver coverage (a safety or nickel over /
+  apexed on the #2 of any side with 2+ split receivers, backers walked out on the rest), and the
+  defense's starting spots from the app's own alignment rules. An optional **safety depth**
+  (`safetyDepth`, the dialog's Auto / Press / Normal / Deep shell) is written into the prompt and
+  then enforced: FS and SS land at that depth whatever the model says (`card.defenseAlignment`). The grid: x 0-100 sideline to sideline, y 0-100
   downfield to behind the offense, the card's own 500 × 300 canvas, LOS at y ≈ 46.7. User text
   goes through `oneLine` (one quote-free line, 80 characters).
 - `applyGeneratedPlay` turns each receiver's route into a `routeOverrides` path with

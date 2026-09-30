@@ -768,7 +768,8 @@ describe("buildDiagram (offense only)", () => {
     expect(buildAssignments({ defFront: "EVEN", coverage: "COVER 3", notes: "" }, def).map((r) => r.text)).toEqual([
       "EVEN",
       "COVER 3",
-      "",
+      // What the alignment rules did against trips, until a coach writes a note.
+      "SS apex Y · S apex H · FS middle",
     ]);
   });
 

@@ -1,6 +1,13 @@
 import type { FormationKey, FrontKey, HudlPlayCard, Side } from "./hudlParser";
 import { matchConcept, type ConceptRoute, type ConceptSlot } from "./conceptMapper";
 import { placeDb, type DbAlignment, type DbSlot } from "./secondary";
+import {
+  alignDefense,
+  coverageStyleFor,
+  safetyY,
+  type AlignDefender,
+  type DefensiveAlignment,
+} from "./defensiveAligner";
 
 /**
  * Coordinate system for every scout card diagram:
@@ -229,18 +236,24 @@ export interface Defender {
 /**
  * Where the scout defense lines up against the (already mirrored) offense:
  * the front's box players, corners over the widest receiver on each side,
- * and safeties shaded to the receiver-heavy side (Bear rolls one down).
+ * and safeties shaded to the receiver-heavy side (Bear rolls one down). Then
+ * the alignment rules (src/lib/defensiveAligner.ts): a safety rolls over the
+ * #2 on a side with two or more split receivers, and backers walk out to any
+ * receiver still alone in space. The staff's secondary table, the play's
+ * safety depth and a coach's drags win, in that order.
  */
 function buildDefense(
   frontKey: Exclude<FrontKey, "unknown">,
-  skill: Pt[],
+  skill: { label: string; at: Pt }[],
   strength: Side,
   dropLine: boolean,
   overrides: Record<string, { x: number; y: number }> = {},
   alignment?: DbAlignment,
-): Defender[] {
+  coverage = "",
+  call?: DefensiveAlignment,
+): { defenders: Defender[]; notes: string[] } {
   const front = FRONTS[frontKey];
-  const xs = skill.map(([x]) => x);
+  const xs = skill.map(({ at: [x] }) => x);
   const leftmost = Math.min(...xs);
   const rightmost = Math.max(...xs);
   const rightCount = xs.filter((x) => x > 250).length;
@@ -277,19 +290,43 @@ function buildDefense(
       secondary[i] = { ...slotDef, at: [at.x, at.y] };
     });
   }
-  const box = [...(dropLine ? [] : front.dl), ...front.lb].map((s) => ({
-    label: s.label,
-    at: mirrorX(s.at, strength),
-  }));
+  const line = (dropLine ? [] : front.dl).map((s) => ({ label: s.label, at: mirrorX(s.at, strength) }));
+  // Backers and DBs go through the alignment rules; the line never moves.
+  const movable: AlignDefender[] = [
+    ...front.lb.map((s) => {
+      const [x, y] = mirrorX(s.at, strength);
+      return { label: s.label, x, y, group: "lb" as const };
+    }),
+    ...secondary.map((s) => ({ label: s.label, x: s.at[0], y: s.at[1], group: "db" as const })),
+  ];
+  const aligned = alignDefense({
+    skill: skill.map(({ label, at: [x, y] }) => ({ label, x, y })),
+    defenders: movable,
+    strongDir: strongDir > 0 ? 1 : -1,
+    style: call?.coverageStyle ?? coverageStyleFor(coverage),
+    table: alignment,
+  });
+  // The play's safety depth: FS and SS keep their spot across, move up or back.
+  const all = [
+    ...line,
+    ...aligned.defenders.map((d) => ({
+      label: d.label,
+      at: [
+        d.x,
+        call?.safetyDepthY != null && (d.label === "FS" || d.label === "SS") ? safetyY(call.safetyDepthY) : d.y,
+      ] as Pt,
+    })),
+  ];
   // Ids count per label ("C1", "C2"). Line labels (E/T/N) never repeat among the
   // backers or DBs, so dropping the line in 7v7 doesn't renumber anyone.
   const seen: Record<string, number> = {};
-  return [...box, ...secondary].map(({ label, at }) => {
+  const defenders = all.map(({ label, at }) => {
     seen[label] = (seen[label] ?? 0) + 1;
     const id = `${label}${seen[label]}`;
     const moved = overrides[id];
     return { id, label, x: moved?.x ?? at[0], y: moved?.y ?? at[1] };
   });
+  return { defenders, notes: aligned.notes };
 }
 
 /* -------------------------------------------------------------------------- */
@@ -576,6 +613,11 @@ export interface Diagram {
   fakes: Point[][];
   /** Scout defense cards only: where each defender lines up. */
   defense: Defender[];
+  /**
+   * Scout defense cards only: what the alignment rules did ("SS apex Y",
+   * "S apex H", "FS middle"), shown in the NOTES box until a coach writes one.
+   */
+  defenseNotes: string[];
   /** X position of the hash the ball is on (null when unknown). */
   ballHashX: number | null;
   /** Y of the line of scrimmage as drawn (moves when the card is flipped). */
@@ -1133,7 +1175,8 @@ export function buildDiagram(
     | "secondary"
     | "yardLine"
     | "routeOverrides"
-  >,
+  > &
+    Partial<Pick<HudlPlayCard, "coverage" | "defenseAlignment">>,
   mode: DiagramMode = "team",
   unit: ScoutUnit = "offense",
 ): Diagram {
@@ -1163,17 +1206,20 @@ export function buildDiagram(
   const ballCarrier = card.concept === "qb-run" ? qb : backs[backs.length - 1];
 
   const frontFallback = unit === "defense" && card.frontKey === "unknown";
-  const defense =
+  const aligned =
     unit === "defense"
       ? buildDefense(
           frontFallback ? "4-3" : (card.frontKey as Exclude<FrontKey, "unknown">),
-          skill.map((p) => p.at),
+          skill.map((p) => ({ label: p.label, at: p.at })),
           side,
           mode === "7v7",
           card.defenseOverrides,
           card.secondary,
+          card.coverage,
+          card.defenseAlignment,
         )
-      : [];
+      : null;
+  const defense = aligned?.defenders ?? [];
 
   if (unit === "defense") {
     // The scout defense only needs the formation it's lining up against.
@@ -1338,6 +1384,7 @@ export function buildDiagram(
     pulls: turnAll(points(pulls)),
     fakes: turnAll(points(fakes)),
     defense: defense.map(turn),
+    defenseNotes: aligned?.notes ?? [],
     ballHashX: ballHashX != null && flipped ? FIELD.width - ballHashX : ballHashX,
     losY: flipY(FIELD.los),
     yardLines: marks.yardLines.map((l) => ({ ...l, y: flipY(l.y) })),
@@ -1422,7 +1469,8 @@ export function buildAssignments(
   diagram: Pick<
     Diagram,
     "unit" | "mode" | "kind" | "jobs" | "scheme" | "formationFallback" | "frontFallback"
-  >,
+  > &
+    Partial<Pick<Diagram, "defenseNotes">>,
 ): AssignmentRow[] {
   const own = card.assignmentNotes ?? {};
   const row = (key: string, auto: string): AssignmentRow => ({
@@ -1437,10 +1485,12 @@ export function buildAssignments(
   ]
     .filter(Boolean)
     .join(" ");
+  // Scout D: what the alignment rules did ("SS apex Y · S apex H · FS middle").
+  const aligned = diagram.unit === "defense" ? (diagram.defenseNotes ?? []).join(" · ") : "";
   const notes: AssignmentRow = {
     key: "NOTES",
     label: "NOTES:",
-    text: card.notes || autoNote,
+    text: card.notes || [aligned, autoNote].filter(Boolean).join(" "),
     custom: Boolean(card.notes),
   };
 

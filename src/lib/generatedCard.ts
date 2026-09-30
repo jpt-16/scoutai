@@ -21,11 +21,14 @@ import { detectedRouteToPathDeltas } from "./coordinateMapper";
 import { buildDiagram, FIELD, fromCardPoint } from "./formations";
 import { deriveCard, type HudlPlayCard, type RouteOverride } from "./hudlParser";
 import { FOOTBALL_CONCEPT_RULES } from "./videoDetection";
+import { clampSafetyDepth, safetyY } from "./defensiveAligner";
 
 export interface GenerateCardInput {
   playName: string;
   formation: string;
   defensiveCall?: string;
+  /** The coach's safety depth in yards off the line (FS and SS), if set. */
+  safetyDepth?: number;
 }
 
 /** A point on the 0-100 grid (see `GRID_RULES`). */
@@ -91,7 +94,12 @@ const DEFENSE_RULES = `DEFENSE: place all 11 defenders using exactly the labels 
   the strength at 7-8 as the curl-flat player.
 - Cover 4 / Quarters: two safeties 10-12 deep, just inside the #2s; corners 7-8 off.
 - Cover 6: quarters to the strength, Cover 2 (squat corner, half-field safety) to the weak side.
-- No call: a sound Cover 3.`;
+- No call: a sound Cover 3.
+- Rule: Ensure 100% receiver coverage. Every split receiver has a defender leveraged over him:
+  corners on the #1s. If the offense presents 2 or more split receivers to a side, align a Safety
+  or Nickel DB directly over (man) or apexed (zone: halfway between #2 and the next man inside)
+  on the #2 receiver. Any receiver still uncovered (the other #2 in 2x2, #3 in trips) gets an
+  outside linebacker walked out to apex him; never stack the box while a receiver stands alone.`;
 
 /** The card as drawn before any AI coordinates: formation from the text, front from the call. */
 export function shellCard(input: GenerateCardInput): HudlPlayCard {
@@ -127,6 +135,9 @@ export function shellCard(input: GenerateCardInput): HudlPlayCard {
     notes: "",
     source: "AI generated",
     raw: {},
+    ...(input.safetyDepth != null
+      ? { defenseAlignment: { safetyDepthY: clampSafetyDepth(input.safetyDepth) } }
+      : {}),
   });
 }
 
@@ -151,6 +162,13 @@ export function buildGenerationPrompt(input: GenerateCardInput, ctx: GenerationC
   const defense = oneLine(input.defensiveCall);
   const lineup = ctx.offense.map((p) => `${p.label} (${p.x}, ${p.y})`).join(", ");
   const defLabels = ctx.defense.map((d) => d.label).join(", ");
+  const defSpots = ctx.defense.map((d) => `${d.label} (${d.x}, ${d.y})`).join(", ");
+  const depth = input.safetyDepth != null ? clampSafetyDepth(input.safetyDepth) : null;
+  const depthRule =
+    depth != null
+      ? `- Rule: Honor the user-defined safety depth: FS and SS start ${depth} yards off the line of
+  scrimmage (y = ${round1(LOS_GRID - depth * YARD_Y)}), whatever the coverage says; keep their spot across the field.`
+      : "- Safety depth: per the coverage above.";
   return `You are an expert high school football coach drawing one scout card.
 
 PLAY CALL: "${call}"
@@ -169,7 +187,9 @@ breaks, and a short "routeName". Linemen, and a back who stays in to block, get 
 ${FOOTBALL_CONCEPT_RULES}
 
 ${DEFENSE_RULES}
-Use exactly these 11 defensive labels: ${defLabels}.`;
+${depthRule}
+Use exactly these 11 defensive labels: ${defLabels}.
+The app's own alignment rules start them here (adjust for the call): ${defSpots}.`;
 }
 
 function isNum(v: unknown): v is number {
@@ -247,7 +267,10 @@ export function applyGeneratedPlay(
     const [p] = unused.splice(best, 1);
     // Defense stays on its own side of the ball.
     const at = fromGrid({ x: p.x, y: Math.min(p.y, LOS_GRID - 1) });
-    defenseOverrides[slot.id] = { x: Math.round(at.x), y: Math.round(at.y) };
+    // The coach's safety depth wins over the model's.
+    const depth = card.defenseAlignment?.safetyDepthY;
+    const y = depth != null && (slot.label === "FS" || slot.label === "SS") ? safetyY(depth) : at.y;
+    defenseOverrides[slot.id] = { x: Math.round(at.x), y: Math.round(y) };
   }
 
   return {

@@ -1,4 +1,5 @@
 import Papa from "papaparse";
+import type { DefensiveAlignment } from "./defensiveAligner";
 import type { DbAlignment } from "./secondary";
 import type { CellValue } from "exceljs";
 
@@ -94,6 +95,11 @@ export interface HudlPlayCard {
    * by defender id ("FS1", "C2"), in un-flipped card coordinates.
    */
   defenseOverrides?: Record<string, { x: number; y: number }>;
+  /**
+   * Scout defense: this play's safety depth and how the slots are played
+   * (src/lib/defensiveAligner.ts), set from the Scout D toolbar or the AI card.
+   */
+  defenseAlignment?: DefensiveAlignment;
   /** A coach's own text for assignment-table boxes, by key ("PST", "Y", "FRONT"). */
   assignmentNotes?: Record<string, string>;
   /**

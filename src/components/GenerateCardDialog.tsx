@@ -12,7 +12,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { SAFETY_DEPTH_PRESETS } from "@/lib/defensiveAligner";
 import type { HudlPlayCard } from "@/lib/hudlParser";
+import { cn } from "@/lib/utils";
 
 const inputClass =
   "h-11 w-full rounded-lg border-2 border-input bg-background px-3 text-base font-semibold uppercase outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50";
@@ -40,6 +42,7 @@ export function GenerateCardDialog({
   onCreate: (card: HudlPlayCard) => void;
 }) {
   const [form, setForm] = useState<Form>({ playName: "", formation: "", defensiveCall: "" });
+  const [safetyDepth, setSafetyDepth] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<{ message: string; account: boolean } | null>(null);
 
@@ -50,7 +53,7 @@ export function GenerateCardDialog({
       const res = await fetch("/api/generate-scout-card", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify({ ...form, ...(safetyDepth != null ? { safetyDepth } : {}) }),
       });
       const payload = (await res.json().catch(() => ({}))) as {
         card?: HudlPlayCard;
@@ -112,6 +115,39 @@ export function GenerateCardDialog({
               />
             </div>
           ))}
+          <div role="group" aria-labelledby="gen-safety" className="flex flex-col gap-1.5">
+            <span id="gen-safety" className="text-xs font-bold tracking-[0.12em] text-muted-foreground">
+              SAFETY DEPTH
+            </span>
+            <div className="flex flex-wrap gap-1.5">
+              {[{ label: "Auto", yards: null, range: "per coverage" }, ...SAFETY_DEPTH_PRESETS].map((p) => {
+                const selected = safetyDepth === p.yards;
+                return (
+                  <button
+                    key={p.label}
+                    type="button"
+                    aria-pressed={selected}
+                    onClick={() => setSafetyDepth(p.yards)}
+                    className={cn(
+                      "flex h-11 flex-col items-start justify-center rounded-[10px] border px-3 text-left leading-tight transition-colors",
+                      "focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none",
+                      selected ? "border-primary bg-primary text-primary-foreground" : "border-border hover:bg-accent",
+                    )}
+                  >
+                    <span className="text-sm font-bold">{p.label}</span>
+                    <span
+                      className={cn(
+                        "text-[11px] font-semibold",
+                        selected ? "text-primary-foreground/75" : "text-muted-foreground",
+                      )}
+                    >
+                      {p.range}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
           {error && (
             <p
               role="alert"

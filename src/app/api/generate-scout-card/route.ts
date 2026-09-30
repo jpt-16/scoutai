@@ -1,6 +1,6 @@
 /**
- * Text → scout card. Takes `{ playName, formation, defensiveCall? }`
- * ("Deuces Mesh Rail", "Deuces", "Cover 3"), asks Gemini 2.5 Flash for 0-100
+ * Text → scout card. Takes `{ playName, formation, defensiveCall?, safetyDepth? }`
+ * ("Deuces Mesh Rail", "Deuces", "Cover 3", 9 yards), asks Gemini 2.5 Flash for 0-100
  * grid coordinates for all 22 players under a strict response schema, and
  * returns a finished `HudlPlayCard` (see src/lib/generatedCard.ts): the
  * formation drawn in its usual shape, each receiver's route as a draggable
@@ -13,6 +13,7 @@
 import { checkRateLimit } from "@vercel/firewall";
 import { GoogleGenAI, Type, type Schema } from "@google/genai";
 import { NextResponse } from "next/server";
+import { clampSafetyDepth } from "@/lib/defensiveAligner";
 import { requireEntitlement } from "@/lib/entitlement";
 import {
   applyGeneratedPlay,
@@ -84,6 +85,7 @@ interface RequestBody {
   playName?: unknown;
   formation?: unknown;
   defensiveCall?: unknown;
+  safetyDepth?: unknown;
 }
 
 const text = (v: unknown) => (typeof v === "string" ? v.trim() : "");
@@ -125,6 +127,10 @@ export async function POST(request: Request): Promise<NextResponse> {
     playName: text(body.playName),
     formation: text(body.formation),
     defensiveCall: text(body.defensiveCall),
+    safetyDepth:
+      typeof body.safetyDepth === "number" && Number.isFinite(body.safetyDepth)
+        ? clampSafetyDepth(body.safetyDepth)
+        : undefined,
   };
   if (!input.playName) {
     return NextResponse.json({ error: "playName is required" }, { status: 400 });

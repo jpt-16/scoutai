@@ -25,6 +25,7 @@ import { BrandMark } from "@/components/BrandMark";
 import { FilterGroup, type FilterOption } from "@/components/FilterBar";
 import { EditPlayDialog } from "@/components/EditPlayDialog";
 import { GenerateCardDialog } from "@/components/GenerateCardDialog";
+import { SafetyDepthControl } from "@/components/SafetyDepthControl";
 import { SecondaryDialog } from "@/components/SecondaryDialog";
 import { ImportNotice } from "@/components/ImportNotice";
 import { PrintGrid } from "@/components/PrintGrid";
@@ -33,7 +34,15 @@ import { computeTendencies } from "@/lib/tendencies";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MOCK_HUDL_CSV, DEMO_FILE_NAME } from "@/lib/demoScript";
-import { FORMATION_LABELS, inPeriod, type Period, type ScoutUnit } from "@/lib/formations";
+import {
+  buildDiagram,
+  FORMATION_LABELS,
+  fromCardPoint,
+  inPeriod,
+  type Period,
+  type ScoutUnit,
+} from "@/lib/formations";
+import { coverageStyleFor, safetyY, type DefensiveAlignment } from "@/lib/defensiveAligner";
 import {
   parseHudlCsvText,
   type FormationKey,
@@ -324,6 +333,42 @@ function ScriptApp({ demoMode = false }: { demoMode?: boolean }) {
     });
     setScript(storeScript({ ...script, cards: stored }));
   };
+
+  /**
+   * The play's safety depth / slot play (Scout D toolbar). A safety a coach
+   * already dragged keeps his spot across and moves to the new depth.
+   */
+  const setDefenseAlignment = (next: DefensiveAlignment | undefined) => {
+    if (!current) return;
+    saveCards(
+      cards.map((c) => {
+        if (c.id !== current.id) return c;
+        const depth = next?.safetyDepthY;
+        const overrides = { ...c.defenseOverrides };
+        if (depth != null) {
+          for (const id of Object.keys(overrides)) {
+            if (/^(FS|SS)\d/.test(id)) overrides[id] = { ...overrides[id], y: safetyY(depth) };
+          }
+        }
+        return {
+          ...c,
+          defenseAlignment: next,
+          defenseOverrides: Object.keys(overrides).length ? overrides : undefined,
+          edited: true,
+        };
+      }),
+    );
+  };
+
+  /** Where the current Scout D card draws its deepest safety, in yards (the slider's auto value). */
+  const drawnSafetyDepth = useMemo(() => {
+    if (!current || unit !== "defense") return 12;
+    const d = buildDiagram({ ...current, defenseAlignment: undefined }, cardMode, "defense");
+    const ys = d.defense
+      .filter((p) => p.label === "FS" || p.label === "SS")
+      .map((p) => fromCardPoint(d, p).y);
+    return ys.length ? Math.round(((140 - Math.min(...ys)) / 7) * 2) / 2 : 12;
+  }, [current, unit, cardMode]);
 
   /** Replaces the current card's pencil strokes for the unit on screen. */
   const setStrokes = (change: (strokes: InkStroke[]) => InkStroke[]) => {
@@ -838,6 +883,15 @@ function ScriptApp({ demoMode = false }: { demoMode?: boolean }) {
           />
         </div>
       </div>
+
+      {unit === "defense" && view === "field" && adjusting && current && editable && (
+        <SafetyDepthControl
+          value={current.defenseAlignment}
+          autoStyle={coverageStyleFor(current.coverage)}
+          drawnDepth={drawnSafetyDepth}
+          onChange={setDefenseAlignment}
+        />
+      )}
 
       <ImportNotice
         heading={
