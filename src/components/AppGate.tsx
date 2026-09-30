@@ -51,12 +51,25 @@ function writeAccessCache(granted: boolean) {
 
 type Variant = "page" | "section";
 
-export function AppGate({ children, variant = "page" }: { children: ReactNode; variant?: Variant }) {
-  if (isAiGateDisabled() || !isClerkConfigured()) return <>{children}</>;
-  return <AppGateInner variant={variant}>{children}</AppGateInner>;
+interface GateProps {
+  children: ReactNode;
+  variant?: Variant;
+  /** Shown instead of the locked screen to someone without access (the public demo script). */
+  whenLocked?: ReactNode;
+  /** Extra buttons on the locked screen ("Try the 5-play demo"). */
+  lockedActions?: ReactNode;
 }
 
-function AppGateInner({ children, variant }: { children: ReactNode; variant: Variant }) {
+export function AppGate({ children, variant = "page", whenLocked, lockedActions }: GateProps) {
+  if (isAiGateDisabled() || !isClerkConfigured()) return <>{children}</>;
+  return (
+    <AppGateInner variant={variant} whenLocked={whenLocked} lockedActions={lockedActions}>
+      {children}
+    </AppGateInner>
+  );
+}
+
+function AppGateInner({ children, variant, whenLocked, lockedActions }: GateProps & { variant: Variant }) {
   const account = useTeamAccount();
   // Read after mount: localStorage doesn't exist during server rendering.
   const [cached, setCached] = useState<boolean | null>(null);
@@ -67,16 +80,15 @@ function AppGateInner({ children, variant }: { children: ReactNode; variant: Var
     if (settled) writeAccessCache(account.entitled);
   }, [settled, account.entitled]);
 
-  if (settled)
-    return account.entitled ? (
-      <>{children}</>
-    ) : (
-      <Locked variant={variant} signedIn={Boolean(account.userId)} />
+  const locked = (offline?: boolean) =>
+    whenLocked ?? (
+      <Locked variant={variant} signedIn={Boolean(account.userId)} offline={offline} actions={lockedActions} />
     );
+  if (settled) return account.entitled ? <>{children}</> : locked();
   // Still checking, or offline: a recently verified iPad opens straight in.
   if (cached) return <>{children}</>;
   if (cached === null || account.loading) return <Checking variant={variant} />;
-  return <Locked variant={variant} signedIn={Boolean(account.userId)} offline />;
+  return locked(true);
 }
 
 function Frame({ variant, children }: { variant: Variant; children: ReactNode }) {
@@ -100,7 +112,17 @@ function Checking({ variant }: { variant: Variant }) {
   );
 }
 
-function Locked({ variant, signedIn, offline }: { variant: Variant; signedIn: boolean; offline?: boolean }) {
+function Locked({
+  variant,
+  signedIn,
+  offline,
+  actions,
+}: {
+  variant: Variant;
+  signedIn: boolean;
+  offline?: boolean;
+  actions?: ReactNode;
+}) {
   const clerk = useClerk();
   return (
     <Frame variant={variant}>
@@ -136,6 +158,7 @@ function Locked({ variant, signedIn, offline }: { variant: Variant; signedIn: bo
             Use a different account
           </Button>
         )}
+        {actions}
         {variant === "page" && (
           <Button asChild size="xl" variant="outline">
             <Link href="/">Back to home</Link>

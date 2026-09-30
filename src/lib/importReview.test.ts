@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildDiagram, playKind } from "./formations";
 import { parseHudlCsvText, updateCard } from "./hudlParser";
-import { applyReview, buildReviewPrompt, needsReview, reviewRows, sanitizeReviewRow } from "./importReview";
+import { applyReview, buildReviewPrompt, needsReview, reviewRows, sanitizeReviewRow, unplaced } from "./importReview";
 
 const CSV = [
   "PLAY #,OFF FORM,OFF PLAY,DEF FRONT",
@@ -31,6 +31,7 @@ describe("reviewRows", () => {
       playCall: "",
       playType: "",
       defFront: "",
+      positions: "",
     });
   });
 });
@@ -66,5 +67,56 @@ describe("applyReview", () => {
     expect(edited.formationKey).toBe("unknown");
     const kept = updateCard(out[1], { notes: "watch the X" });
     expect(kept.formationKey).toBe("trips");
+  });
+});
+
+describe("route concepts", () => {
+  const CONCEPT_CSV = ["PLAY #,OFF FORM,OFF PLAY", "2,TRIPS RIGHT,QUICK SLANT", "3,TRIPS RIGHT,836", "4,SPREAD,MESH"].join(
+    "\n",
+  );
+  const { cards } = parseHudlCsvText(CONCEPT_CSV);
+
+  it("sends one-route passes with their positions, never tree numbers or named concepts", () => {
+    expect(cards.map((c) => unplaced(c).routes)).toEqual([true, false, false]);
+    const [row] = reviewRows(cards);
+    expect(row.positions).toBe("ps1 Z, ps2 Y, ps3 H, bs1 X, back F");
+    expect(buildReviewPrompt([row])).toContain("build routes for: ps1 Z, ps2 Y, ps3 H, bs1 X, back F");
+  });
+
+  it("applies the AI's concept per letter, marked AI, and a new call drops it", () => {
+    const [quick] = cards;
+    const { cards: out, filled } = applyReview(
+      cards,
+      [quick.id],
+      [
+        {
+          id: quick.id,
+          playType: "unknown",
+          routes: { ps1: "slant", ps2: "flat", ps3: "curl", bs1: "slant", bs2: "none", back: "protect" },
+        },
+      ],
+    );
+    expect(filled).toBe(1);
+    expect(out[0].aiHints).toEqual({ routes: true });
+    expect(out[0].routeOverrides).toEqual({
+      Z: { route: "slant", source: "ai" },
+      Y: { route: "flat", source: "ai" },
+      H: { route: "curl", source: "ai" },
+      X: { route: "slant", source: "ai" },
+      F: { route: "protect", source: "ai" },
+    });
+    const d = buildDiagram(out[0]);
+    expect(d.jobs).toMatchObject({ Z: "2 Slant", Y: "Flat", H: "4 Curl", F: "Pass pro" });
+    const retyped = updateCard(out[0], { playCall: "SMASH" });
+    expect(retyped.routeOverrides).toEqual({});
+    expect(retyped.aiHints).toBeUndefined();
+  });
+
+  it("ignores a 'concept' that's one route for everyone", () => {
+    const [quick] = cards;
+    const same = { ps1: "slant", ps2: "slant", ps3: "slant", bs1: "slant" };
+    const { cards: out } = applyReview(cards, [quick.id], [{ id: quick.id, routes: same }]);
+    expect(out[0].routeOverrides).toBeUndefined();
+    expect(out[0].aiReviewed).toBe(true);
   });
 });

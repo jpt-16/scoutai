@@ -162,8 +162,12 @@ Free-text tags are classified by keyword (`classifyFormation`, `classifyFront`,
     Cards write each tree route's number at its arrow tip. Routes off the tree (GO, WHEEL,
     BUBBLE, FLAT, LEAK, HITCH, DIG, SWING) are written by name.
   - **Passes:** `routeTokens` reads route words (SLANT, BUBBLE, CORNER, WHEEL, ACROSS/CROSS,
-    OUT, FADE, LEAK, GO, POST, CURL, DIG, FLAT, SWING). One word goes to every WR
-    ("SLANT" = all slants). BUBBLE or SCREEN goes to the play-side slot. The other ball-side
+    OUT, FADE, LEAK, GO, POST, CURL, DIG, FLAT, SWING). One route word is a **combination**, not
+    that route for everyone (`ROUTE_COMBOS`): each side, outside in, the wide receivers #1 / #2 /
+    #3 run e.g. slant / flat / hitch for "QUICK SLANT", curl / flat / go for CURL, post / dig /
+    flat for POST; an inside route (FLAT, SHALLOW) goes to the #2s while the #1s clear. Tight ends
+    stay in to protect. Verticals (GO, VERTS, "4 VERTS") really are everyone, and a lone tree
+    number ("2") still means every WR runs it. BUBBLE or SCREEN goes to the play-side slot. The other ball-side
     receivers block from the inside out: the first takes the **LB** (up, then inside) and the
     second the **S/C** (up and in). With only one blocker, he takes the **C**. Each block is
     labeled at its T-bar, and backside receivers stalk.
@@ -306,7 +310,12 @@ the classifiers don't know, or a play call that reads as neither run nor pass) a
 only, to Gemini, which maps them onto the app's own shapes (formation key + side, front key,
 run/pass). The answers go in `card.aiHints`, which `deriveCard` uses **only where the rules came
 up empty**, so anything the file says plainly wins; `updateCard` drops a hint when a coach retypes
-that field, and `aiReviewed` keeps a play from being sent twice. Filled plays show "· AI" in the
+that field, and `aiReviewed` keeps a play from being sent twice. For a pass the rules could only
+read one route word from (not a named concept, no tree numbers), the AI also **builds the
+concept**: a route per position (`routeSlots`: play-side / backside #1-#3 and the back → letters)
+from the route tree plus the named routes, stored as per-letter `routeOverrides` with
+`source: "ai"` (so **Edit play** can change any of them) and `aiHints.routes`; one route for
+everyone is rejected, and a new play call drops the AI's routes. Filled plays show "· AI" in the
 play list, with a notice to check them. Silent when the AI isn't available (no access, offline):
 the plays load exactly as the file reads. One call per import, up to `MAX_REVIEW_ROWS` (150) rows,
 rate limited per tier (`reviews`).
@@ -544,7 +553,10 @@ this is for a call the dictionary doesn't know or a quick one-off look.
 **Access.** On production the whole app is for signed-in coaches who are on the allow-list or on a
 subscribed staff: `src/components/AppGate.tsx` wraps `/script`, `/practice` and the landing page's
 upload / AI film sections, and shows a sign-in or "private pilot" screen otherwise. The landing
-page itself and its live demo cards stay public. The gate only applies where Clerk is configured
+page itself and its live demo cards stay public, and so does the **5-play demo script**: "Try the
+5-play demo" on the locked screens loads it, and `/script` shows it in `demoMode` (swipe, Scout
+O/D, print and draw work; Add film, AI card, the playsheet and Edit play are hidden), so nothing
+new can come in without access. The gate only applies where Clerk is configured
 and the testing bypass is off (production); preview deploys (`NEXT_PUBLIC_SKIP_AI_GATE`) and a
 local checkout without Clerk keys are open. Once an iPad is verified it's trusted offline for 14
 days (`scoutcard:access:v1`), since Clerk can't load on a field with no signal. The CSV reader runs

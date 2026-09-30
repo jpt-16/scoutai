@@ -93,14 +93,38 @@ const UNITS: { value: ScoutUnit; label: string; short: string }[] = [
 ];
 
 export default function ScriptPage() {
+  // The 5-play demo is public; anything uploaded needs access (AppGate).
+  const [demoLoaded, setDemoLoaded] = useState(false);
+  useEffect(() => setDemoLoaded(isDemoScript(loadScript())), []);
+  const startDemo = () => {
+    saveScript(DEMO_FILE_NAME, parseHudlCsvText(MOCK_HUDL_CSV));
+    setDemoLoaded(true);
+  };
   return (
-    <AppGate>
+    <AppGate
+      whenLocked={demoLoaded ? <ScriptApp demoMode /> : undefined}
+      lockedActions={
+        <Button size="xl" variant="outline" onClick={startDemo}>
+          Try the 5-play demo
+        </Button>
+      }
+    >
       <ScriptApp />
     </AppGate>
   );
 }
 
-function ScriptApp() {
+/** The script is just the public demo (nothing uploaded). */
+function isDemoScript(script: StoredScript | null): boolean {
+  return Boolean(script && script.films.length === 1 && script.films[0] === DEMO_FILE_NAME);
+}
+
+/**
+ * `demoMode`: someone without access looking at the public demo. The five
+ * demo cards work (swipe, Scout O/D, print, draw), but nothing new comes in:
+ * no uploads, AI cards, playsheet, or editing plays.
+ */
+function ScriptApp({ demoMode = false }: { demoMode?: boolean }) {
   const router = useRouter();
   // undefined while reading localStorage, null when nothing is loaded.
   const [script, setScript] = useState<StoredScript | null | undefined>(undefined);
@@ -747,7 +771,15 @@ function ScriptApp() {
               )}
             </>
           )}
-          {!practice && (
+          {demoMode && (
+            <Button asChild size="lg" variant="outline">
+              <Link href="/#upload">
+                <Upload aria-hidden="true" />
+                Use your own film
+              </Link>
+            </Button>
+          )}
+          {!practice && !demoMode && (
             <>
               <Button asChild size="lg" variant="outline">
                 <Link href="/practice">
@@ -770,7 +802,7 @@ function ScriptApp() {
           <Button
             size="lg"
             onClick={() => setEditing(true)}
-            disabled={!editable || view !== "field"}
+            disabled={!editable || demoMode || view !== "field"}
           >
             <Pencil aria-hidden="true" />
             Edit play

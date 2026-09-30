@@ -674,6 +674,21 @@ describe("buildDiagram (offense only)", () => {
     });
   });
 
+  it("a lone route word is a combination, not everyone running it", () => {
+    // Trips right: Z #1, Y #2, H #3; X alone backside.
+    const quick = buildDiagram(card("trips", "QUICK SLANT"));
+    expect(routesBy(quick)).toEqual({ Z: "2", Y: "FLAT", H: "HITCH", X: "2" });
+    expect(quick.jobs).toMatchObject({ Z: "2 Slant", Y: "Flat", H: "Hitch", X: "2 Slant" });
+    expect(routesBy(buildDiagram(card("spread", "CURL")))).toEqual({ X: "4", F: "FLAT", Y: "FLAT", Z: "4" });
+    expect(routesBy(buildDiagram(card("spread", "POST")))).toEqual({ X: "8", F: "DIG", Y: "DIG", Z: "8" });
+    // An inside route goes to the #2s while the #1s clear.
+    expect(routesBy(buildDiagram(card("spread", "FLAT")))).toEqual({ X: "GO", F: "FLAT", Y: "FLAT", Z: "GO" });
+    // Verticals really are everyone, and tight ends still protect.
+    expect(routesBy(buildDiagram(card("spread", "VERTS")))).toEqual({ X: "GO", F: "GO", Y: "GO", Z: "GO" });
+    const pro = buildDiagram(card("pro", "SLANT"));
+    expect(pro.jobs.Y).toBe("Pass pro");
+  });
+
   it("a lone WHEEL or RAIL goes to the back", () => {
     expect(routesBy(buildDiagram(card("spread", "WHEEL")))).toEqual({ H: "WHEEL" });
     expect(buildDiagram(card("spread", "RAIL")).kind).toBe("pass");
@@ -759,7 +774,8 @@ describe("buildDiagram (offense only)", () => {
       ...card("spread", "SLANT"),
       routeOverrides: { Z: { route: "stalk" }, X: { tag: "SIGHT" } },
     });
-    expect(routesBy(d)).toEqual({ X: "SIGHT", F: "2", Y: "2" });
+    // SLANT is slant / flat: the slots run flats inside the #1s' slants.
+    expect(routesBy(d)).toEqual({ X: "SIGHT", F: "FLAT", Y: "FLAT" });
     expect(d.jobs.Z).toBe("Stalk");
     expect(d.jobs.X).toBe("2 Slant · SIGHT");
   });

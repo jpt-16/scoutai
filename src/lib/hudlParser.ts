@@ -122,6 +122,8 @@ export interface AiHints {
   side?: Side;
   frontKey?: Exclude<FrontKey, "unknown">;
   playType?: "Run" | "Pass";
+  /** The AI built the play's route concept (per-letter `routeOverrides` with `source: "ai"`). */
+  routes?: boolean;
 }
 
 /** A coach's route assignment for one letter (see `routeOverrides`). */
@@ -644,9 +646,17 @@ export function updateCard(card: HudlPlayCard, edits: CardEdits): HudlPlayCard {
     if (changed("formation") || changed("offStrength")) delete aiHints.side;
     if (changed("defFront")) delete aiHints.frontKey;
     if (changed("playCall")) delete aiHints.playType;
+    if (changed("playCall")) delete aiHints.routes;
     if (Object.keys(aiHints).length === 0) aiHints = undefined;
   }
-  return deriveCard({ ...card, ...edits, aiHints, edited: true });
+  // A new play call drops the AI's routes for the old one (a coach's own stay).
+  let routeOverrides = edits.routeOverrides ?? card.routeOverrides;
+  if (edits.playCall !== undefined && edits.playCall !== card.playCall && routeOverrides) {
+    routeOverrides = Object.fromEntries(
+      Object.entries(routeOverrides).filter(([, o]) => !(o.source === "ai" && !o.path?.length)),
+    );
+  }
+  return deriveCard({ ...card, ...edits, routeOverrides, aiHints, edited: true });
 }
 
 /** Turns one keyed CSV row into a card. Exposed for tests. */

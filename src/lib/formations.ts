@@ -704,8 +704,8 @@ function routePath(kind: RouteKind, p: Pt, o: number, d: number): Pt[] {
       return [p, [x, yd(10)], [x + inside * 70, yd(10)]];
     case "wheel":
       return [p, [x + o * 30, y + 4], [x + o * 48, 118], [x + o * 48, yd(15)]];
-    case "flat":
-      return [p, [x + o * 18, y - 14], [x + o * 60, y - 18]];
+    case "flat": // out under #1 to the sideline, 1-2 yards deep
+      return [p, [x + o * 18, yd(1)], [sideline(o), yd(2)]];
     case "swing":
       return [p, [x + d * 34, y + 6], [x + d * 76, y - 12]];
     case "bubble":
@@ -737,6 +737,56 @@ function conceptPath(route: ConceptRoute, pl: Placed, o: number, d: number): Pt[
   if (stem > 0) path.push([x, yd(stem)]);
   path.push([endX, yd(route.breakY ?? stem)]);
   return path;
+}
+
+/**
+ * A lone route word as a route combination, per side outside in: [#1, #2, #3].
+ * The called route goes to the #1s unless it's an inside route (a shallow or a
+ * flat belongs to #2, with #1 clearing). Verticals ("GO", "VERTS") aren't
+ * here: those really are everyone.
+ */
+export const ROUTE_COMBOS: Partial<Record<RouteKind, RouteKind[]>> = {
+  slant: ["slant", "flat", "hitch"],
+  "speed-out": ["speed-out", "go", "hitch"],
+  out: ["out", "go", "flat"],
+  curl: ["curl", "flat", "go"],
+  comeback: ["comeback", "flat", "go"],
+  corner: ["corner", "flat", "go"],
+  post: ["post", "dig", "flat"],
+  fade: ["fade", "flat", "hitch"],
+  hitch: ["hitch", "go", "flat"],
+  dig: ["dig", "go", "flat"],
+  shallow: ["go", "shallow", "hitch"],
+  flat: ["go", "flat", "hitch"],
+};
+
+/**
+ * Which letter holds each concept position (see conceptMapper.ts) for this
+ * card's formation and play side: play-side / backside #1-#3 outside in, and
+ * the back. How the AI import review turns "ps1 slant" into "Z runs a slant".
+ */
+export function routeSlots(
+  card: Pick<HudlPlayCard, "formationKey" | "formationSide" | "playDirection">,
+): Partial<Record<ConceptSlot, string>> {
+  const shape = FORMATIONS[card.formationKey === "unknown" ? "spread" : card.formationKey];
+  const d = card.playDirection === "right" ? 1 : -1;
+  const skill = shape.skill.map((s) => place(s, card.formationSide));
+  const backs = shape.backs.map((s) => place(s, card.formationSide));
+  const sideOf = (x: number) => (x > 250 ? 1 : x < 250 ? -1 : d);
+  const outsideIn = (list: Placed[]) => list.sort((a, b) => Math.abs(b.x - 250) - Math.abs(a.x - 250));
+  const ps = outsideIn(skill.filter((p) => sideOf(p.x) === d));
+  const bs = outsideIn(skill.filter((p) => sideOf(p.x) !== d));
+  const slots: Partial<Record<ConceptSlot, string>> = {};
+  const set = (slot: ConceptSlot, p: Placed | undefined) => {
+    if (p) slots[slot] = p.label;
+  };
+  set("ps1", ps[0]);
+  set("ps2", ps[1]);
+  set("ps3", ps[2]);
+  set("bs1", bs[0]);
+  set("bs2", bs[1]);
+  set("back", backs[0]);
+  return slots;
 }
 
 /** Receiver routes for a pass, RPO, or play-action call. */
@@ -869,8 +919,21 @@ function buildRoutes(
           jobs[p.label] = "Stalk";
         }
       }
+    } else if (!numbered && ROUTE_COMBOS[only]) {
+      // One route word ("QUICK SLANT", "CURL"): a combination, not the same
+      // route for everyone. Each side, outside in, the wide receivers #1 / #2 /
+      // #3 run the combo's routes (slant / flat / sit for SLANT), mirrored on
+      // the backside. A lone tree number ("2") still means everyone runs it.
+      // Tight ends stay in to protect, as before.
+      const combo = ROUTE_COMBOS[only]!;
+      const wideOuts = receivers.filter((p) => p.role === "WR");
+      for (const list of [wideOuts.filter((p) => side(p.x) > 0), wideOuts.filter((p) => side(p.x) < 0)]) {
+        list
+          .sort((a, b) => Math.abs(b.x - 250) - Math.abs(a.x - 250))
+          .forEach((p, i) => run(p, combo[Math.min(i, combo.length - 1)]));
+      }
     } else {
-      // "SLANT", "VERTS", "FADE": every wide receiver runs it (TEs too on verticals).
+      // "VERTS", "GO": every wide receiver runs it (TEs too on verticals).
       for (const p of receivers) {
         if (p.role === "WR" || only === "go") run(p, only);
       }

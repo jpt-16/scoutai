@@ -313,7 +313,14 @@ export default function UploadPage() {
             </Reveal>
             <div className="mt-12 grid items-start gap-8 lg:grid-cols-2 lg:gap-10">
               <Reveal className="lg:order-2 lg:sticky lg:top-24">
-                <AppGate variant="section">
+                <AppGate
+                  variant="section"
+                  lockedActions={
+                    <Button size="xl" variant="outline" onClick={handleDemo}>
+                      Try the 5-play demo
+                    </Button>
+                  }
+                >
                 <div className="flex flex-col gap-4">
                   <UploadDropzone
                     onFiles={handleFiles}

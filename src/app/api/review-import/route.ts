@@ -1,9 +1,9 @@
 /**
  * AI review of a CSV import: takes the rows the in-browser parser couldn't
- * place (`{ rows: [{ id, formation, playCall, playType, defFront }] }`, built
- * by src/lib/importReview.ts's `reviewRows`), asks Gemini 2.5 Flash to read
- * the staff's shorthand under a strict schema, and returns one answer per
- * row for `applyReview` to turn into card hints. Gated and rate limited like
+ * place (`{ rows: [{ id, formation, playCall, playType, defFront, positions }] }`,
+ * built by src/lib/importReview.ts's `reviewRows`), asks Gemini 2.5 Flash to
+ * read the staff's shorthand, and build a route concept for one-route passes,
+ * under a strict schema, and returns one answer per row for `applyReview`. Gated and rate limited like
  * the other AI routes; one call per import.
  */
 
@@ -16,6 +16,8 @@ import {
   MAX_REVIEW_ROWS,
   REVIEW_FORMATIONS,
   REVIEW_FRONTS,
+  REVIEW_ROUTES,
+  REVIEW_SLOTS,
   sanitizeReviewRow,
   validateReview,
   type ReviewRow,
@@ -25,6 +27,8 @@ import { TIER_LIMITS } from "@/lib/usageLimits";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
+
+const routeChoice: Schema = { type: Type.STRING, enum: [...REVIEW_ROUTES, "protect", "none"] };
 
 const RESPONSE_SCHEMA: Schema = {
   type: Type.OBJECT,
@@ -39,6 +43,11 @@ const RESPONSE_SCHEMA: Schema = {
           side: { type: Type.STRING, enum: ["left", "right", "unknown"] },
           playType: { type: Type.STRING, enum: ["run", "pass", "unknown"] },
           front: { type: Type.STRING, enum: [...REVIEW_FRONTS, "unknown"] },
+          routes: {
+            type: Type.OBJECT,
+            description: "Only for rows marked 'build routes for': a route per position",
+            properties: Object.fromEntries(REVIEW_SLOTS.map((slot) => [slot, routeChoice])),
+          },
         },
         required: ["id", "formation", "side", "playType", "front"],
       },
