@@ -48,7 +48,7 @@ src/
     ExportModal.tsx        CoachPad / iPad / letter export: one card per page, a PDF or a ZIP of PNGs
     FilterBar.tsx          Down / formation toggle pills
     UploadDropzone.tsx     Drag-and-drop + file picker (multiple films, .csv/.xlsx) + paste-to-import
-    BatchUploader.tsx      Batch video import: CSV + zip of clips, matched by play number
+    BatchUploader.tsx      One-click game import: a Hudl video-with-data zip (or loose clips + sheet) → script
     landing/               Landing-page-only visuals (see "Landing page" below)
     EditPlayDialog.tsx     Edit a play (formation, strength, play, direction, hash, front, coverage, note)
     ImportNotice.tsx       Non-blocking "Loaded / Added N plays" notice with file notes
@@ -66,6 +66,7 @@ src/
     secondary.ts           Scout D secondary per formation: typed line / film read → DB spots
     defensiveAligner.ts    Scout D alignment rules: split receivers, safety roll, backers match numbers
     generatedCard.ts       Text-to-card: Gemini prompt, answer validation, grid → card overrides
+    batchMatcher.ts        Batch plan: sort clips from the sheet, match clip ↔ row, route each row
     gemini.ts              The one Gemini JSON call: model fallback, schema fallback, real error reasons
     exportUtils.ts         Export targets (CoachPad 13.3" 4:3, iPad, letter), card fit, file names
   types/
@@ -565,16 +566,32 @@ rate limiting, add the matching rules (dashboard or `vercel firewall rules add`)
 
 ## Batch video import (`/api/parse-video-batch`)
 
-For a coach with a full game script rather than one play: Hudl exports a game's clips as a zip
-alongside the breakdown CSV. **Batch upload** (below the single-clip uploader) takes both files
-at once.
+**Full game film: one click** (landing page, under the single-clip uploader;
+`src/components/BatchUploader.tsx`). A coach drops Hudl's "video with data" **.zip** (every clip
+plus the breakdown sheet), or, if they already unzipped it, the clips and the `.csv` / `.xlsx`
+together; more files can be added in later drops. **How it works** opens the 3-step "How to
+Import Full Game Film in 30 Seconds" guide.
 
-`src/components/BatchUploader.tsx` parses the CSV with the normal `parseHudlCsv` (real
-down/distance/formation/play-call data — ground truth, never touched by AI) and extracts the zip
-client-side with `JSZip`. `src/lib/clipMatching.ts`'s `matchClipsToCards` matches each clip
-filename to a CSV row by the number embedded in it (`"Clip_4.mp4"` → `PLAY #` 4; the extension is
-stripped first, since `.mp4` itself contains a digit) — a clip whose number doesn't match a row,
-or has no number, is skipped and counted in the script's warnings rather than guessed at.
+1. The zip is unpacked in the browser (`JSZip`, dynamically imported); `sortBatchFiles`
+   (`src/lib/batchMatcher.ts`) splits clips (`.mp4/.mov/.m4v`) from the sheet and skips `__MACOSX`
+   and dot files. The sheet goes through the normal `parseHudlCsv` (CSV or `.xlsx`): real
+   down/distance/formation/play call, ground truth, never touched by AI.
+2. `planBatch` lines clips up with rows by the number in the file name (`clip_01.mp4`,
+   `Play 4.mp4`; `clipMatching.ts`'s `extractPlayNumberFromFileName`), read both against the
+   sheet's PLAY # and against row order (clip 1 = first row); whichever matches more clips wins,
+   PLAY # on a tie, and no row gets two clips. Every row is routed: **Film** (a clip matched),
+   **AI** (no clip, and the rules can't draw it: an unknown formation or a call that's neither run
+   nor pass, `needsTextAi`), or **Sheet** (no clip, and the sheet already draws it). A checklist
+   ("✓ Play 1: clip_01.mp4 ↔ TRIO · SLOT RPO BUBBLE", unmatched clips in amber) shows before
+   anything is spent.
+3. **Generate Scout Cards** runs two queues side by side with one progress bar ("Processing play
+   4 of 30…"): Film rows through `/api/parse-video-batch` (below), AI rows through
+   `/api/generate-scout-card` two at a time (`textAiRequest`: the call, formation and the row's
+   front + coverage; the AI's routes and defenders go onto the sheet's own card, marked
+   `aiReviewed` so the import review doesn't send it again). A row whose AI call fails keeps its
+   sheet card, counted in the warnings. Sheet rows aren't sent anywhere: sending every clip-less
+   row to the text AI would redraw cards the rules already draw and run into the tier's cards per
+   minute on a full game.
 
 One game is one **job**. Its matched clips go up in chunks of `MAX_BATCH_CLIPS`
 (`src/lib/batchConfig.ts`, 10: a serverless call has to finish in time), every chunk tagged with
