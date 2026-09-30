@@ -519,6 +519,14 @@ export interface Diagram {
   mode: DiagramMode;
   unit: ScoutUnit;
   kind: PlayKind;
+  /**
+   * The routes actually drawn, by position ("Slant / Flat / Hitch"), when the
+   * play call alone doesn't describe the whole play: a one-route call drawn as
+   * a combination, or routes from the AI or a coach. The card title uses it
+   * instead of the call. Null when the call already says it all (MESH RAIL,
+   * 836, VERTS, a run).
+   */
+  routeSummary: string | null;
   players: Player[];
   /** Ball carrier's path on runs (arrow). */
   carrier: Point[] | null;
@@ -787,6 +795,36 @@ export function routeSlots(
   set("bs2", bs[1]);
   set("back", backs[0]);
   return slots;
+}
+
+/** Jobs that aren't a route to name in a title. */
+const NOT_A_ROUTE = /^(Pass pro|Stalk|Route|—|Block|Hand off|Ball carrier|Mesh:|Read:|Run fake)/i;
+
+/** See `Diagram.routeSummary`. */
+function summarizeRoutes(
+  card: Pick<HudlPlayCard, "playCall" | "routeOverrides" | "formationKey" | "formationSide" | "playDirection">,
+  kind: PlayKind,
+  jobs: Jobs,
+): string | null {
+  if (kind !== "pass" && kind !== "pa" && kind !== "rpo") return null;
+  const { tokens, numbered } = routeCall(card.playCall);
+  const distinct = new Set(tokens);
+  const thinCall =
+    !numbered &&
+    !matchConcept(card.playCall) &&
+    distinct.size <= 1 &&
+    ![...distinct].some((t) => ["go", "bubble", "leak", "wheel", "swing"].includes(t));
+  const ownRoutes = Object.values(card.routeOverrides ?? {}).some((o) => o.route || o.path?.length);
+  if (!thinCall && !ownRoutes) return null;
+  const slots = routeSlots(card);
+  const names: string[] = [];
+  for (const slot of ["ps1", "ps2", "ps3", "bs1", "bs2", "back"] as ConceptSlot[]) {
+    const job = slots[slot] ? jobs[slots[slot]!] : undefined;
+    if (!job || NOT_A_ROUTE.test(job)) continue;
+    const name = job.replace(/^\d+\s+/, "").split("·")[0].trim();
+    if (name && !names.includes(name)) names.push(name);
+  }
+  return names.length >= 2 ? names.join(" / ") : null;
 }
 
 /** Receiver routes for a pass, RPO, or play-action call. */
@@ -1269,6 +1307,7 @@ export function buildDiagram(
     routes: turnAll(points(keptRoutes.map((r) => r.path))),
     routeLabels: keptRoutes.map((r) => r.label),
     routeVideoLetters: keptRoutes.map((r) => r.videoLetter ?? null),
+    routeSummary: unit === "offense" ? summarizeRoutes(card, kind, jobs) : null,
     jobs,
     scheme,
     blocks: turnAll(points(blocks)),

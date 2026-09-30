@@ -184,7 +184,7 @@ export function ScoutCard({
   const cardNumber = String(card.playNumber).padStart(2, "0");
   const title = isDefense
     ? `${card.formation || "—"} vs ${card.defFront || "4-3"}`
-    : `${card.formation || "—"} · ${card.playCall || "—"}`;
+    : `${card.formation || "—"} · ${diagram.routeSummary ?? (card.playCall || "—")}`;
   const subtitle = [
     card.hash ? `${card.hash} hash` : null,
     mode === "7v7" ? "7v7" : "Team",

@@ -218,7 +218,10 @@ Free-text tags are classified by keyword (`classifyFormation`, `classifyFront`,
 Card look (`ScoutCard.tsx`, PlayIQ-style):
 
 - **Header:** card #, a centered play title (formation · play call, or formation vs front),
-  the hash and period, and a RUN / PASS / RPO / PLAY ACTION / DEF tag.
+  the hash and period, and a RUN / PASS / RPO / PLAY ACTION / DEF tag. The title reflects the
+  **whole play**: when the call doesn't describe what's drawn (a one-route call drawn as a
+  combination, or AI / coach routes), it names the routes by position instead
+  (`Diagram.routeSummary`: "TRIPS RIGHT · SLANT / FLAT / HITCH", not "· QUICK SLANT").
 - **Tendency badges** (field variant only, never on print): a row under the header showing this
   card's own slice of the whole script's tendencies (`src/lib/tendencies.ts`'s
   `computeTendencies`, computed once by `script/page.tsx` and passed to every card as the

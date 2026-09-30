@@ -689,6 +689,21 @@ describe("buildDiagram (offense only)", () => {
     expect(pro.jobs.Y).toBe("Pass pro");
   });
 
+  it("names the whole play for the title when the call doesn't", () => {
+    expect(buildDiagram(card("trips", "QUICK SLANT")).routeSummary).toBe("Slant / Flat / Hitch");
+    expect(buildDiagram(card("spread", "CURL")).routeSummary).toBe("Curl / Flat");
+    // The call already says it all.
+    expect(buildDiagram(card("spread", "MESH RAIL")).routeSummary).toBeNull();
+    expect(buildDiagram(card("trips", "836")).routeSummary).toBeNull();
+    expect(buildDiagram(card("spread", "4 VERTS")).routeSummary).toBeNull();
+    expect(buildDiagram(card("i-form", "POWER")).routeSummary).toBeNull();
+    // A coach's own routes do too.
+    const own = { ...card("spread", "SLANT"), routeOverrides: { X: { route: "fade" } } };
+    expect(buildDiagram(own).routeSummary).toBe("Slant / Flat / Fade");
+    // Scout D cards don't carry one.
+    expect(buildDiagram(card("trips", "QUICK SLANT"), "team", "defense").routeSummary).toBeNull();
+  });
+
   it("a lone WHEEL or RAIL goes to the back", () => {
     expect(routesBy(buildDiagram(card("spread", "WHEEL")))).toEqual({ H: "WHEEL" });
     expect(buildDiagram(card("spread", "RAIL")).kind).toBe("pass");
