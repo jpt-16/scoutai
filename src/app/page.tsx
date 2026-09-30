@@ -158,6 +158,14 @@ const FAQS: { q: string; a: string }[] = [
     a: "Yes. Print Grid lays out 2 or 4 cards per letter-size page, tuned for black-and-white printing, through your browser's Print / Save PDF.",
   },
   {
+    q: "Does it work with The CoachPad or other sideline tablets?",
+    a: "Yes — as the card maker upstream of it. In Print Grid, choose CoachPad / tablet to export every card in your current view as one PDF (a page per card) or a set of numbered images, sized for a 13.3″ 4:3 screen. Then load that file onto the CoachPad the way you already load files: cloud sync or USB. There are iPad and letter-paper sizes too. ScoutCard AI isn't affiliated with The CoachPad; it just makes files it can open.",
+  },
+  {
+    q: "Can the cards be read in direct sunlight?",
+    a: "Turn on Sunlight in the card view and every card goes pure black on white with thicker lines — no red or orange to wash out on a bright field screen. Sideline exports use Sunlight mode by default.",
+  },
+  {
     q: "Does it work on an iPad?",
     a: "Yes — add it to your Home Screen from Safari and it keeps working offline after the first load, including the script you already imported.",
   },
