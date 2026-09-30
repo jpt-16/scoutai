@@ -12,6 +12,7 @@ import { GoogleGenAI, Type, type Schema } from "@google/genai";
 import { NextResponse } from "next/server";
 import { requireEntitlement } from "@/lib/entitlement";
 import { mapWithConcurrency } from "@/lib/concurrency";
+import { generateJson } from "@/lib/gemini";
 import {
   buildReviewPrompt,
   MAX_REVIEW_ROWS,
@@ -60,49 +61,27 @@ const RESPONSE_SCHEMA: Schema = {
 
 type ChunkAnswer = { results: ReviewResult[] } | { error: string };
 
-/** Gemini's own reason, short and one line, for the coach's notice and the logs. */
-function reason(error: unknown): string {
-  const text = error instanceof Error ? error.message : String(error);
-  const status = text.match(/"status":\s*"([A-Z_]+)"/)?.[1] ?? text.match(/\b(4\d\d|5\d\d)\b/)?.[1];
-  const message = text.match(/"message":\s*"([^"]{1,160})/)?.[1] ?? text.slice(0, 160);
-  return [status, message].filter(Boolean).join(": ").replace(/\s+/g, " ");
-}
-
-/**
- * One chunk of rows. Thinking is off (this is lookup, not reasoning, and it
- * keeps a full game well inside the function's time); if Gemini refuses the
- * schema, it's asked again with plain JSON and the answer is checked here.
- */
+/** One chunk of rows (thinking turned down: this is lookup, and a full game has to finish in time). */
 async function reviewChunk(ai: GoogleGenAI, rows: ReviewRow[]): Promise<ChunkAnswer> {
-  const prompt = buildReviewPrompt(rows);
-  let lastError = "";
-  for (const schema of [RESPONSE_SCHEMA, undefined]) {
-    try {
-      const result = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: [{ role: "user", parts: [{ text: prompt }] }],
-        config: {
-          responseMimeType: "application/json",
-          ...(schema ? { responseSchema: schema } : {}),
-          thinkingConfig: { thinkingBudget: 0 },
-        },
-      });
-      const review: unknown = JSON.parse(result.text ?? "");
-      const problem = validateReview(review);
-      if (problem) {
-        lastError = `unusable answer (${problem})`;
-        continue;
-      }
-      const results = (review as { results: (Omit<ReviewResult, "routes"> & { routes?: unknown })[] }).results.map(
-        (r) => ({ ...r, routes: parseRouteList(r.routes) }),
-      );
-      return { results };
-    } catch (error) {
-      lastError = error instanceof SyntaxError ? "the AI returned invalid JSON" : reason(error);
-      console.error(`review-import: Gemini ${schema ? "with schema" : "plain JSON"} failed`, error);
-    }
+  const answer = await generateJson(ai, {
+    contents: [{ role: "user", parts: [{ text: buildReviewPrompt(rows) }] }],
+    schema: RESPONSE_SCHEMA,
+    fast: true,
+    label: "review-import",
+  });
+  if (!answer.ok) return { error: answer.error };
+  let review: unknown;
+  try {
+    review = JSON.parse(answer.text);
+  } catch {
+    return { error: "the AI returned invalid JSON" };
   }
-  return { error: lastError };
+  const problem = validateReview(review);
+  if (problem) return { error: `unusable answer (${problem})` };
+  const results = (review as { results: (Omit<ReviewResult, "routes"> & { routes?: unknown })[] }).results.map(
+    (r) => ({ ...r, routes: parseRouteList(r.routes) }),
+  );
+  return { results };
 }
 
 export async function POST(request: Request): Promise<NextResponse> {

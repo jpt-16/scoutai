@@ -65,6 +65,7 @@ src/
     secondary.ts           Scout D secondary per formation: typed line / film read → DB spots
     defensiveAligner.ts    Scout D alignment rules: split receivers, safety roll, backers match numbers
     generatedCard.ts       Text-to-card: Gemini prompt, answer validation, grid → card overrides
+    gemini.ts              The one Gemini JSON call: model fallback, schema fallback, real error reasons
     hudlParser.test.ts     Vitest suite
 ```
 
@@ -452,6 +453,19 @@ with none of these set; only the video feature's routes need them.
 - **CLI:** `npx vercel` for a preview, `npx vercel --prod` for production.
 
 `next.config.ts` sends `Cache-Control: no-cache` for `/sw.js` so iPads pick up new versions.
+
+## Which Gemini model (`src/lib/gemini.ts`)
+
+Every AI route (text cards, import review, single / batch clips, the secondary read) calls Gemini
+through `generateJson`, never `generateContent` directly. It tries `GEMINI_MODEL` (optional Vercel
+env var: pin or swap a model with no code change), then `gemini-flash-latest` (Google's alias for
+the current Flash), then `gemini-2.5-flash`; a model Google no longer serves (404 / NOT_FOUND)
+falls through to the next. Every route used to be pinned to `gemini-2.5-flash`, so when that one
+went away every AI feature failed at once with a generic "couldn't". Per model it tries the
+response schema (plus thinking turned down for `fast` lookup calls), then without the thinking
+setting, then plain JSON, on a 400; a bad key, used-up quota or outage stops at once. Failures
+come back as Gemini's own reason ("RESOURCE_EXHAUSTED: …"), which every route puts in its error
+so the coach's notice says what actually went wrong. Callers still validate the JSON themselves.
 
 ## Video analytics service (`video-service/`)
 

@@ -13,6 +13,7 @@
  */
 
 import { GoogleGenAI, Type, type Schema } from "@google/genai";
+import { generateJson } from "./gemini";
 import { validateDetectedPlay, type DetectedPlay } from "./videoImport";
 
 /** Thrown by `detectPlayFromClip` with the HTTP status the failure maps to. */
@@ -187,23 +188,20 @@ export async function detectPlayFromClip({
 }: DetectClipOptions): Promise<DetectedPlay> {
   const { fileUri, mimeType } = await uploadClipToGemini(ai, blobToken, videoUrl);
 
-  let responseText: string | undefined;
-  try {
-    const result = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: [
-        {
-          role: "user",
-          parts: [{ fileData: { fileUri, mimeType: mimeType ?? "video/mp4" } }, { text: buildDetectionPrompt(playCall) }],
-        },
-      ],
-      config: { responseMimeType: "application/json", responseSchema: DETECTION_RESPONSE_SCHEMA },
-    });
-    responseText = result.text;
-  } catch (error) {
-    console.error("videoDetection: Gemini generateContent failed", error);
-    throw new VideoDetectionError("The vision model could not process this clip", 502);
+  const answer = await generateJson(ai, {
+    contents: [
+      {
+        role: "user",
+        parts: [{ fileData: { fileUri, mimeType: mimeType ?? "video/mp4" } }, { text: buildDetectionPrompt(playCall) }],
+      },
+    ],
+    schema: DETECTION_RESPONSE_SCHEMA,
+    label: "videoDetection",
+  });
+  if (!answer.ok) {
+    throw new VideoDetectionError(`The vision model could not process this clip (${answer.error})`, 502);
   }
+  const responseText = answer.text;
 
   let detection: unknown;
   try {

@@ -15,6 +15,7 @@ import { GoogleGenAI, Type, type Schema } from "@google/genai";
 import { NextResponse } from "next/server";
 import { clampSafetyDepth } from "@/lib/defensiveAligner";
 import { requireEntitlement } from "@/lib/entitlement";
+import { generateJson } from "@/lib/gemini";
 import {
   applyGeneratedPlay,
   buildGenerationPrompt,
@@ -149,18 +150,15 @@ export async function POST(request: Request): Promise<NextResponse> {
 
   const card = shellCard(input);
   const ctx = generationContext(card);
-  let responseText: string | undefined;
-  try {
-    const result = await new GoogleGenAI({ apiKey }).models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: [{ role: "user", parts: [{ text: buildGenerationPrompt(input, ctx) }] }],
-      config: { responseMimeType: "application/json", responseSchema: RESPONSE_SCHEMA },
-    });
-    responseText = result.text;
-  } catch (error) {
-    console.error("generate-scout-card: Gemini generateContent failed", error);
-    return NextResponse.json({ error: "The AI couldn't draw this play. Try again." }, { status: 502 });
+  const answer = await generateJson(new GoogleGenAI({ apiKey }), {
+    contents: [{ role: "user", parts: [{ text: buildGenerationPrompt(input, ctx) }] }],
+    schema: RESPONSE_SCHEMA,
+    label: "generate-scout-card",
+  });
+  if (!answer.ok) {
+    return NextResponse.json({ error: `The AI couldn't draw this play (${answer.error}).` }, { status: 502 });
   }
+  const responseText = answer.text;
 
   let generated: unknown;
   try {

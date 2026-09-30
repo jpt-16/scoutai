@@ -12,6 +12,7 @@ import { checkRateLimit } from "@vercel/firewall";
 import { GoogleGenAI, Type, type Schema } from "@google/genai";
 import { NextResponse } from "next/server";
 import { requireEntitlement } from "@/lib/entitlement";
+import { generateJson } from "@/lib/gemini";
 import { checkBlobRateLimit } from "@/lib/rateLimit";
 import { alignmentFromFilm, DB_SLOTS, FILM_ANCHORS } from "@/lib/secondary";
 import { TIER_LIMITS } from "@/lib/usageLimits";
@@ -95,12 +96,13 @@ export async function POST(request: Request): Promise<NextResponse> {
   let responseText: string | undefined;
   try {
     const { fileUri, mimeType } = await uploadClipToGemini(ai, blobToken, body.videoUrl);
-    const result = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
+    const answer = await generateJson(ai, {
       contents: [{ role: "user", parts: [{ fileData: { fileUri, mimeType } }, { text: PROMPT }] }],
-      config: { responseMimeType: "application/json", responseSchema: RESPONSE_SCHEMA },
+      schema: RESPONSE_SCHEMA,
+      label: "read-secondary",
     });
-    responseText = result.text;
+    if (!answer.ok) throw new VideoDetectionError(`The AI couldn't read this clip (${answer.error})`, 502);
+    responseText = answer.text;
   } catch (error) {
     const status = error instanceof VideoDetectionError ? error.status : 502;
     const message = error instanceof VideoDetectionError ? error.message : "The AI couldn't read this clip";
