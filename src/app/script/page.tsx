@@ -19,6 +19,7 @@ import {
   Shield,
   Sparkles,
   Upload,
+  Sun,
 } from "lucide-react";
 import { AppGate } from "@/components/AppGate";
 import { BrandMark } from "@/components/BrandMark";
@@ -130,6 +131,8 @@ function isDemoScript(script: StoredScript | null): boolean {
   return Boolean(script && script.films.length === 1 && script.films[0] === DEMO_FILE_NAME);
 }
 
+
+const SUNLIGHT_KEY = "scoutcard:sunlight:v1";
 /**
  * `demoMode`: someone without access looking at the public demo. The five
  * demo cards work (swipe, Scout O/D, print, draw), but nothing new comes in:
@@ -157,6 +160,15 @@ function ScriptApp({ demoMode = false }: { demoMode?: boolean }) {
   const [generating, setGenerating] = useState(false);
   const [secondaryOpen, setSecondaryOpen] = useState(false);
   const [adjusting, setAdjusting] = useState(false);
+  // Sunlight mode (black and white, thick lines), remembered on this iPad.
+  const [sunlight, setSunlight] = useState(false);
+  useEffect(() => {
+    try {
+      setSunlight(window.localStorage.getItem(SUNLIGHT_KEY) === "1");
+    } catch {
+      // Private mode: stays off.
+    }
+  }, []);
   const [drawing, setDrawing] = useState(false);
   const [inkColor, setInkColor] = useState(INK_COLORS[0].value);
   // Card id + unit waiting on a second tap of Clear.
@@ -637,6 +649,28 @@ function ScriptApp({ demoMode = false }: { demoMode?: boolean }) {
             </div>
           </>
         )}
+        <button
+          type="button"
+          aria-pressed={sunlight}
+          onClick={() => {
+            const next = !sunlight;
+            setSunlight(next);
+            try {
+              window.localStorage.setItem(SUNLIGHT_KEY, next ? "1" : "0");
+            } catch {
+              // Private mode: it just won't be remembered.
+            }
+          }}
+          title="Sunlight mode: black and white, thick lines"
+          className={cn(
+            "flex h-[54px] shrink-0 items-center gap-2 rounded-xl border px-3 text-base font-bold transition-colors",
+            "focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none",
+            sunlight ? "border-foreground bg-foreground text-background" : "bg-secondary hover:bg-accent",
+          )}
+        >
+          <Sun className="size-[18px]" aria-hidden="true" />
+          <span className="hidden lg:inline">Sunlight</span>
+        </button>
         <TabsList className="h-[54px] rounded-xl border bg-secondary p-1">
           <TabsTrigger
             value="field"
@@ -991,6 +1025,7 @@ function ScriptApp({ demoMode = false }: { demoMode?: boolean }) {
                     mode={cardMode}
                     unit={unit}
                     tendencies={editable ? tendencies : undefined}
+                    contrast={sunlight ? "high" : "normal"}
                     onMoveDefender={
                       adjusting && unit === "defense"
                         ? (id, at) =>

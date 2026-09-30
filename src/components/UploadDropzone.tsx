@@ -31,7 +31,13 @@ export function UploadDropzone({ onFiles, onDemo, onPasteText, busy, error }: Up
     const usable = files.filter(isBreakdownFile);
     const skipped = files.filter((f) => !isBreakdownFile(f)).map((f) => `"${f.name}"`);
     if (usable.length === 0) {
-      setLocalError(`${skipped.join(", ")} isn't a .csv or .xlsx file. Export the breakdown as one of those.`);
+      // Old Excel (.xls, 97-2003) isn't readable in the browser without a library with open security issues.
+      const oldExcel = files.some((f) => /\.xls$/i.test(f.name));
+      setLocalError(
+        oldExcel
+          ? `${skipped.join(", ")} is an old Excel file (.xls). Open it in Excel or Google Sheets and save it as .xlsx or CSV, then upload that.`
+          : `${skipped.join(", ")} isn't a .csv or .xlsx file. Export the breakdown as one of those.`,
+      );
       return;
     }
     setLocalError(skipped.length ? `Skipped ${skipped.join(", ")}: not a .csv or .xlsx file.` : null);

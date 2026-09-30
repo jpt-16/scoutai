@@ -631,10 +631,10 @@ describe("buildDiagram (offense only)", () => {
     expect(routesBy(d)).toEqual({ X: "8", F: "DRAG", H: "RAIL", Y: "DRAG", Z: "7" });
     expect(d.jobs.H).toMatch(/Rail/);
     const at = (label: string) => d.routes.find((r) => r[0].x === d.players.find((p) => p.label === label)!.x)!;
-    // The drags cross over the ball in opposite directions, F at 2 and Y at 3.
+    // The drags cross over the ball in opposite directions inside 3-5 yards: F sets the mesh at 5, Y under at 3.
     const f = at("F");
     const y = at("Y");
-    expect(140 - f[1].y).toBe(2 * 7);
+    expect(140 - f[1].y).toBe(5 * 7);
     expect(140 - y[1].y).toBe(3 * 7);
     expect(f[2].x).toBeGreaterThan(250);
     expect(y[2].x).toBeLessThan(250);

@@ -66,11 +66,12 @@ const drag = (depth: number, job: string): ConceptRoute => ({
 
 export const CONCEPT_DICTIONARY: Record<string, Concept> = {
   MESH: {
-    // The inside receivers drag under each other over the ball; post / corner outside.
+    // The inside receivers cross over the ball at 3-5 yards: the backside one
+    // sets the mesh at 5, the play-side one runs under him at 3; post / corner outside.
     keywords: ["MESH"],
     routes: [
       { who: ["bs1"], route: tree("post", "8 Post") },
-      { who: ["bs2"], route: drag(2, "Mesh drag at 2") },
+      { who: ["bs2"], route: drag(5, "Mesh drag at 5, sets the mesh") },
       { who: ["ps2"], route: drag(3, "Mesh drag at 3, under") },
       { who: ["ps1"], route: tree("corner", "7 Corner") },
     ],

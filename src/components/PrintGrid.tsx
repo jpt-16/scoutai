@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Printer } from "lucide-react";
+import { Printer, Tablet } from "lucide-react";
+import { ExportModal } from "@/components/ExportModal";
 import { ScoutCard } from "@/components/ScoutCard";
 import { Button } from "@/components/ui/button";
 import type { DiagramMode, ScoutUnit } from "@/lib/formations";
@@ -43,6 +44,7 @@ export function PrintGrid({
   unit?: ScoutUnit;
 }) {
   const [perPage, setPerPage] = useState<PerPage>(4);
+  const [exporting, setExporting] = useState(false);
   const layout = LAYOUTS[perPage];
   const pages = chunk(cards, perPage);
 
@@ -77,14 +79,29 @@ export function PrintGrid({
         </p>
         <Button
           size="lg"
+          variant="outline"
           className="ml-auto"
-          onClick={() => window.print()}
+          onClick={() => setExporting(true)}
           disabled={cards.length === 0}
         >
+          <Tablet aria-hidden="true" />
+          CoachPad / tablet
+        </Button>
+        <Button size="lg" onClick={() => window.print()} disabled={cards.length === 0}>
           <Printer aria-hidden="true" />
           Print / Save PDF
         </Button>
       </div>
+      {exporting && (
+        <ExportModal
+          open={exporting}
+          onOpenChange={setExporting}
+          cards={cards}
+          fileName={fileName}
+          mode={mode}
+          unit={unit}
+        />
+      )}
 
       <div className="flex-1 overflow-auto bg-muted p-6 print:overflow-visible print:bg-white print:p-0">
         <div className="mx-auto flex w-fit flex-col gap-6 print:gap-0">

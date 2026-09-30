@@ -58,6 +58,11 @@ interface ScoutCardProps {
    * Grid) render exactly as before.
    */
   tendencies?: ScriptTendencies;
+  /**
+   * `high` = sunlight mode: pure black on white, lines half again as thick,
+   * no color at all, for field screens (iPad, The CoachPad) in direct sun.
+   */
+  contrast?: "normal" | "high";
   className?: string;
 }
 
@@ -103,6 +108,28 @@ const PALETTES = {
     badgeBg: "#111111",
     badgeInk: "#ffffff",
   },
+} as const;
+
+/** Sunlight mode: everything black on white, grid still readable but faint. */
+const SUNLIGHT = {
+  card: "#ffffff",
+  ink: "#000000",
+  muted: "#000000",
+  rule: "#000000",
+  box: "#ffffff",
+  field: "#ffffff",
+  grid: "#8c8c8c",
+  hash: "#5c5c5c",
+  numbers: "#8c8c8c",
+  los: "#000000",
+  offense: "#000000",
+  offenseFill: "#ffffff",
+  block: "#000000",
+  route: "#000000",
+  ball: "#000000",
+  defense: "#000000",
+  badgeBg: "#000000",
+  badgeInk: "#ffffff",
 } as const;
 
 /** Card aspect ratio (width / height) shared with layouts that size cards. */
@@ -164,9 +191,13 @@ export function ScoutCard({
   ink,
   onEditDetectedRoute,
   tendencies,
+  contrast = "normal",
   className,
 }: ScoutCardProps) {
-  const c = PALETTES[variant];
+  const sunlight = contrast === "high";
+  const c = sunlight ? SUNLIGHT : PALETTES[variant];
+  /** Line weight: half again as thick in sunlight mode. */
+  const w = (n: number) => (sunlight ? n * 1.5 : n);
   const diagram = buildDiagram(card, mode, unit);
   const rows = buildAssignments(card, diagram);
   const uid = useId().replace(/[^a-zA-Z0-9]/g, "");
@@ -325,7 +356,9 @@ export function ScoutCard({
         ref={svgRef}
         viewBox={`0 0 ${FIELD.width} ${FIELD.height}`}
         preserveAspectRatio="xMidYMid meet"
-        className="block min-h-0 w-full flex-1"
+        // Never select text on a long press; while dragging X's or drawing, the page
+        // doesn't scroll under the finger or Pencil either.
+        className={cn("block min-h-0 w-full flex-1 select-none", (movable || ink) && "touch-none")}
         style={{ background: c.field }}
         role="img"
         aria-label={
@@ -413,12 +446,12 @@ export function ScoutCard({
         <rect x={0} y={diagram.losY - 2.5} width={FIELD.width} height={5} fill={c.los} />
 
         {/* Blocks, pulls, fakes, routes, ball carrier. */}
-        <g fill="none" stroke={c.block} strokeWidth={2.2} strokeLinecap="butt" strokeLinejoin="miter">
+        <g fill="none" stroke={c.block} strokeWidth={w(2.2)} strokeLinecap="butt" strokeLinejoin="miter">
           {diagram.blocks.map((b, i) => (
             <path key={i} d={blockPath(b)} />
           ))}
           {diagram.targetBlocks.map(({ path }, i) => (
-            <path key={`t${i}`} d={blockPath(path)} strokeWidth={2.5} />
+            <path key={`t${i}`} d={blockPath(path)} strokeWidth={w(2.5)} />
           ))}
           {diagram.pulls.map((p, i) => (
             <path key={`p${i}`} d={linePath(p, 3)} markerEnd={marker("block")} />
@@ -452,7 +485,7 @@ export function ScoutCard({
               key={`f${i}`}
               d={linePath(p, 3)}
               stroke={c.ball}
-              strokeWidth={2.2}
+              strokeWidth={w(2.2)}
               strokeDasharray="7 6"
               markerEnd={marker("ball")}
             />
@@ -467,7 +500,7 @@ export function ScoutCard({
                 key={`r${i}`}
                 d={linePath(live, 3)}
                 stroke={c.route}
-                strokeWidth={2.5}
+                strokeWidth={w(2.5)}
                 markerEnd={marker("route")}
               />
             );
@@ -476,7 +509,9 @@ export function ScoutCard({
             <path
               d={linePath(diagram.carrier, 3)}
               stroke={c.ball}
-              strokeWidth={3}
+              strokeWidth={w(3)}
+              // In black and white the ball carrier reads as a long dash.
+              strokeDasharray={sunlight ? "14 4" : undefined}
               markerEnd={marker("ball")}
             />
           )}
@@ -629,7 +664,7 @@ export function ScoutCard({
               <path
                 d={`M ${p.x - 7} ${p.y - 7} L ${p.x + 7} ${p.y + 7} M ${p.x + 7} ${p.y - 7} L ${p.x - 7} ${p.y + 7}`}
                 stroke={c.defense}
-                strokeWidth={3.5}
+                strokeWidth={w(3.5)}
                 strokeLinecap="round"
               />
               <text
@@ -658,7 +693,7 @@ export function ScoutCard({
               height={18}
               fill={c.offenseFill}
               stroke={c.offense}
-              strokeWidth={2.5}
+              strokeWidth={w(2.5)}
             />
           ) : (
             <g key={i}>
@@ -668,7 +703,7 @@ export function ScoutCard({
                 r={p.label ? 11 : 9}
                 fill={c.offenseFill}
                 stroke={c.offense}
-                strokeWidth={2.5}
+                strokeWidth={w(2.5)}
               />
               {p.label && (
                 <text

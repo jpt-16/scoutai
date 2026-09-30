@@ -45,6 +45,7 @@ src/
   components/
     ScoutCard.tsx          PlayIQ-style card: title header, white-field SVG, assignment table
     PrintGrid.tsx          Letter-size sheets, 2-up portrait / 4-up landscape, window.print()
+    ExportModal.tsx        CoachPad / iPad / letter export: one card per page, a PDF or a ZIP of PNGs
     FilterBar.tsx          Down / formation toggle pills
     UploadDropzone.tsx     Drag-and-drop + file picker (multiple films, .csv/.xlsx) + paste-to-import
     BatchUploader.tsx      Batch video import: CSV + zip of clips, matched by play number
@@ -66,6 +67,9 @@ src/
     defensiveAligner.ts    Scout D alignment rules: split receivers, safety roll, backers match numbers
     generatedCard.ts       Text-to-card: Gemini prompt, answer validation, grid → card overrides
     gemini.ts              The one Gemini JSON call: model fallback, schema fallback, real error reasons
+    exportUtils.ts         Export targets (CoachPad 13.3" 4:3, iPad, letter), card fit, file names
+  types/
+    playbook.ts            Re-exports the playbook types under one roof (PlayCard = HudlPlayCard, …)
     hudlParser.test.ts     Vitest suite
 ```
 
@@ -187,7 +191,7 @@ Free-text tags are classified by keyword (`classifyFormation`, `classifyFront`,
     outside in (`ps1`/`ps2`/`ps3`, `bs1`/`bs2`, `back`), so a template works from any formation
     and mirrors with the play; in Deuces going right that's Z/Y, X/F and H. A route is a tree
     kind (drawn with the staff's own technique, e.g. MESH's 8 post and 7 corner) or a yard
-    vector for routes off the tree (`conceptPath`: MESH drags at 2 and 3 crossing over the ball,
+    vector for routes off the tree (`conceptPath`: MESH drags at 3 and 5 crossing over the ball,
     FLOOD's sail, DAGGER's dig at 15, the deep cross). **RAIL / WHEEL are separate from the
     concept**: a back tag (`BACK_TAGS`) that rides on any of them ("MESH RAIL", "SMASH RAIL")
     and sends the back out to the backside flat and up the sideline, stepping up in front of
@@ -430,6 +434,22 @@ mode come from the period, the cards keep playsheet order, and PREVIOUS/NEXT rol
 adjacent period. Rep cards (`id` starts `rep-`, `isRepCard`) aren't in the saved script, so Edit
 play / Draw / Adjust X's are off for them and they show no tendency badges. Print Grid prints the
 current period.
+
+## Sideline screens: sunlight mode and CoachPad export
+
+- **Sunlight** (script header toggle, remembered per device in `scoutcard:sunlight:v1`):
+  `ScoutCard`'s `contrast="high"` draws everything pure black on white with lines half again as
+  thick (`SUNLIGHT` palette, `w()`), and the ball carrier as a long dash, since color no longer
+  tells it from a route. For a field screen in direct sun.
+- **CoachPad / tablet** (Print Grid): `ExportModal` exports every card in the current view, one
+  per page, as one PDF or a ZIP of numbered PNGs (`01-play-14-duces.png`), for The CoachPad (13.3″
+  4:3, 1600 × 1200, 10.64″ × 7.98″ pages), an iPad (4:3, 2048 × 1536) or letter paper
+  (`EXPORT_TARGETS`). Each card is drawn off screen at the target's own pixel size, fitted
+  without cropping (`fitCard`), captured with `html-to-image` (fonts embedded once) and packed
+  with `jsPDF` or JSZip, all dynamically imported, all in the browser. Sunlight mode is on by
+  default there. Old Excel `.xls` isn't read (the only browser reader, SheetJS, is either an old
+  npm build with open security advisories or a CDN build this environment can't install); the
+  upload box says to save it as `.xlsx` or CSV.
 
 ## Offline / iPad install
 
