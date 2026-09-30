@@ -112,3 +112,39 @@ export function detectedRouteToPathDeltas(
   if (rest.every((p) => Math.hypot(p.x - start.x, p.y - start.y) < 1)) return [];
   return rest.map((p) => [p.x - start.x, p.y - start.y]);
 }
+
+/**
+ * Film routes in field yards (the vision model's answer since it measures off
+ * the yard lines instead of the screen): `x` = yards to the offense's right
+ * (+) or left (−), `y` = yards past the line of scrimmage (+) or into the
+ * backfield (−). Unlike frame percentages this doesn't depend on where the
+ * camera stood or whether it panned: a sideline camera's "across the screen"
+ * and an end-zone camera's "up the screen" both come back as downfield yards.
+ */
+export interface YardScale {
+  /** Card units per yard across the field. */
+  across: number;
+  /** Card units per yard downfield. */
+  downfield: number;
+}
+
+/** Yards to card units, offense view: downfield is up (smaller y). Absurd values are clamped to the field. */
+export function yardsToCard(p: PercentPoint, scale: YardScale): CardPoint {
+  const across = Math.max(-30, Math.min(30, p.x));
+  const downfield = Math.max(-20, Math.min(60, p.y));
+  return { x: across * scale.across, y: -downfield * scale.downfield };
+}
+
+/** Like `detectedRouteToPathDeltas`, for a route measured in field yards. */
+export function yardRouteToPathDeltas(
+  route: DetectedPlayerRoute,
+  scale: YardScale,
+  tolerance: number = DEFAULT_SIMPLIFY_TOLERANCE,
+): [number, number][] {
+  const absolute = [route.start, ...route.waypoints, route.endpoint].map((p) => yardsToCard(p, scale));
+  const simplified = simplifyPath(absolute, tolerance);
+  const start = simplified[0];
+  const rest = simplified.slice(1);
+  if (rest.every((p) => Math.hypot(p.x - start.x, p.y - start.y) < 1)) return [];
+  return rest.map((p) => [p.x - start.x, p.y - start.y]);
+}

@@ -27,8 +27,9 @@ const VIDEO_STEPS: { icon: typeof Upload; title: string; detail: string }[] = [
     title: "Upload one play's clip",
     detail:
       "Pick a short clip (10–20 seconds is plenty) of a single play, from a sideline or " +
-      "endzone angle. It uploads straight to a private cloud file — never held in the app or " +
-      "shown to anyone else.",
+      "endzone angle; a screen recording of Hudl works too, and its data bar (formation, play, " +
+      "hash) is read onto the card. It uploads straight to a private cloud file — never held in " +
+      "the app or shown to anyone else.",
   },
   {
     icon: ScanEye,
@@ -48,9 +49,9 @@ const VIDEO_STEPS: { icon: typeof Upload; title: string; detail: string }[] = [
     icon: MousePointerClick,
     title: "You correct it by dragging",
     detail:
-      "The AI is reading camera angle and depth by eye, not measuring the field — it's a rough " +
-      "starting point, not a measurement. Tap and drag any route's break point on the card to " +
-      "match what you actually saw on tape.",
+      "The AI measures each route in yards off the yard lines and hashes, but it's still reading " +
+      "film by eye — a starting point, not a measurement. Tap and drag any route's break point on " +
+      "the card to match what you actually saw on tape.",
   },
 ];
 

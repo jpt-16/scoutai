@@ -721,7 +721,8 @@ function fieldMarkings(yardLine: number | null): {
 }
 
 /** Horizontal pixels per yard (the field is 53⅓ yards wide). */
-const YARD_X = FIELD.width / (160 / 3);
+/** Pixels per yard, across the field (53⅓ yards sideline to sideline). */
+export const YARD_X = FIELD.width / (160 / 3);
 /** A break of `yards` at 45° on the field (x and y scales differ on the card). */
 const diag = (yards: number) => [yards * YARD_X, yards * YARD_PX] as const;
 /** Just inside the sideline on this receiver's side. */

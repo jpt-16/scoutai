@@ -124,3 +124,64 @@ describe("the QB anchor: who got the ball and where", () => {
     );
   });
 });
+
+describe("film read in field yards (a sideline Hudl recording, Trio Slot RPO Bubble)", () => {
+  // What the film prompt asks for on the user's test clip: positions in yards from the ball,
+  // Hudl's data bar copied, and letters the model got wrong on purpose (it called the lone
+  // receiver Z and the widest trips receiver X).
+  const detection: DetectedPlay = {
+    playName: "Bubble screen",
+    formation: "Trips",
+    camera: "sideline",
+    units: "yards",
+    hudl: { playNumber: "5", formation: "Trio SLOT", playCall: "RPO BUBBLE", playType: "Pass", hash: "R", offStrength: "L", playDir: "L" },
+    playType: "pass",
+    ballCarrier: "H",
+    ballDirection: "left",
+    players: [
+      { label: "Q", start: { x: 0, y: -5 }, waypoints: [], endpoint: { x: 0, y: -6 } },
+      { label: "Z", start: { x: 22, y: -1 }, waypoints: [], endpoint: { x: 22, y: 3 } }, // lone WR, offense's right: stalk
+      { label: "H", start: { x: -9, y: -1 }, waypoints: [{ x: -12, y: -2 }], endpoint: { x: -18, y: 1 } }, // bubble
+      { label: "Y", start: { x: -16, y: -1 }, waypoints: [], endpoint: { x: -17, y: 3 } }, // blocks
+      { label: "X", start: { x: -23, y: -1 }, waypoints: [], endpoint: { x: -23, y: 4 } }, // blocks
+    ],
+  };
+  const card = buildCardFromDetection(detection, "test_2.mp4");
+
+  it("takes the coach's own tags from Hudl's data bar", () => {
+    expect(card).toMatchObject({
+      playNumber: 5,
+      formation: "Trio SLOT",
+      playCall: "RPO BUBBLE",
+      hash: "R",
+      formationKey: "trips",
+      formationSide: "left",
+      playDirection: "left",
+    });
+  });
+
+  it("puts each route on the player who actually lined up there, whatever the model called him", () => {
+    const o = card.routeOverrides!;
+    // The lone receiver (the card's X) goes straight upfield 4 yards: 4 × 7 px, nothing across.
+    expect(o.X.path).toEqual([[0, -4 * 7]]);
+    // The inside trips receiver (H) is the bubble: out to the left and back first, marked BALL.
+    expect(o.H.tag).toBe("BALL");
+    const [first] = o.H.path!;
+    expect(first[0]).toBeLessThan(0); // toward the offense's left
+    expect(first[1]).toBeGreaterThan(0); // behind the line
+    // The widest trips receiver (the card's Z) got the route the model labeled X.
+    expect(o.Z.path).toEqual([[0, -5 * 7]]);
+  });
+
+  it("is scale-true, so a sideline angle doesn't turn routes sideways", () => {
+    const d = buildDiagram(card, "team", "offense");
+    const x = d.players.find((p) => p.label === "X")!;
+    const xRoute = d.routes[d.routeVideoLetters.indexOf("X")];
+    expect(xRoute[xRoute.length - 1].x).toBeCloseTo(x.x, 0);
+    expect(x.y - xRoute[xRoute.length - 1].y).toBeCloseTo(4 * 7, 0);
+  });
+
+  it("still reads an old frame-percent answer the old way", () => {
+    expect(buildCardFromDetection(VALID_DETECTION, "old").routeOverrides?.X?.path?.length).toBeGreaterThan(0);
+  });
+});

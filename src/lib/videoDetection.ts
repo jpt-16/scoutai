@@ -26,20 +26,37 @@ export class VideoDetectionError extends Error {
   }
 }
 
-const percentPointSchema: Schema = {
+/** A spot on the field in yards from the ball at the snap (not the screen: see `DETECTION_PROMPT`). */
+const yardPointSchema: Schema = {
   type: Type.OBJECT,
   properties: {
-    x: { type: Type.NUMBER, description: "0-100, percent of frame width from the left" },
-    y: { type: Type.NUMBER, description: "0-100, percent of frame height from the top" },
+    x: { type: Type.NUMBER, description: "Yards to the offense's right (+) or left (-) of the ball" },
+    y: { type: Type.NUMBER, description: "Yards past the line of scrimmage (+) or behind it into the backfield (-)" },
   },
   required: ["x", "y"],
 };
+
+const barField = (description: string): Schema => ({ type: Type.STRING, description });
 
 export const DETECTION_RESPONSE_SCHEMA: Schema = {
   type: Type.OBJECT,
   properties: {
     playName: { type: Type.STRING, description: "Short label for the play concept" },
     formation: { type: Type.STRING, description: "e.g. \"Spread 2x2\", \"Trips Right\"" },
+    camera: { type: Type.STRING, enum: ["sideline", "endzone", "other"], description: "Where the camera is" },
+    hudl: {
+      type: Type.OBJECT,
+      description: "Hudl's data bar if it's on screen (a recording of Hudl), copied exactly; \"\" for columns not shown",
+      properties: {
+        playNumber: barField("PLAY #"),
+        formation: barField("OFF FORM"),
+        playCall: barField("OFF PLAY"),
+        playType: barField("PLAY TYPE"),
+        hash: barField("HASH"),
+        offStrength: barField("OFF STR"),
+        playDir: barField("PLAY DIR"),
+      },
+    },
     playType: { type: Type.STRING, enum: ["run", "pass", "unknown"], description: "What the QB did with the ball" },
     ballCarrier: {
       type: Type.STRING,
@@ -62,9 +79,9 @@ export const DETECTION_RESPONSE_SCHEMA: Schema = {
             description: "This staff's letter convention — Q=QB, F/H=backs, X/Y/Z=receivers/TE",
           },
           routeType: { type: Type.STRING, description: "A short guess at the route name, if obvious" },
-          start: percentPointSchema,
-          waypoints: { type: Type.ARRAY, items: percentPointSchema },
-          endpoint: percentPointSchema,
+          start: yardPointSchema,
+          waypoints: { type: Type.ARRAY, items: yardPointSchema },
+          endpoint: yardPointSchema,
         },
         required: ["label", "start", "waypoints", "endpoint"],
       },
@@ -99,13 +116,34 @@ staff's own convention (not QB/RB/TE): Q = quarterback, F and H = the running ba
 lines up ahead of H), X, Y, Z = wide receivers or a tight end. Only report players you can
 actually see and track for at least part of the play; never invent one you can't follow.
 
+THE CLIP ITSELF:
+- It may be a screen recording of Hudl or another video player: ignore everything that isn't the
+  field (menus, the data bar, playback controls, a desktop or other windows at the start or end).
+- If Hudl's data bar is on screen (PLAY #, ODK, DN/DIST, HASH, OFF FORM, OFF PLAY, OFF STR, PLAY
+  DIR...), copy it into "hudl" exactly as written. It's the coach's own tagging of this play.
+- Say where the camera is: "sideline" (the offense moves across the screen; the most common high
+  school angle), "endzone" (the offense moves up or down the screen) or "other". The camera may
+  pan and zoom to follow the ball.
+
+POSITIONS ARE FIELD YARDS, NEVER SCREEN POSITION. Measure every point from the ball at the snap,
+using the yard lines (5 yards apart), hash marks and numbers painted on the field, not where the
+player is on the screen:
+- x = yards to the OFFENSE'S right (+) or left (-) of the ball, facing upfield the way the QB
+  faces. A receiver split out 15 yards to the offense's left is x = -15; the field is 53 yards
+  wide, so x stays within about -27..27.
+- y = yards past the line of scrimmage (+, upfield) or behind it into the backfield (-). A
+  shotgun QB is about y = -5; a 10-yard out breaks at y = 10.
+From a sideline camera, upfield runs ACROSS the screen, toward the side the QB faces, and the
+offense's left / right run toward or away from the camera; from an end zone camera behind the
+offense, upfield is up the screen. Because the camera may pan, track each player against the
+field markings, never against the frame.
+
 For each player give:
-- start: where they line up at the snap, as {x, y} percent of the frame (0-100 each axis, 0,0
-  is the top-left corner)
-- waypoints: the points along their path where their direction clearly changes (zero or more —
+- start: where he lines up at the snap, {x, y} in yards as above
+- waypoints: the points along his path where his direction clearly changes (zero or more;
   omit for a straight release)
-- endpoint: where they are when the play ends or the clip cuts
-- routeType: a short guess at the route name if it's obvious (e.g. "SLANT", "GO", "BUBBLE") —
+- endpoint: where he is when the play ends or the clip cuts
+- routeType: a short guess at the route name if it's obvious (e.g. "SLANT", "GO", "BUBBLE");
   omit if you're not confident
 
 Also give playName (a short label for what the offense ran) and formation (e.g. "Spread 2x2",
@@ -247,5 +285,6 @@ export async function detectPlayFromClip({
     throw new VideoDetectionError(`The vision model's response was unusable: ${problem}`, 502);
   }
 
-  return detection as DetectedPlay;
+  // The prompt asks for field yards (not frame percentages): the card maps them to scale.
+  return { ...(detection as DetectedPlay), units: "yards" };
 }

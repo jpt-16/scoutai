@@ -47,6 +47,10 @@ const PROMPT = `You are a high school defensive coordinator breaking down film.
 
 ${QB_ANCHOR_RULES}
 
+The clip may be a screen recording of Hudl or another player: ignore everything that isn't the field
+(menus, the data bar, playback controls, a desktop), and remember the camera may be on the sideline
+and may pan, so measure against the field markings, never the screen.
+
 Using that anchor, look at the moment just before the snap and find the defense's secondary (the
 team across the line facing the QB): the two cornerbacks and the two safeties.
 

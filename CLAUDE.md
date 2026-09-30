@@ -518,11 +518,21 @@ output) to detect each skill player's route. Also needs a `GEMINI_API_KEY` env v
 project settings + `.env.local`).
 
 This is **not a calibrated top-down transform** — there's no homography or clicked calibration
-points here, unlike `video-service/`. It's the vision model's own spatial guess from an oblique
-camera angle, linearly stretched onto the card's field canvas by `src/lib/coordinateMapper.ts`
-(which also simplifies the model's noisy waypoints down to the app's usual straight-stem-with-
-sharp-break shape, `RDP`-style, instead of a literal curve). Treat it as a rough starting point,
-not a measurement.
+points here, unlike `video-service/`. The model reports every point in **field yards from the ball
+at the snap** (x = yards to the offense's right / left, y = yards past the line / into the
+backfield), measured off the yard lines, hashes and numbers, never the screen. It used to answer
+in percent of the frame, stretched straight onto the card, which only works for an end zone
+camera: from the sideline (the usual high school angle) upfield runs across the screen, so every
+route came out turned 90°, and a panning camera or a screen recording of Hudl (playback controls,
+a desktop) threw it further. `coordinateMapper.ts`'s `yardRouteToPathDeltas` maps yards to scale
+(`YARD_X` across, `YARD_PX` downfield) and simplifies the path (`RDP`-style) into the app's
+straight stems and sharp breaks; `detectPlayFromClip` stamps answers `units: "yards"`, and an old
+frame-percent answer still maps the old way. `matchDetectedLetters` puts each detected player on
+the card's own player who lined up nearest where he stood (Q stays Q), so the route lands on the
+right man even when the model's letter doesn't fit this staff's formation. If Hudl's **data bar**
+is on screen the model copies it (`hudl`: PLAY #, OFF FORM, OFF PLAY, PLAY TYPE, HASH, OFF STR,
+PLAY DIR), and a single-clip card takes the formation, call, hash, strength and direction from it
+(`hudlBarFields`) over the model's own guess. Still a rough starting point, not a measurement.
 
 `src/lib/videoImport.ts`'s `buildCardFromDetection` turns a validated detection into a real
 `HudlPlayCard`: the formation is drawn in its normal, canonical shape (via `classifyFormation`,
