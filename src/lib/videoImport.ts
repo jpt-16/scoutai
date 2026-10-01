@@ -5,7 +5,7 @@
  * every other card. Framework-free, so it's directly unit-testable.
  */
 
-import { buildDiagram, FIELD, namedRouteDeltas, YARD_PX, YARD_X, type RouteKind } from "./formations";
+import { buildDiagram, FIELD, namedRouteDeltas, wingLetters, YARD_PX, YARD_X, type RouteKind } from "./formations";
 import { detectedRouteToPathDeltas, yardRouteToPathDeltas, type PercentPoint } from "./coordinateMapper";
 import { deriveCard, parseHash, updateCard, type HudlPlayCard, type PlaySource } from "./hudlParser";
 
@@ -264,6 +264,7 @@ function detectionToRouteOverrides(
   const said = detection.ballCarrier;
   const yards = detection.units === "yards";
   const letters = yards && card ? matchDetectedLetters(detection, card) : null;
+  const wings = card ? wingLetters(card) : new Set<string>();
   for (const player of detection.players) {
     const letter = letters ? letters.get(player) : player.label;
     if (!letter || !DETECTED_PLAYER_LABELS.includes(letter as DetectedPlayerLabel)) continue; // unknown role: skip rather than guess
@@ -275,7 +276,9 @@ function detectionToRouteOverrides(
     }
     if (name === "FAKE" && !isCarrier) continue; // the card draws the RPO / play-action mesh itself
     // A route the staff names: drawn exactly like the route tree, from his spot on this card.
-    const kind = FILM_ROUTES[name];
+    // A wing never runs a bubble: his release to the flat is the slide (route 0).
+    const named = FILM_ROUTES[name];
+    const kind = named === "bubble" && wings.has(letter) ? "slide" : named;
     const snapped = kind && card ? namedRouteDeltas(card, letter, kind) : null;
     const path =
       snapped ??

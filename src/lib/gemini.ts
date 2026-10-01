@@ -20,7 +20,12 @@
 
 import type { GenerateContentConfig, GenerateContentParameters } from "@google/genai";
 
-export const DEFAULT_MODELS = ["gemini-flash-latest", "gemini-2.5-flash"] as const;
+/**
+ * Gemini 2.5 Flash first (the cheaper model this app was built on); Google's
+ * current-Flash alias only if 2.5 Flash is ever retired. `GEMINI_MODEL`, when
+ * set, goes ahead of both.
+ */
+export const DEFAULT_MODELS = ["gemini-2.5-flash", "gemini-flash-latest"] as const;
 
 /** The models to try, in order: the env override first, never twice. */
 export function geminiModels(override = process.env.GEMINI_MODEL): string[] {

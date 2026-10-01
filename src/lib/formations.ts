@@ -940,6 +940,38 @@ export function namedRouteDeltas(
     .map(([x, y]) => [x - pl.x, y - pl.y]);
 }
 
+/**
+ * Letters that line up as a WING on this card (either side): the alignment
+ * check walked inside out from the tackle, on the card's real spots (film,
+ * WING tags). Film calls a wing's release to the flat a SLIDE, never a bubble.
+ */
+export function wingLetters(
+  card: Pick<HudlPlayCard, "formationKey" | "formationSide" | "playDirection" | "playCall"> &
+    Partial<Pick<HudlPlayCard, "formation" | "offenseSpots">>,
+): Set<string> {
+  const shape = FORMATIONS[card.formationKey === "unknown" ? "spread" : card.formationKey];
+  const side = card.formationSide;
+  const { skill } = alignOffense(
+    card,
+    place({ label: "Q", role: "QB", at: shape.qb }, side),
+    shape.backs.map((s) => place(s, side)),
+    shape.skill.map((s) => place(s, side)),
+    card.playDirection === "right" ? 1 : -1,
+  );
+  const wings = new Set<string>();
+  for (const dir of [-1, 1]) {
+    const fromBall = (p: Placed) => (p.x - FIELD.center.x) * dir;
+    let edge = TACKLE_DX;
+    for (const p of skill.filter((q) => fromBall(q) > 0).sort((a, b) => fromBall(a) - fromBall(b))) {
+      const alignment = insideAlignment((fromBall(p) - edge) / YARD_X, p.y > 150);
+      if (alignment === "slot") break;
+      if (alignment === "wing") wings.add(p.label);
+      edge = fromBall(p);
+    }
+  }
+  return wings;
+}
+
 const moveTo = (p: Placed, x: number, y: number): Placed => ({ ...p, x, y, at: [x, y] });
 
 /** Pixels from the ball to the tackle's center: the box edge before any tight end. */
@@ -980,6 +1012,14 @@ function alignOffense(
     return moveTo(p, x, onLine ? 150 : Math.min(200, Math.max(160, FIELD.los - spot.y * YARD_PX)));
   };
   const out = { qb: fromFilm(qb), backs: backs.map(fromFilm), skill: skill.map(fromFilm) };
+  // Seven on the line: on each side only the widest receiver the film put on it stays there;
+  // anyone inside him who also read as "on the line" is off the ball (he'd be covered up).
+  for (const dir of [-1, 1]) {
+    const onLine = out.skill
+      .filter((p) => spots[p.label] && p.y === 150 && (p.x - FIELD.center.x) * dir > 0)
+      .sort((a, b) => (b.x - a.x) * dir);
+    for (const p of onLine.slice(1)) out.skill = out.skill.map((q) => (q === p ? moveTo(p, p.x, 160) : q));
+  }
 
   const ws = callWords(card.formation ?? "");
   const formationWing = ws.includes("WING");

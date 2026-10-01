@@ -298,3 +298,41 @@ describe("film routes by this staff's names", () => {
     expect(card.notes).toBe("Ball: H, left (from film)");
   });
 });
+
+describe("the user's Trio Slot clip (card 28)", () => {
+  // Trips left with a wing tight off the tackle. The model put Y and H both on the line and
+  // called the wing's release a BUBBLE (the data bar on screen says RPO BUBBLE).
+  const detection: DetectedPlay = {
+    playName: "RPO Bubble",
+    formation: "Trips Left",
+    units: "yards",
+    playType: "pass",
+    ballCarrier: "Z",
+    ballDirection: "left",
+    players: [
+      { label: "Q", start: { x: 0, y: -5 }, waypoints: [], endpoint: { x: 0, y: -5 }, routeType: "NONE" },
+      { label: "F", start: { x: 1, y: -5 }, waypoints: [], endpoint: { x: -1, y: 1 }, routeType: "FAKE" },
+      { label: "Z", start: { x: -5.8, y: -1 }, waypoints: [{ x: -9, y: -3 }], endpoint: { x: -15, y: -3 }, routeType: "BUBBLE" },
+      { label: "H", start: { x: -8.3, y: 0 }, waypoints: [], endpoint: { x: -8.3, y: 2 }, routeType: "BLOCK" },
+      { label: "Y", start: { x: -13, y: 0 }, waypoints: [], endpoint: { x: -13, y: 2 }, routeType: "BLOCK" },
+      { label: "X", start: { x: 13, y: 0 }, waypoints: [], endpoint: { x: 13, y: 2 }, routeType: "BLOCK" },
+    ],
+  };
+  const card = buildCardFromDetection(detection, "clip28.mp4");
+  const d = buildDiagram(card);
+  const at = (label: string) => d.players.find((p) => p.label === label)!;
+  const wing = Object.entries(card.routeOverrides!).find(([, o]) => o.tag === "BALL")!;
+
+  it("draws the wing's release to the flat as the slide (route 0), not a bubble", () => {
+    expect(wing[1].route).toBe("slide");
+    expect(d.jobs[wing[0]]).toMatch(/Slide · BALL$/);
+    expect(at(wing[0]).y).toBeGreaterThan(150); // off the line, tight to the tackle
+  });
+
+  it("keeps the line legal: only the widest receiver on each side is on it", () => {
+    const left = d.players.filter((p) => p.role === "WR" && p.x < 250 && p.label !== wing[0]);
+    const widest = left.sort((a, b) => a.x - b.x)[0];
+    expect(widest.y).toBe(150);
+    for (const p of left.slice(1)) expect(p.y).toBeGreaterThan(150);
+  });
+});

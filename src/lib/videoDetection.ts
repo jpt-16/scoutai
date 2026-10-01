@@ -16,6 +16,12 @@ import { GoogleGenAI, Type, type Schema } from "@google/genai";
 import { generateJson } from "./gemini";
 import { FILM_ROUTE_NAMES, validateDetectedPlay, type DetectedPlay } from "./videoImport";
 
+/**
+ * Frames per second the film AI sees (Gemini's default is 1). A Hudl clip is
+ * 5-12 seconds, so this is 40-100 frames, about 10-25k input tokens.
+ */
+export const FILM_FPS = 8;
+
 /** Thrown by `detectPlayFromClip` with the HTTP status the failure maps to. */
 export class VideoDetectionError extends Error {
   status: number;
@@ -100,8 +106,9 @@ export const DETECTION_RESPONSE_SCHEMA: Schema = {
  * and a recognized route is drawn exactly like the route tree
  * (`videoImport.ts` snaps it).
  */
-export const FILM_ROUTE_GUIDE = `  SLIDE (0): releases outside right away and builds up to about 5 yards, then settles. A wing or
-    slot that goes flat out to the flat and up is a SLIDE.
+export const FILM_ROUTE_GUIDE = `  SLIDE (0): releases outside right away and builds up to about 5 yards, then settles. A WING or
+    tight slot (within about 3 yards outside the tackle or tight end) who releases to the flat is
+    ALWAYS a SLIDE, even if he bellies back a step.
   SPEED OUT (1): out cut at 5 yards.   SLANT (2): three steps, then 45 degrees inside.
   OUT (3): 10-yard stem, 90 degrees to the sideline.   CURL (4): to 12, back down to 10.
   COMEBACK (5): to 16, back down to 14.   SHALLOW (6): builds to 5 and crosses the field.
@@ -109,8 +116,9 @@ export const FILM_ROUTE_GUIDE = `  SLIDE (0): releases outside right away and bu
   FADE (9): vertical with a slight outside release.   GO: straight vertical.
   HITCH: to 5, turn back.   DIG: 10-yard in cut.   DRAG: shallow cross at 2-3 yards.
   FLAT: out to the flat at 1-2 yards.   SWING: a back curving out to the flat behind the line.
-  BUBBLE: drops BACK first (behind where he lined up), then curls out toward the sideline. Only
-    call it a BUBBLE if he clearly loses ground first; a flat release is a SLIDE or FLAT.
+  BUBBLE: a slot split away from the box who drops BACK first (behind where he lined up), then
+    curls out toward the sideline. Only if he clearly loses ground first; a flat release is a
+    SLIDE or FLAT, and a wing is never a BUBBLE.
   WHEEL: out to the flat, then turns up the sideline.   RAIL: a back out to the flat and up.
   LEAK: a tight end who blocks, then slips out the backside.
   BLOCK: blocked (stalk, crack, pass pro) instead of running a route.
@@ -174,7 +182,9 @@ For each player give:
   when the ball is thrown or handed to someone else for everyone else. NEVER follow a receiver
   after the catch: the run after the catch is not part of the route. The ball carrier on a run:
   stop about 5 yards past the line.
-- routeType: what he did, using exactly one of this staff's names:
+- routeType: what he ACTUALLY did on the film, using exactly one of this staff's names. The data
+  bar and any play call are the coach's tags: they can be wrong, or name the RPO option that
+  wasn't thrown. Never pick a route name because a tag says it; watch the player.
 ${FILM_ROUTE_GUIDE}
 
 Also give playName (a short label for what the offense ran; "RPO SLIDE / WING FLAT" for a wing
@@ -300,7 +310,12 @@ export async function detectPlayFromClip({
     contents: [
       {
         role: "user",
-        parts: [{ fileData: { fileUri, mimeType: mimeType ?? "video/mp4" } }, { text: buildDetectionPrompt(playCall) }],
+        parts: [
+          // The default is 1 frame a second: a release, a break, a slide vs. a bubble all happen
+          // between frames. Routes need several frames a second to be seen at all.
+          { fileData: { fileUri, mimeType: mimeType ?? "video/mp4" }, videoMetadata: { fps: FILM_FPS } },
+          { text: buildDetectionPrompt(playCall) },
+        ],
       },
     ],
     schema: DETECTION_RESPONSE_SCHEMA,

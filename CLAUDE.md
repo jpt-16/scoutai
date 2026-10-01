@@ -512,18 +512,21 @@ with none of these set; only the video feature's routes need them.
 
 Every AI route (text cards, import review, single / batch clips, the secondary read) calls Gemini
 through `generateJson`, never `generateContent` directly. It tries `GEMINI_MODEL` (optional Vercel
-env var: pin or swap a model with no code change), then `gemini-flash-latest` (Google's alias for
-the current Flash), then `gemini-2.5-flash`; a model Google no longer serves (404 / NOT_FOUND)
-falls through to the next. Every route used to be pinned to `gemini-2.5-flash`, so when that one
-went away every AI feature failed at once with a generic "couldn't". Per model it tries the
+env var: pin or swap a model with no code change), then `gemini-2.5-flash` (the default: the
+cheaper model, which the staff chose over 3.x), then `gemini-flash-latest` (Google's alias for the
+current Flash) only if 2.5 Flash is retired; a model Google no longer serves (404 / NOT_FOUND)
+falls through to the next, so one retired model never takes every AI feature down at once. Per model it tries the
 response schema (plus thinking turned down for `fast` lookup calls), then without the thinking
 setting, then plain JSON, on a 400; a bad key, used-up quota or outage stops at once. Failures
 come back as Gemini's own reason ("RESOURCE_EXHAUSTED: …"), which every route puts in its error
 so the coach's notice says what actually went wrong. Callers still validate the JSON themselves.
 The model that answered is shown where a coach can check it: an AI card's source reads "AI
 generated · <model>" (play list and Edit play), and the review notice ends "Read by <model>." —
-so a `GEMINI_MODEL` Google doesn't serve (it falls back silently) is visible. Production and
-preview currently set `GEMINI_MODEL=gemini-3.6-flash`.
+so a `GEMINI_MODEL` Google doesn't serve (it falls back silently) is visible. Leave
+`GEMINI_MODEL` unset (or `gemini-2.5-flash`) to run on 2.5 Flash; production and preview had it
+set to `gemini-3.6-flash`, which overrides the code default until it's removed in Vercel.
+Film calls send the clip at `FILM_FPS` (8) frames a second, not Gemini's default 1, so a release
+or break isn't lost between frames: about 10-25k input tokens for a 5-12 second clip.
 
 ## Video analytics service (`video-service/`)
 
@@ -578,7 +581,11 @@ card's own mesh, and DRAG / RAIL / CARRY keep the film's own shape. A route ends
 prompt says never to follow the run after it), and the ball note names the card's letter, not the
 model's. Film calls (routes and the secondary read) run with `generateJson`'s `deterministic`
 (temperature 0, a fixed seed), so the same clip reads the same way; if the model answers without
-the schema, `filmRouteName` still finds the route name in its free text.
+the schema, `filmRouteName` still finds the route name in its free text. The prompt tells the
+model the data bar and play call are tags, not evidence ("RPO BUBBLE" on screen doesn't make the
+route a bubble). Two staff rules are applied in code on top: a **wing** (`wingLetters`, the
+alignment check on the film's spots) who the model says ran a BUBBLE ran the SLIDE (route 0), and
+only the widest receiver the film put on the line on each side stays on it (seven on the line).
 
 `src/lib/videoImport.ts`'s `buildCardFromDetection` turns a validated detection into a real
 `HudlPlayCard`: the formation is drawn in its normal, canonical shape (via `classifyFormation`,

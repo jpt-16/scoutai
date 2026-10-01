@@ -64,9 +64,9 @@ describe("generateJson", () => {
 
 describe("geminiModels / geminiReason", () => {
   it("tries the GEMINI_MODEL override first, never twice", () => {
-    expect(geminiModels("gemini-3-flash")).toEqual(["gemini-3-flash", "gemini-flash-latest", "gemini-2.5-flash"]);
+    expect(geminiModels("gemini-3-flash")).toEqual(["gemini-3-flash", "gemini-2.5-flash", "gemini-flash-latest"]);
     expect(geminiModels("gemini-2.5-flash")).toEqual(["gemini-2.5-flash", "gemini-flash-latest"]);
-    expect(geminiModels("")).toEqual(["gemini-flash-latest", "gemini-2.5-flash"]);
+    expect(geminiModels("")).toEqual(["gemini-2.5-flash", "gemini-flash-latest"]); // the cheaper 2.5 Flash by default
   });
 
   it("keeps a plain error message short", () => {

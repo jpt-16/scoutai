@@ -3,6 +3,7 @@ import {
   buildDetectionPrompt,
   DETECTION_PROMPT,
   DETECTION_RESPONSE_SCHEMA,
+  FILM_FPS,
   FILM_ROUTE_GUIDE,
   FOOTBALL_CONCEPT_RULES,
   QB_ANCHOR_RULES,
@@ -54,5 +55,9 @@ describe("route names and the catch", () => {
     for (const name of FILM_ROUTE_NAMES) expect(FILM_ROUTE_GUIDE).toContain(`${name}`);
     expect(DETECTION_PROMPT).toContain(FILM_ROUTE_GUIDE);
     expect(DETECTION_PROMPT).toMatch(/NEVER follow a receiver\s+after the catch/);
+    // The tag on screen ("RPO BUBBLE") isn't evidence of what was run.
+    expect(DETECTION_PROMPT).toMatch(/Never pick a route name because a tag says it/);
+    expect(FILM_ROUTE_GUIDE).toMatch(/a wing is never a BUBBLE/);
+    expect(FILM_FPS).toBeGreaterThan(1);
   });
 });
