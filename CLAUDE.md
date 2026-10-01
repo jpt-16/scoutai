@@ -541,6 +541,16 @@ redeploy. **Still on:** the AI text work (import review, text-to-card) and the *
 read from a pre-snap clip (`/api/read-secondary`, `/api/blob-upload`), the one thing the CSV
 can't tell you (safety depth, press vs. off). The sections below describe the film import as built.
 
+**Parked idea: measure the Secondary from a pre-snap frame, no GPU and no server.** Instead of
+Gemini guessing safety depth by eye, the coach pauses the clip on the pre-snap frame, clicks 4 yard-line /
+hash intersections once (a 4-point homography is a few dozen lines of math, no OpenCV needed), then taps each
+corner and safety; the app converts the taps to yards for the existing Secondary table
+(`SecondaryDialog.tsx`), set once per formation. Runs entirely in the browser, so the film never leaves the
+device. A light in-browser detector (ONNX Runtime Web; check the model license, since Ultralytics YOLO is
+AGPL) could later pre-fill the taps. Not started; the staff said to hold off. Whole-play tracking
+(`video-service/`, OpenCV + `supervision` / `trackers`) stays parked: it needs a GPU host and per-frame
+camera-pan compensation.
+
 ## Video analytics service (`video-service/`)
 
 A separate Python/FastAPI microservice, groundwork for an upcoming AI feature: upload a game
