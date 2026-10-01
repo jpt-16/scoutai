@@ -567,6 +567,19 @@ is on screen the model copies it (`hudl`: PLAY #, OFF FORM, OFF PLAY, PLAY TYPE,
 PLAY DIR), and a single-clip card takes the formation, call, hash, strength and direction from it
 (`hudlBarFields`) over the model's own guess. Still a rough starting point, not a measurement.
 
+**Route names, the catch, and repeatability.** Each player's `routeType` must be one of the
+staff's names (`videoImport.ts`'s `FILM_ROUTES`, the schema's enum, explained to the model in
+`FILM_ROUTE_GUIDE`: the tree 0-9 by name, GO, HITCH, DIG, DRAG, FLAT, SWING, BUBBLE (only if he
+loses ground first; a flat release is a SLIDE), WHEEL, RAIL, LEAK, plus BLOCK, FAKE, CARRY, NONE).
+A named route is **snapped**: redrawn exactly like the route tree from that player's spot on the
+card (`formations.ts`'s `namedRouteDeltas`), stored as a `path` plus `route` so it keeps its number,
+its table text ("Slide · BALL") and its drag handles. BLOCK becomes a stalk, FAKE is left to the
+card's own mesh, and DRAG / RAIL / CARRY keep the film's own shape. A route ends at the catch (the
+prompt says never to follow the run after it), and the ball note names the card's letter, not the
+model's. Film calls (routes and the secondary read) run with `generateJson`'s `deterministic`
+(temperature 0, a fixed seed), so the same clip reads the same way; if the model answers without
+the schema, `filmRouteName` still finds the route name in its free text.
+
 `src/lib/videoImport.ts`'s `buildCardFromDetection` turns a validated detection into a real
 `HudlPlayCard`: the formation is drawn in its normal, canonical shape (via `classifyFormation`,
 same as a CSV row) — only each letter's route is video-derived, stored as a `routeOverrides`

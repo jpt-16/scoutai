@@ -910,6 +910,36 @@ function summarizeRoutes(
   return names.length >= 2 ? names.join(" / ") : null;
 }
 
+/**
+ * A named route's shape for one letter on this card, as deltas from his own
+ * spot (the `RouteOverride.path` form): how a film route the AI named
+ * ("SLIDE") is drawn exactly like the route tree, from wherever that player
+ * lines up on this card. Null if the card has no such letter.
+ */
+export function namedRouteDeltas(
+  card: Pick<HudlPlayCard, "formationKey" | "formationSide" | "playDirection" | "playCall"> &
+    Partial<Pick<HudlPlayCard, "formation" | "offenseSpots">>,
+  letter: string,
+  kind: RouteKind,
+): [number, number][] | null {
+  const shape = FORMATIONS[card.formationKey === "unknown" ? "spread" : card.formationKey];
+  const d = card.playDirection === "right" ? 1 : -1;
+  const side = card.formationSide;
+  const { qb, backs, skill } = alignOffense(
+    card,
+    place({ label: "Q", role: "QB", at: shape.qb }, side),
+    shape.backs.map((s) => place(s, side)),
+    shape.skill.map((s) => place(s, side)),
+    d,
+  );
+  const pl = [qb, ...backs, ...skill].find((p) => p.label === letter);
+  if (!pl) return null;
+  const o = pl.x > 250 ? 1 : pl.x < 250 ? -1 : d;
+  return routePath(kind, pl.at, o, d)
+    .slice(1)
+    .map(([x, y]) => [x - pl.x, y - pl.y]);
+}
+
 const moveTo = (p: Placed, x: number, y: number): Placed => ({ ...p, x, y, at: [x, y] });
 
 /** Pixels from the ball to the tackle's center: the box edge before any tight end. */
@@ -1481,9 +1511,17 @@ export function buildDiagram(
         blocks.splice(0, blocks.length, ...blocks.filter((b) => !mine(b)));
         targetBlocks.splice(0, targetBlocks.length, ...targetBlocks.filter((t) => !mine(t.path)));
         const path: Pt[] = [pl.at, ...own.path.map(([dx, dy]) => [pl.at[0] + dx, pl.at[1] + dy] as Pt)];
-        routes.push({ path, label: "", videoLetter: own.source === "video" || own.source === "ai" ? pl.label : undefined });
+        // A film route snapped to a named route ("SLIDE") keeps that route's number and name.
+        const named = own.route && own.route in ROUTE_NAMES ? (own.route as RouteKind) : null;
+        routes.push({
+          path,
+          label: named ? routeLabel(named) : "",
+          curve: named === "bubble",
+          videoLetter: own.source === "video" || own.source === "ai" ? pl.label : undefined,
+        });
         // The alignment check's WING stays in his box when film or a coach draws his route.
-        jobs[pl.label] = jobs[pl.label]?.startsWith("WING") ? "WING · Route" : "Route";
+        const what = named ? routeText(named) : "Route";
+        jobs[pl.label] = jobs[pl.label]?.startsWith("WING") ? `WING · ${what}` : what;
       } else if (own.route) {
         routes = routes.filter((r) => !mine(r.path));
         blocks.splice(0, blocks.length, ...blocks.filter((b) => !mine(b)));

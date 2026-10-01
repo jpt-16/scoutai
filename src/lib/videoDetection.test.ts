@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { buildDetectionPrompt, DETECTION_PROMPT, FOOTBALL_CONCEPT_RULES, QB_ANCHOR_RULES } from "./videoDetection";
+import {
+  buildDetectionPrompt,
+  DETECTION_PROMPT,
+  DETECTION_RESPONSE_SCHEMA,
+  FILM_ROUTE_GUIDE,
+  FOOTBALL_CONCEPT_RULES,
+  QB_ANCHOR_RULES,
+} from "./videoDetection";
+import { FILM_ROUTE_NAMES } from "./videoImport";
 
 describe("buildDetectionPrompt", () => {
   it("always carries the concept rules after the base prompt", () => {
@@ -36,5 +44,15 @@ describe("QB anchor rule", () => {
     expect(QB_ANCHOR_RULES).toContain("not the camera's");
     expect(prompt).toContain("ballCarrier");
     expect(prompt).toContain("ballDirection");
+  });
+});
+
+describe("route names and the catch", () => {
+  it("asks for the staff's route names, every one of them explained, and stops routes at the catch", () => {
+    const players = DETECTION_RESPONSE_SCHEMA.properties!.players as { items: { properties: Record<string, { enum?: string[] }> } };
+    expect(players.items.properties.routeType.enum).toEqual(FILM_ROUTE_NAMES);
+    for (const name of FILM_ROUTE_NAMES) expect(FILM_ROUTE_GUIDE).toContain(`${name}`);
+    expect(DETECTION_PROMPT).toContain(FILM_ROUTE_GUIDE);
+    expect(DETECTION_PROMPT).toMatch(/NEVER follow a receiver\s+after the catch/);
   });
 });

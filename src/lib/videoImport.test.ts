@@ -5,6 +5,7 @@ import {
   applyDetectionToCard,
   ballFromDetection,
   buildCardFromDetection,
+  filmRouteName,
   validateDetectedPlay,
   type DetectedPlay,
 } from "./videoImport";
@@ -59,7 +60,7 @@ describe("buildCardFromDetection", () => {
     expect(card.formationKey).toBe("spread");
     expect(card.source).toBe("endzone-clip.mp4");
     expect(card.routeOverrides?.X?.source).toBe("video");
-    expect(card.routeOverrides?.X?.tag).toBe("SLANT");
+    expect(card.routeOverrides?.X?.route).toBe("slant"); // a named route snaps to the tree
     expect(card.routeOverrides?.X?.path?.length).toBeGreaterThan(0);
     expect(hasCoachRoutes(card)).toBe(true);
 
@@ -109,7 +110,7 @@ describe("the QB anchor: who got the ball and where", () => {
     expect(card.playType).toBe("");
     expect(card.playDir).toBe("");
     expect(card.notes).toBe("");
-    expect(card.routeOverrides?.X?.tag).toBe("SLANT");
+    expect(card.routeOverrides?.X?.route).toBe("slant"); // a named route snaps to the tree
   });
 
   it("never overrides what the CSV says; only fills blanks", () => {
@@ -244,5 +245,56 @@ describe("standard spots", () => {
     const sheet = parseHudlCsvText("OFF FORM,OFF PLAY\nTrips Rt,IZ\n").cards[0];
     const withSpots = { ...sheet, offenseSpots: { H: { x: 6.5, y: -1 } } };
     expect(updateCard(withSpots, { offenseSpots: undefined }).offenseSpots).toBeUndefined();
+  });
+});
+
+describe("film routes by this staff's names", () => {
+  const sheet = parseHudlCsvText("PLAY #,OFF FORM,OFF PLAY,OFF STR,PLAY DIR\n1,Trio Slot,RPO BUBBLE,L,L\n").cards[0];
+  // The user's clip: trips left, the wing (model's "Y", the card's H) goes out on a slide and
+  // catches it, then runs 7 yards up the sideline; Y blocks; F fakes the mesh.
+  const detection: DetectedPlay = {
+    playName: "RPO SLIDE / WING FLAT",
+    formation: "Trips",
+    units: "yards",
+    playType: "pass",
+    ballCarrier: "Y",
+    ballDirection: "left",
+    players: [
+      { label: "Q", start: { x: 0, y: -5 }, waypoints: [], endpoint: { x: 0, y: -5 }, routeType: "NONE" },
+      { label: "F", start: { x: 1, y: -5 }, waypoints: [], endpoint: { x: -1, y: 1 }, routeType: "FAKE" },
+      { label: "Y", start: { x: -7, y: -1 }, waypoints: [{ x: -10, y: -1 }], endpoint: { x: -13, y: 2 }, routeType: "SLIDE" },
+      { label: "Z", start: { x: -15, y: -1 }, waypoints: [], endpoint: { x: -14, y: 2 }, routeType: "BLOCK" },
+      { label: "X", start: { x: -22, y: 0 }, waypoints: [], endpoint: { x: -22, y: 3 }, routeType: "BLOCK" },
+    ],
+  };
+  const card = applyDetectionToCard(sheet, detection);
+  const d = buildDiagram(card);
+
+  it("draws a SLIDE exactly as route 0 from the wing's own spot, still draggable, and tagged BALL", () => {
+    const o = card.routeOverrides!.H;
+    expect(o).toMatchObject({ route: "slide", source: "video", tag: "BALL" });
+    const h = d.players.find((p) => p.label === "H")!;
+    const i = d.routeVideoLetters.indexOf("H");
+    const path = d.routes[i];
+    expect(path[path.length - 1].x).toBeLessThan(h.x); // out to the offense's left
+    expect(path[path.length - 1].y).toBeCloseTo(140 - 5 * 7, 0); // builds up to 5 yards
+    expect(d.jobs.H).toMatch(/Slide · BALL$/);
+  });
+
+  it("blocks are blocks and the fake is the card's own mesh, not red routes", () => {
+    expect(card.routeOverrides!.Y).toEqual({ route: "stalk", source: "video" });
+    expect(card.routeOverrides!.F).toBeUndefined();
+    expect(d.jobs.F).toBe("Mesh: run it if given");
+  });
+
+  it("reads a route name out of free text when the model answers without the schema", () => {
+    expect(filmRouteName("SLIDE")).toBe("SLIDE");
+    expect(filmRouteName("slide route")).toBe("SLIDE");
+    expect(filmRouteName("a speed out")).toBe("SPEED OUT");
+    expect(filmRouteName("BANG 8")).toBe("");
+  });
+
+  it("names the card's player in the ball note, not the model's letter", () => {
+    expect(card.notes).toBe("Ball: H, left (from film)");
   });
 });

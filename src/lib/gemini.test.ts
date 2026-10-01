@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { classifyGeminiError, geminiModels, geminiReason, generateJson, type GeminiClient } from "./gemini";
+import { classifyGeminiError, DETERMINISTIC_SEED, geminiModels, geminiReason, generateJson, type GeminiClient } from "./gemini";
 
 const apiError = (code: number, status: string, message: string) =>
   new Error(JSON.stringify({ error: { code, message, status } }));
@@ -71,5 +71,26 @@ describe("geminiModels / geminiReason", () => {
 
   it("keeps a plain error message short", () => {
     expect(geminiReason(new Error("fetch failed"))).toBe("fetch failed");
+  });
+});
+
+describe("deterministic film reads", () => {
+  it("sends temperature 0 and a fixed seed on every try, and nothing extra otherwise", async () => {
+    const seen: Record<string, unknown>[] = [];
+    const ai: GeminiClient = {
+      models: {
+        generateContent: async ({ config = {} }) => {
+          seen.push(config as Record<string, unknown>);
+          if ((config as Record<string, unknown>).responseSchema) throw apiError(400, "INVALID_ARGUMENT", "schema too big");
+          return { text: "{}" };
+        },
+      },
+    };
+    await generateJson(ai, { contents: "clip", schema: { type: "OBJECT" } as never, deterministic: true, models: ["m"] });
+    expect(seen).toHaveLength(2);
+    for (const c of seen) expect(c).toMatchObject({ temperature: 0, seed: DETERMINISTIC_SEED });
+    seen.length = 0;
+    await generateJson(ai, { contents: "text", models: ["m"] });
+    expect(seen[0].temperature).toBeUndefined();
   });
 });

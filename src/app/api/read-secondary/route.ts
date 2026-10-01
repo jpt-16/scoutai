@@ -108,6 +108,7 @@ export async function POST(request: Request): Promise<NextResponse> {
       contents: [{ role: "user", parts: [{ fileData: { fileUri, mimeType } }, { text: PROMPT }] }],
       schema: RESPONSE_SCHEMA,
       label: "read-secondary",
+      deterministic: true,
     });
     if (!answer.ok) throw new VideoDetectionError(`The AI couldn't read this clip (${answer.error})`, 502);
     responseText = answer.text;

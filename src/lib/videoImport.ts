@@ -5,13 +5,60 @@
  * every other card. Framework-free, so it's directly unit-testable.
  */
 
-import { buildDiagram, FIELD, YARD_PX, YARD_X } from "./formations";
+import { buildDiagram, FIELD, namedRouteDeltas, YARD_PX, YARD_X, type RouteKind } from "./formations";
 import { detectedRouteToPathDeltas, yardRouteToPathDeltas, type PercentPoint } from "./coordinateMapper";
 import { deriveCard, parseHash, updateCard, type HudlPlayCard, type PlaySource } from "./hudlParser";
 
 /** Skill-player letters this app draws (see `CLAUDE.md`: linemen are unlabeled). */
 export const DETECTED_PLAYER_LABELS = ["Q", "F", "H", "X", "Y", "Z"] as const;
 export type DetectedPlayerLabel = (typeof DETECTED_PLAYER_LABELS)[number];
+
+/**
+ * The route names the film AI picks from (the detection schema's enum; see
+ * `FILM_ROUTE_GUIDE` in videoDetection.ts), and the route each one snaps to.
+ * A named route is redrawn exactly like the route tree from the player's spot
+ * on the card (still draggable), so the same read draws the same way every
+ * time. DRAG and RAIL keep the film's own shape; BLOCK becomes a stalk; FAKE
+ * is left to the card's own mesh; CARRY keeps the film's path.
+ */
+export const FILM_ROUTES: Record<string, RouteKind | null> = {
+  SLIDE: "slide",
+  "SPEED OUT": "speed-out",
+  SLANT: "slant",
+  OUT: "out",
+  CURL: "curl",
+  COMEBACK: "comeback",
+  SHALLOW: "shallow",
+  CORNER: "corner",
+  POST: "post",
+  FADE: "fade",
+  GO: "go",
+  HITCH: "hitch",
+  DIG: "dig",
+  FLAT: "flat",
+  SWING: "swing",
+  BUBBLE: "bubble",
+  WHEEL: "wheel",
+  LEAK: "leak",
+  DRAG: null,
+  RAIL: null,
+  BLOCK: null,
+  FAKE: null,
+  CARRY: null,
+  NONE: null,
+};
+export const FILM_ROUTE_NAMES = Object.keys(FILM_ROUTES);
+
+/**
+ * The staff route name in a film answer: exact from the schema's enum, or the
+ * longest name found as whole words in free text ("slide route", "a speed
+ * out") when the model answered without the schema. "" if none.
+ */
+export function filmRouteName(routeType: string | undefined): string {
+  const text = ` ${(routeType ?? "").toUpperCase().replace(/[^A-Z]+/g, " ").trim()} `;
+  const byLength = [...FILM_ROUTE_NAMES].sort((a, b) => b.length - a.length);
+  return byLength.find((name) => text.includes(` ${name} `)) ?? "";
+}
 
 /** One player's detected route, as the vision model should return it. */
 export interface DetectedPlayer {
@@ -75,16 +122,22 @@ export function hudlBarFields(detection: DetectedPlay): Required<HudlBar> {
 }
 
 /** What the film says about the ball, as card fields; only what the model actually saw. */
-export function ballFromDetection(detection: DetectedPlay): {
+export function ballFromDetection(
+  detection: DetectedPlay,
+  /** The model's letters → the card's (`matchDetectedLetters`), so the note names the card's player. */
+  letters?: Map<DetectedPlayer, string>,
+): {
   carrier: string | null;
   playDir: "L" | "R" | "";
   playType: "Run" | "Pass" | "";
   note: string;
 } {
-  const carrier =
+  const said =
     detection.ballCarrier && DETECTED_PLAYER_LABELS.includes(detection.ballCarrier as DetectedPlayerLabel)
       ? detection.ballCarrier
       : null;
+  const holder = said && letters ? detection.players.find((p) => p.label === said) : undefined;
+  const carrier = holder ? (letters!.get(holder) ?? said) : said;
   const playDir = detection.ballDirection === "left" ? "L" : detection.ballDirection === "right" ? "R" : "";
   const playType = detection.playType === "run" ? "Run" : detection.playType === "pass" ? "Pass" : "";
   const where = detection.ballDirection === "middle" ? "middle" : playDir === "L" ? "left" : playDir === "R" ? "right" : "";
@@ -208,19 +261,40 @@ function detectionToRouteOverrides(
   existing: HudlPlayCard["routeOverrides"] = {},
 ): NonNullable<HudlPlayCard["routeOverrides"]> {
   const routeOverrides: NonNullable<HudlPlayCard["routeOverrides"]> = { ...existing };
-  const { carrier } = ballFromDetection(detection);
+  const said = detection.ballCarrier;
   const yards = detection.units === "yards";
   const letters = yards && card ? matchDetectedLetters(detection, card) : null;
   for (const player of detection.players) {
     const letter = letters ? letters.get(player) : player.label;
     if (!letter || !DETECTED_PLAYER_LABELS.includes(letter as DetectedPlayerLabel)) continue; // unknown role: skip rather than guess
-    const path = yards
-      ? yardRouteToPathDeltas(player, { across: YARD_X, downfield: YARD_PX })
-      : detectedRouteToPathDeltas(player, { width: FIELD.width, height: FIELD.height });
+    const name = filmRouteName(player.routeType) || (player.routeType?.trim().toUpperCase() ?? "");
+    const isCarrier = player.label === said;
+    if (name === "BLOCK") {
+      routeOverrides[letter] = { route: "stalk", source: "video" };
+      continue;
+    }
+    if (name === "FAKE" && !isCarrier) continue; // the card draws the RPO / play-action mesh itself
+    // A route the staff names: drawn exactly like the route tree, from his spot on this card.
+    const kind = FILM_ROUTES[name];
+    const snapped = kind && card ? namedRouteDeltas(card, letter, kind) : null;
+    const path =
+      snapped ??
+      (yards
+        ? yardRouteToPathDeltas(player, { across: YARD_X, downfield: YARD_PX })
+        : detectedRouteToPathDeltas(player, { width: FIELD.width, height: FIELD.height }));
     if (path.length === 0) continue;
-    // The ball carrier's arrow says so; everyone else keeps the model's route name.
-    const tag = player.label === carrier ? "BALL" : player.routeType?.toUpperCase().slice(0, 10);
-    routeOverrides[letter] = { path, source: "video", ...(tag ? { tag } : {}) };
+    // The ball carrier's arrow says so; an unsnapped route keeps the model's name as its tag.
+    const tag = isCarrier
+      ? "BALL"
+      : snapped || ["CARRY", "NONE", "FAKE"].includes(name)
+        ? undefined
+        : name.slice(0, 10) || undefined;
+    routeOverrides[letter] = {
+      path,
+      source: "video",
+      ...(snapped && kind ? { route: kind } : {}),
+      ...(tag ? { tag } : {}),
+    };
   }
   return routeOverrides;
 }
@@ -237,7 +311,6 @@ export function buildCardFromDetection(
   source: string,
   playNumber = 1,
 ): HudlPlayCard {
-  const ball = ballFromDetection(detection);
   // Hudl's data bar (the staff's own tags) beats the model's read of the film.
   const bar = hudlBarFields(detection);
   const barPlay = Number.parseInt(bar.playNumber, 10);
@@ -256,23 +329,23 @@ export function buildCardFromDetection(
     formation: bar.formation || detection.formation,
     playCall: bar.playCall || detection.playName,
     // Only "Pass" from the film: a run's card stays drawn from the film's own paths, not a blocking scheme.
-    playType: bar.playType || (ball.playType === "Pass" ? "Pass" : ""),
+    playType: bar.playType || (ballFromDetection(detection).playType === "Pass" ? "Pass" : ""),
     defFront: "",
     result: "",
     coverage: "",
     offStrength: bar.offStrength,
-    playDir: bar.playDir || ball.playDir,
-    notes: ball.note,
+    playDir: bar.playDir,
+    notes: "",
     source,
     raw: {},
   };
 
-  const card = deriveCard(base);
-  return deriveCard({
-    ...base,
-    routeOverrides: detectionToRouteOverrides(detection, card),
-    offenseSpots: detectionSpots(detection, card),
-  });
+  const shell = deriveCard(base);
+  const ball = ballFromDetection(detection, detection.units === "yards" ? matchDetectedLetters(detection, shell) : undefined);
+  const withBall = deriveCard({ ...base, playDir: bar.playDir || ball.playDir, notes: ball.note });
+  // Players go where they stood on film first, so named routes are drawn from those spots.
+  const card = { ...withBall, offenseSpots: detectionSpots(detection, withBall) };
+  return deriveCard({ ...card, routeOverrides: detectionToRouteOverrides(detection, card) });
 }
 
 /**
@@ -284,14 +357,15 @@ export function buildCardFromDetection(
  * other letters (a coach's manual edit, say) are preserved.
  */
 export function applyDetectionToCard(card: HudlPlayCard, detection: DetectedPlay): HudlPlayCard {
-  const ball = ballFromDetection(detection);
-  const updated = updateCard(card, {
-    routeOverrides: detectionToRouteOverrides(detection, card, card.routeOverrides),
+  const ball = ballFromDetection(detection, detection.units === "yards" ? matchDetectedLetters(detection, card) : undefined);
+  // The CSV names the formation; the film shows where each man actually stood.
+  const offenseSpots = detectionSpots(detection, card) ?? card.offenseSpots;
+  const placed = { ...card, offenseSpots };
+  const updated = updateCard(placed, {
+    routeOverrides: detectionToRouteOverrides(detection, placed, card.routeOverrides),
     // The CSV is ground truth: the film only fills a PLAY DIR or note the row left blank.
     ...(!card.playDir.trim() && ball.playDir ? { playDir: ball.playDir } : {}),
     ...(!card.notes.trim() && ball.note ? { notes: ball.note } : {}),
   });
-  // The CSV names the formation; the film shows where each man actually stood.
-  const offenseSpots = detectionSpots(detection, card);
-  return offenseSpots ? { ...updated, offenseSpots } : updated;
+  return updated;
 }

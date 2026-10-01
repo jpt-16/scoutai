@@ -60,6 +60,9 @@ export function classifyGeminiError(reason: string): Kind {
   return "stop";
 }
 
+/** Any fixed number: the same seed + temperature 0 gives repeatable answers. */
+export const DETERMINISTIC_SEED = 1618;
+
 export async function generateJson(
   ai: GeminiClient,
   {
@@ -68,6 +71,7 @@ export async function generateJson(
     fast = false,
     models = geminiModels(),
     label = "gemini",
+    deterministic = false,
   }: {
     contents: GenerateContentParameters["contents"];
     schema?: GenerateContentConfig["responseSchema"];
@@ -75,12 +79,20 @@ export async function generateJson(
     fast?: boolean;
     models?: string[];
     label?: string;
+    /**
+     * Film reads: temperature 0 and a fixed seed, so uploading the same clip
+     * twice gives the same answer (as near as the model allows).
+     */
+    deterministic?: boolean;
   },
 ): Promise<GeminiAnswer> {
   let last = "no model answered";
   for (const model of models) {
     const variants: GenerateContentConfig[] = [];
-    const base: GenerateContentConfig = { responseMimeType: "application/json" };
+    const base: GenerateContentConfig = {
+      responseMimeType: "application/json",
+      ...(deterministic ? { temperature: 0, seed: DETERMINISTIC_SEED } : {}),
+    };
     if (schema && fast) variants.push({ ...base, responseSchema: schema, thinkingConfig: { thinkingBudget: 0 } });
     if (schema) variants.push({ ...base, responseSchema: schema });
     if (!schema && fast) variants.push({ ...base, thinkingConfig: { thinkingBudget: 0 } });
