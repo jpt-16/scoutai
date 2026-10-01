@@ -1145,12 +1145,12 @@ describe("bubble and the line of scrimmage", () => {
 
   it("puts every on-ball player's front edge on the LOS bar's back edge, off-ball receivers 1-2 yards back", () => {
     const d = buildDiagram(card("spread", "L"));
-    const front = (p: { y: number; label: string; role: string }) => p.y - (p.label ? 11 : 9);
+    const front = (p: { y: number; label: string; role: string }) => p.y - (p.label ? 9 : 7);
     const onBall = d.players.filter((p) => p.role === "OL" || (p.role !== "QB" && p.role !== "RB" && p.y <= 150));
-    for (const p of onBall) expect(front(p)).toBe(139);
+    for (const p of onBall) expect(front(p)).toBe(141);
     const offBall = d.players.filter((p) => p.role === "WR" && p.y > 150);
     for (const p of offBall) {
-      const yards = (front(p) - 139) / 7;
+      const yards = (front(p) - 141) / 7;
       expect(yards).toBeGreaterThanOrEqual(1);
       expect(yards).toBeLessThanOrEqual(2);
     }

@@ -334,9 +334,9 @@ Card look (`ScoutCard.tsx`, PlayIQ-style):
 Coordinates:
 
 - SVG viewBox `0 0 500 300`. Center/ball at **(250, 150)**, line of scrimmage at `y = 140`.
-  The blue LOS bar is drawn just in front of it (y 134-139, offense view) and every on-ball
-  player's front edge sits exactly on its back edge: skill players (r 11) at y 150, linemen (r 9,
-  the center an 18 px square) at y 148. Off-ball receivers (y 160) sit 1-2 yards behind it; the
+  The blue LOS bar is drawn just in front of it (y 136-141, offense view) and every on-ball
+  player's front edge sits exactly on its back edge: skill players (r 9, `SKILL_R`) at y 150, linemen
+  (r 7, `LINE_R`, the center a 14 px square) at y 148. Off-ball receivers (y 160) sit 1-2 yards behind it; the
   backs keep their real depth (shotgun Q about 5-6 yards). Defensive linemen at y 127 clear the
   bar on the other side.
 - Hash marks at `x = 167` / `333`. **The ball sits on its hash** (`mapToHash`). Players within

@@ -135,6 +135,14 @@ const SUNLIGHT = {
 /** Card aspect ratio (width / height) shared with layouts that size cards. */
 export const SCOUT_CARD_ASPECT = 760 / 600;
 
+/**
+ * Offense symbol sizes (SVG units). Skill players sit at y 150 and linemen at 148, so with these
+ * radii every on-ball front edge lands on y 141, the LOS bar's back edge. The center is a square
+ * of side 2 * LINE_R.
+ */
+const SKILL_R = 9;
+const LINE_R = 7;
+
 const f = (n: number) => n.toFixed(1);
 
 /** Unit vector of a segment. */
@@ -464,9 +472,10 @@ export function ScoutCard({
         </g>
 
         {/* Line of scrimmage. */}
-        {/* The LOS bar sits just in front of the line (y 134-139 offense view), so every on-ball
-            player's front edge is flush with its back edge. */}
-        <rect x={0} y={diagram.flipped ? diagram.losY + 1 : diagram.losY - 6} width={FIELD.width} height={5} fill={c.los} />
+        {/* The LOS bar sits just in front of the line (y 136-141 offense view), so every on-ball
+            player's front edge (skill players at 150 less SKILL_R, linemen at 148 less LINE_R) is
+            flush with its back edge. */}
+        <rect x={0} y={diagram.flipped ? diagram.losY - 1 : diagram.losY - 4} width={FIELD.width} height={5} fill={c.los} />
 
         {/* Blocks, pulls, fakes, routes, ball carrier. */}
         <g fill="none" stroke={c.block} strokeWidth={w(2.2)} strokeLinecap="butt" strokeLinejoin="miter">
@@ -708,12 +717,12 @@ export function ScoutCard({
         {/* Offense: square center, circles for everyone else, letters on skill players. */}
         {diagram.players.map((p, i) =>
           p.ball ? (
-            <rect
+                <rect
               key={i}
-              x={p.x - 9}
-              y={p.y - 9}
-              width={18}
-              height={18}
+              x={p.x - LINE_R}
+              y={p.y - LINE_R}
+              width={LINE_R * 2}
+              height={LINE_R * 2}
               fill={c.offenseFill}
               stroke={c.offense}
               strokeWidth={w(2.5)}
@@ -723,7 +732,7 @@ export function ScoutCard({
               <circle
                 cx={p.x}
                 cy={p.y}
-                r={p.label ? 11 : 9}
+                r={p.label ? SKILL_R : LINE_R}
                 fill={c.offenseFill}
                 stroke={c.offense}
                 strokeWidth={w(2.5)}
@@ -734,7 +743,7 @@ export function ScoutCard({
                   y={p.y}
                   dy="0.36em"
                   textAnchor="middle"
-                  fontSize={13}
+                  fontSize={SKILL_R + 2}
                   fontWeight={800}
                   fontFamily="'Barlow Condensed', sans-serif"
                   fill={c.offense}

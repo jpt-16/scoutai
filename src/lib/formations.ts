@@ -65,8 +65,9 @@ interface FormationShape {
 }
 
 const OFFENSIVE_LINE: Slot[] = [
-  // Linemen (r 9, the center a square of 18) sit 2 px further up than skill players (r 11) at 150,
-  // so every on-ball player's front edge is flush with the LOS bar's back edge at y = 139.
+  // Linemen (r 7, the center a square of 14) sit 2 px further up than skill players (r 9) at 150,
+  // so every on-ball player's front edge is flush with the LOS bar's back edge at y = 141
+  // (the radii live in ScoutCard.tsx).
   { label: "", role: "OL", at: [206, 148] },
   { label: "", role: "OL", at: [228, 148] },
   { label: "", role: "OL", at: [250, 148] },
