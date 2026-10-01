@@ -137,6 +137,28 @@ const FEATURE_CARDS: { icon: typeof Upload; title: string; detail: string }[] = 
   { icon: Users, title: "Staff collaboration", detail: "Invite your coaches and work from one script." },
 ];
 
+/** How the AI is used on scout cards (src/lib/importReview.ts, /api/review-import): the CSV stays in charge. */
+const AI_POINTS: { icon: typeof Upload; title: string; detail: string }[] = [
+  {
+    icon: ClipboardCheck,
+    title: "Your tags win",
+    detail:
+      "Formation, front, play call, hash and direction come straight from your breakdown. The AI is only asked about a play the app can't place: a formation name it doesn't know, or a call that isn't clearly a run or a pass.",
+  },
+  {
+    icon: Sparkles,
+    title: "AI fills the gaps",
+    detail:
+      "It maps that name onto the app's own formations and fronts. For a pass with a single route word, it builds the concept: a route for each position from your route tree, not one route repeated for everyone.",
+  },
+  {
+    icon: Check,
+    title: "Checked, then marked",
+    detail:
+      "Every answer is checked against the shapes the app can draw before it's used. Plays the AI touched are tagged \"AI\" with a notice to look them over, and any route can be changed in Edit play.",
+  },
+];
+
 const ABOUT_POINTS: { icon: typeof Upload; title: string; detail: string }[] = [
   { icon: Layers, title: "Real coaching conventions", detail: "Q/F/H/X/Y/Z, your route tree, real run schemes." },
   { icon: Clock, title: "Minutes, not a late night", detail: "Every card draws itself from the breakdown." },
@@ -159,6 +181,10 @@ const FAQS: { q: string; a: string }[] = [
         },
       ]
     : []),
+  {
+    q: "Does the AI change my breakdown?",
+    a: "No. Your tags always win. The AI only looks at plays the app can't place on its own, like a formation name it doesn't know or a call that isn't clearly a run or a pass, and it fills in only what the file left open. Anything it filled in is tagged \"AI\" with a notice to check it, and if it can't be reached the cards draw exactly as your file reads.",
+  },
   {
     q: "Can I edit a card after it's generated?",
     a: "Yes. Edit Play changes the formation, strength, play call, direction, hash, front, coverage, and each receiver's route. Edits save automatically and are marked \"edited\" in the play list.",
@@ -411,6 +437,40 @@ export default function UploadPage() {
           </div>
         </section>
         )}
+
+        {/* How the AI is used on the cards */}
+        <section id="ai" className={SECTION}>
+          <div className="mx-auto max-w-6xl">
+            <Reveal>
+              <SectionHeading eyebrow="HOW THE AI HELPS" title={<>Your tags first. <span className="text-primary">AI only fills the gaps.</span></>}>
+                Cards draw from your Hudl breakdown. When a row has a name the app doesn&apos;t know, the AI reads
+                it and fills in the blanks, and you can see exactly what it touched.
+              </SectionHeading>
+            </Reveal>
+            <ol className="mt-14 grid gap-4 lg:grid-cols-3">
+              {AI_POINTS.map(({ icon: Icon, title, detail }, i) => (
+                <li key={title}>
+                  <Reveal delay={i * 90} className="h-full">
+                    <div className="flex h-full flex-col gap-3 rounded-3xl border bg-card p-7 transition-all duration-300 hover:-translate-y-1.5 hover:border-primary/50">
+                      <span className="flex size-12 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lg shadow-primary/30">
+                        <Icon className="size-6" aria-hidden="true" />
+                      </span>
+                      <span className="mt-2 font-display text-2xl font-extrabold uppercase">{title}</span>
+                      <span className="text-[15px] leading-relaxed text-muted-foreground">{detail}</span>
+                    </div>
+                  </Reveal>
+                </li>
+              ))}
+            </ol>
+            <Reveal delay={200}>
+              <p className="mx-auto mt-8 max-w-3xl rounded-2xl border bg-background/50 px-5 py-4 text-center text-[15px] leading-relaxed text-muted-foreground">
+                Only the plays the app can&apos;t place are sent, as text, never your whole file or any film. If the AI
+                isn&apos;t reachable, the cards draw exactly as your breakdown reads. You can also type a play call
+                and have the AI draw it.
+              </p>
+            </Reveal>
+          </div>
+        </section>
 
         {/* Before / after */}
         <section id="showcase" className={`${SECTION} bg-card/30`}>

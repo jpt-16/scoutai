@@ -831,7 +831,9 @@ there's still no separate database for this either.
 
 ## Landing page (`src/app/page.tsx`)
 
-Sections, in order: hero, `#upload`, `#ai-film`, `#showcase`, problem/solution, on-the-field,
+Sections, in order: hero, `#upload`, `#ai-film` (only with `NEXT_PUBLIC_FILM_IMPORT`), `#ai` ("How
+the AI helps": your tags win, AI fills the gaps, checked then marked; it describes the import review
+and text cards above, so keep it true to them), `#showcase`, problem/solution, on-the-field,
 `#how-it-works`, `#features`, `#about`, `#faq`, final CTA. Visuals live in
 `src/components/landing/`:
 
