@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildDiagram, hasCoachRoutes } from "./formations";
-import { parseHudlCsvText } from "./hudlParser";
+import { parseHudlCsvText, updateCard } from "./hudlParser";
 import {
   applyDetectionToCard,
   ballFromDetection,
@@ -183,5 +183,66 @@ describe("film read in field yards (a sideline Hudl recording, Trio Slot RPO Bub
 
   it("still reads an old frame-percent answer the old way", () => {
     expect(buildCardFromDetection(VALID_DETECTION, "old").routeOverrides?.X?.path?.length).toBeGreaterThan(0);
+  });
+});
+
+describe("real alignment from film (offenseSpots)", () => {
+  const sheet = parseHudlCsvText("PLAY #,OFF FORM,OFF PLAY,PLAY DIR\n1,Trips Rt,RPO SLIDE,R\n").cards[0];
+  // Trips right, but the #3 lined up tight: about 2 yards outside the tackle, a yard off the ball.
+  const detection: DetectedPlay = {
+    playName: "RPO SLIDE / WING FLAT",
+    formation: "Trips",
+    units: "yards",
+    players: [
+      { label: "Q", start: { x: 0, y: -5 }, waypoints: [], endpoint: { x: 0, y: -5 } },
+      { label: "X", start: { x: -22, y: 0 }, waypoints: [], endpoint: { x: -22, y: 3 } },
+      { label: "H", start: { x: 6.5, y: -1 }, waypoints: [], endpoint: { x: 14, y: -2 } },
+      { label: "Y", start: { x: 15, y: -1 }, waypoints: [], endpoint: { x: 12, y: 3 } },
+      { label: "Z", start: { x: 22, y: 0 }, waypoints: [], endpoint: { x: 20, y: 4 } },
+    ],
+  };
+  const card = applyDetectionToCard(sheet, detection);
+  const spot = (label: string) => buildDiagram(card).players.find((p) => p.label === label)!;
+
+  it("draws each player where he stood on film, not the formation's standard spot", () => {
+    expect(card.offenseSpots?.H).toEqual({ x: 6.5, y: -1 });
+    expect(spot("H").x).toBeCloseTo(250 + 6.5 * (500 / (160 / 3)), 0);
+    expect(spot("H").y).toBe(160); // a yard off the ball
+    expect(spot("Z").y).toBe(150); // on the line
+    expect(spot("Q").y).toBe(140 + 5 * 7);
+  });
+
+  it("so the alignment check sees the real wing", () => {
+    expect(buildDiagram({ ...card, routeOverrides: undefined }).jobs.H).toBe("WING: slide to the flat");
+    expect(buildDiagram(card).jobs.H).toBe("WING · Route"); // the film's own route, still labeled
+    expect(buildDiagram(sheet).jobs.H).toBe("Slide to the flat"); // the standard Trips #3 is a slot
+  });
+
+  it("needs at least three players, in field yards, and drops when the formation is retyped", () => {
+    const two = { ...detection, players: detection.players.slice(0, 2) };
+    expect(applyDetectionToCard(sheet, two).offenseSpots).toBeUndefined();
+    expect(applyDetectionToCard(sheet, { ...detection, units: "frame" }).offenseSpots).toBeUndefined();
+    expect(updateCard(card, { formation: "Spread" }).offenseSpots).toBeUndefined();
+    expect(updateCard(card, { notes: "watch the wing" }).offenseSpots).toEqual(card.offenseSpots);
+  });
+
+  it("never puts a receiver on top of a lineman", () => {
+    const tight = applyDetectionToCard(sheet, {
+      ...detection,
+      players: detection.players.map((p) => (p.label === "H" ? { ...p, start: { x: 3, y: 0 } } : p)),
+    });
+    const d = buildDiagram(tight);
+    const h = d.players.find((p) => p.label === "H")!;
+    for (const ol of d.players.filter((p) => p.role === "OL")) {
+      expect(Math.hypot(h.x - ol.x, h.y - ol.y)).toBeGreaterThanOrEqual(20);
+    }
+  });
+});
+
+describe("standard spots", () => {
+  it("a coach can drop the film's spots and go back to the formation's own", () => {
+    const sheet = parseHudlCsvText("OFF FORM,OFF PLAY\nTrips Rt,IZ\n").cards[0];
+    const withSpots = { ...sheet, offenseSpots: { H: { x: 6.5, y: -1 } } };
+    expect(updateCard(withSpots, { offenseSpots: undefined }).offenseSpots).toBeUndefined();
   });
 });

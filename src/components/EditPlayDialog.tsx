@@ -253,6 +253,19 @@ export function EditPlayDialog({
             </div>
             <Picks options={FRONT_PICKS} onPick={(v) => set({ defFront: v })} />
 
+            {unit === "offense" && preview.offenseSpots && (
+              <div className="flex items-center justify-between gap-2 rounded-lg border border-border px-3 py-1.5">
+                <span className="text-sm text-muted-foreground">Players are lined up where they stood on film.</span>
+                <button
+                  type="button"
+                  onClick={() => set({ offenseSpots: undefined })}
+                  className="h-9 shrink-0 rounded-md px-2 text-sm font-bold text-primary hover:bg-accent"
+                >
+                  Use standard spots
+                </button>
+              </div>
+            )}
+
             {unit === "offense" && (
               <div className="flex flex-col gap-2">
                 <div className="flex items-center justify-between">

@@ -1,5 +1,6 @@
 import type { FormationKey, FrontKey, HudlPlayCard, Side } from "./hudlParser";
 import {
+  callWords,
   insideAlignment,
   isWingSlideCall,
   matchConcept,
@@ -879,7 +880,7 @@ export function routeSlots(
 }
 
 /** Jobs that aren't a route to name in a title. */
-const NOT_A_ROUTE = /^(Pass pro|Stalk|Route|—|Block|Hand off|Ball carrier|Mesh:|Read:|Run fake)/i;
+const NOT_A_ROUTE = /^(Pass pro|Stalk|Route|WING · Route|Crack|—|Block|Hand off|Ball carrier|Mesh:|Read:|Run fake)/i;
 
 /** See `Diagram.routeSummary`. */
 function summarizeRoutes(
@@ -909,6 +910,70 @@ function summarizeRoutes(
   return names.length >= 2 ? names.join(" / ") : null;
 }
 
+const moveTo = (p: Placed, x: number, y: number): Placed => ({ ...p, x, y, at: [x, y] });
+
+/** Pixels from the ball to the tackle's center: the box edge before any tight end. */
+const TACKLE_DX = 44;
+
+/**
+ * Where the offense lines up when it isn't the formation's standard shape:
+ *
+ * 1. **Film spots** (`card.offenseSpots`, yards from the ball): every
+ *    detected letter goes where he really stood. A receiver within about half a
+ *    yard of the line is on it; nobody is put on top of a lineman.
+ * 2. **A WING tag** in the formation ("ACE WING", strength side) or the call
+ *    ("WING SLIDE", play side): unless film already placed him, the inside
+ *    receiver on that side moves in to a wing, two yards outside the box edge
+ *    (the tackle, or a tight end attached to him) and just off the line.
+ */
+function alignOffense(
+  card: Pick<HudlPlayCard, "playCall" | "formationSide"> & Partial<Pick<HudlPlayCard, "offenseSpots" | "formation">>,
+  qb: Placed,
+  backs: Placed[],
+  skill: Placed[],
+  d: number,
+): { qb: Placed; backs: Placed[]; skill: Placed[] } {
+  const spots = card.offenseSpots ?? {};
+  const fromFilm = (p: Placed): Placed => {
+    const spot = spots[p.label];
+    if (!spot || !Number.isFinite(spot.x) || !Number.isFinite(spot.y)) return p;
+    let x = Math.min(FIELD.width - 14, Math.max(14, FIELD.center.x + spot.x * YARD_X));
+    if (p.role === "QB" || p.role === "RB" || p.role === "FB") {
+      const lo = p.role === "QB" ? 166 : 160;
+      return moveTo(p, x, Math.min(240, Math.max(lo, FIELD.los - spot.y * YARD_PX)));
+    }
+    const onLine = spot.y > -0.6; // off-ball receivers stand about a yard back
+    // Outside the tackle: on the line a tight end's width, off it far enough to clear him.
+    const minDx = onLine ? TACKLE_DX + 22 : TACKLE_DX + 16;
+    const dx = x - FIELD.center.x;
+    if (Math.abs(dx) < minDx) x = FIELD.center.x + (dx < 0 ? -1 : 1) * minDx;
+    return moveTo(p, x, onLine ? 150 : Math.min(200, Math.max(160, FIELD.los - spot.y * YARD_PX)));
+  };
+  const out = { qb: fromFilm(qb), backs: backs.map(fromFilm), skill: skill.map(fromFilm) };
+
+  const ws = callWords(card.formation ?? "");
+  const formationWing = ws.includes("WING");
+  const callWing = callWords(card.playCall).includes("WING") && isWingSlideCall(card.playCall);
+  if (!formationWing && !callWing) return out;
+  const dir = formationWing ? (card.formationSide === "left" ? -1 : 1) : d;
+  const fromBall = (p: Placed) => (p.x - FIELD.center.x) * dir;
+  const mine = out.skill.filter((p) => fromBall(p) > 0).sort((a, b) => fromBall(a) - fromBall(b));
+  let edge = TACKLE_DX;
+  for (const p of mine) {
+    const alignment = insideAlignment((fromBall(p) - edge) / YARD_X, p.y > 150);
+    if (alignment === "wing") return out; // already a wing
+    if (alignment === "tight-end") {
+      edge = fromBall(p);
+      continue;
+    }
+    if (spots[p.label] || p.role !== "WR") return out; // film says where he was; trust it
+    const wing = moveTo(p, FIELD.center.x + dir * (edge + 2 * YARD_X), 162);
+    out.skill = out.skill.map((q) => (q === p ? wing : q));
+    return out;
+  }
+  return out;
+}
+
 /**
  * The wing slide RPO's receivers (see conceptMapper.ts). The alignment check
  * walks the play side inside out from the tackle like the Scout D rules do: a
@@ -928,7 +993,7 @@ function wingSlide(
   const byDistance = (list: Placed[]) => list.sort((a, b) => fromBall(a) - fromBall(b));
   const playSide = byDistance(receivers.filter((p) => side(p.x) === d));
   const ownSide = playSide.length > 0 ? playSide : byDistance(receivers.filter((p) => side(p.x) !== d));
-  let edge = 44; // the tackle, in px from the ball
+  let edge = TACKLE_DX;
   const aligned = ownSide.map((p) => {
     const alignment = insideAlignment((fromBall(p) - edge) / YARD_X, p.y > 150);
     if (alignment !== "slot") edge = Math.max(edge, fromBall(p));
@@ -1273,7 +1338,7 @@ export function buildDiagram(
     | "yardLine"
     | "routeOverrides"
   > &
-    Partial<Pick<HudlPlayCard, "coverage" | "defenseAlignment">>,
+    Partial<Pick<HudlPlayCard, "coverage" | "defenseAlignment" | "formation" | "offenseSpots">>,
   mode: DiagramMode = "team",
   unit: ScoutUnit = "offense",
 ): Diagram {
@@ -1287,9 +1352,13 @@ export function buildDiagram(
   if (kind === "none" && unit === "offense" && hasCoachRoutes(card)) kind = "pass";
 
   const line = OFFENSIVE_LINE.map((s) => place(s, side));
-  const qb = place({ label: "Q", role: "QB", at: shape.qb }, side);
-  const backs = shape.backs.map((s) => place(s, side));
-  const skill = shape.skill.map((s) => place(s, side));
+  const { qb, backs, skill } = alignOffense(
+    card,
+    place({ label: "Q", role: "QB", at: shape.qb }, side),
+    shape.backs.map((s) => place(s, side)),
+    shape.skill.map((s) => place(s, side)),
+    d,
+  );
   const tightEndsOnLine = skill.filter((p) => p.role === "TE" && p.y === 150);
 
   const blocks: Pt[][] = [];
@@ -1413,7 +1482,8 @@ export function buildDiagram(
         targetBlocks.splice(0, targetBlocks.length, ...targetBlocks.filter((t) => !mine(t.path)));
         const path: Pt[] = [pl.at, ...own.path.map(([dx, dy]) => [pl.at[0] + dx, pl.at[1] + dy] as Pt)];
         routes.push({ path, label: "", videoLetter: own.source === "video" || own.source === "ai" ? pl.label : undefined });
-        jobs[pl.label] = "Route";
+        // The alignment check's WING stays in his box when film or a coach draws his route.
+        jobs[pl.label] = jobs[pl.label]?.startsWith("WING") ? "WING · Route" : "Route";
       } else if (own.route) {
         routes = routes.filter((r) => !mine(r.path));
         blocks.splice(0, blocks.length, ...blocks.filter((b) => !mine(b)));

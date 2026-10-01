@@ -125,6 +125,32 @@ export function validateDetectedPlay(value: unknown): string | null {
 
 let counter = 0;
 
+/** Fewest players the film must place before its spots replace the formation's own. */
+const MIN_FILM_SPOTS = 3;
+
+/**
+ * Where each matched letter lined up on film (`card.offenseSpots`), in yards
+ * from the ball. Only for answers in field yards, only spots on the field and
+ * at or behind the line, and only when at least `MIN_FILM_SPOTS` players were
+ * placed (a couple of stray detections shouldn't redraw the formation).
+ */
+export function detectionSpots(
+  detection: DetectedPlay,
+  card: HudlPlayCard,
+): HudlPlayCard["offenseSpots"] | undefined {
+  if (detection.units !== "yards") return undefined;
+  const letters = matchDetectedLetters(detection, card);
+  const spots: NonNullable<HudlPlayCard["offenseSpots"]> = {};
+  for (const player of detection.players) {
+    const letter = letters.get(player);
+    const { x, y } = player.start;
+    if (!letter || !DETECTED_PLAYER_LABELS.includes(letter as DetectedPlayerLabel)) continue;
+    if (!Number.isFinite(x) || !Number.isFinite(y) || Math.abs(x) > 27 || y > 2 || y < -15) continue;
+    spots[letter] = { x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10 };
+  }
+  return Object.keys(spots).length >= MIN_FILM_SPOTS ? spots : undefined;
+}
+
 /**
  * Turns one detection's players into `routeOverrides` entries, each with
  * `source: "video"` and a raw `path` — the mechanism both
@@ -242,7 +268,11 @@ export function buildCardFromDetection(
   };
 
   const card = deriveCard(base);
-  return deriveCard({ ...base, routeOverrides: detectionToRouteOverrides(detection, card) });
+  return deriveCard({
+    ...base,
+    routeOverrides: detectionToRouteOverrides(detection, card),
+    offenseSpots: detectionSpots(detection, card),
+  });
 }
 
 /**
@@ -255,10 +285,13 @@ export function buildCardFromDetection(
  */
 export function applyDetectionToCard(card: HudlPlayCard, detection: DetectedPlay): HudlPlayCard {
   const ball = ballFromDetection(detection);
-  return updateCard(card, {
+  const updated = updateCard(card, {
     routeOverrides: detectionToRouteOverrides(detection, card, card.routeOverrides),
     // The CSV is ground truth: the film only fills a PLAY DIR or note the row left blank.
     ...(!card.playDir.trim() && ball.playDir ? { playDir: ball.playDir } : {}),
     ...(!card.notes.trim() && ball.note ? { notes: ball.note } : {}),
   });
+  // The CSV names the formation; the film shows where each man actually stood.
+  const offenseSpots = detectionSpots(detection, card);
+  return offenseSpots ? { ...updated, offenseSpots } : updated;
 }

@@ -210,7 +210,11 @@ Free-text tags are classified by keyword (`classifyFormation`, `classifyFront`,
     "attached" distance as the Scout D rules) of the box edge is on the box, a tight end on the
     line or a **WING** off it; wider is a slot. The wing slides if there is one, else the
     innermost receiver (trips #3 at 4½ yards reads as a slot; Double Eagle's Z is a wing). His
-    letter stays (Q/F/H/X/Y/Z); the table says "WING: slide to the flat". The **slide**
+    letter stays (Q/F/H/X/Y/Z); the table says "WING: slide to the flat". A **WING tag** puts one
+    there (`alignOffense`): in the formation ("ACE WING", "PRO WING RT", strength side) or the
+    call ("WING SLIDE", play side), the inside receiver on that side moves in to two yards
+    outside the box edge, just off the line (Pro Wing's Z comes in off the TE), on Scout O and
+    Scout D alike. **Film spots** win over both (below). The **slide**
     (`SLIDE_PATH`) is an immediate flat release 2-3 yards behind the LOS toward his sideline,
     caught in the flat inside the next receiver out (never drawn through him). **Perimeter
     blocks** (`SLIDE_BLOCKS`), from the receivers outside him, inside out: the first cracks the
@@ -344,6 +348,14 @@ Coordinates:
 - Formations and fronts are drawn **strength right**. `OFF STR` (or a side tag in the
   formation) mirrors them, and `PLAY DIR` (or a tag in the play call) sets the play side.
 - Unknown formations draw as Spread, and the footer says so.
+- **Real alignment from film** (`card.offenseSpots`): a clip read in field yards keeps where each
+  matched letter stood (`videoImport.ts`'s `detectionSpots`: yards from the ball, at least three
+  players, on the field and not past the line), on single-clip cards and on batch-import CSV cards
+  alike, and `alignOffense` draws them there instead of the formation's standard spots. A
+  receiver within half a yard of the line is on it, else off the ball at his own depth; nobody
+  lands on a lineman. True splits then drive the wing check, Scout D's alignment rules and route
+  starts. Retyping the formation or strength drops them; Edit play's **Use standard spots**
+  clears them by hand.
 
 To add a formation: add the key to `FormationKey` in `hudlParser.ts`, add a keyword to
 `classifyFormation`, and add a shape to `FORMATIONS` (5 OL + Q + backs + skill = 11, using

@@ -96,6 +96,15 @@ export interface HudlPlayCard {
    */
   defenseOverrides?: Record<string, { x: number; y: number }>;
   /**
+   * Where each offensive player (by letter, Q included) really lined up, read
+   * from film: yards to the offense's right (+) / left (−) of the ball, and
+   * yards past the line (+) / into the backfield (−). The card draws these
+   * spots instead of the formation's standard ones, so true splits (a wing,
+   * a tight slot, a nasty split) drive the wing check and Scout D alignment.
+   * Dropped when a coach retypes the formation or strength.
+   */
+  offenseSpots?: Record<string, { x: number; y: number }>;
+  /**
    * Scout defense: this play's safety depth and how the slots are played
    * (src/lib/defensiveAligner.ts), set from the Scout D toolbar or the AI card.
    */
@@ -739,6 +748,7 @@ export type CardEdits = Partial<
     | "hash"
     | "notes"
     | "routeOverrides"
+    | "offenseSpots"
   >
 >;
 
@@ -763,7 +773,12 @@ export function updateCard(card: HudlPlayCard, edits: CardEdits): HudlPlayCard {
       Object.entries(routeOverrides).filter(([, o]) => !(o.source === "ai" && !o.path?.length)),
     );
   }
-  return deriveCard({ ...card, ...edits, routeOverrides, aiHints, edited: true });
+  // A new formation or strength means the film's spots no longer describe it.
+  const reformed =
+    (edits.formation !== undefined && edits.formation !== card.formation) ||
+    (edits.offStrength !== undefined && edits.offStrength !== card.offStrength);
+  const offenseSpots = reformed ? undefined : "offenseSpots" in edits ? edits.offenseSpots : card.offenseSpots;
+  return deriveCard({ ...card, ...edits, routeOverrides, aiHints, offenseSpots, edited: true });
 }
 
 /** Turns one keyed CSV row into a card. Exposed for tests. */

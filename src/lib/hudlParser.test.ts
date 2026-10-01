@@ -1186,6 +1186,23 @@ describe("wing slide RPO", () => {
     expect(trips.jobs.H).toBe("Slide to the flat");
   });
 
+  it("puts a WING in the formation tag or the call at a real wing spot", () => {
+    // "ACE WING": Spread's inside right receiver (Y) moves in to a wing, so he's the slider.
+    const ace = buildDiagram(card("Ace Wing", "RPO SLIDE"));
+    const y = ace.players.find((p) => p.label === "Y")!;
+    expect(insideAlignment((y.x - 250 - 44) / (500 / (160 / 3)), y.y > 150)).toBe("wing");
+    expect(ace.jobs.Y).toBe("WING: slide to the flat");
+    // "WING SLIDE" from Trips: the call says #3 is a wing, so he's drawn as one.
+    expect(buildDiagram(card("Trips", "WING SLIDE")).jobs.H).toBe("WING: slide to the flat");
+    // Pro Wing: Z comes in off the tight end, not on top of him.
+    const pro = buildDiagram(card("Pro Wing", "IZ"));
+    const [te, z] = ["Y", "Z"].map((l) => pro.players.find((p) => p.label === l)!);
+    expect(z.x - te.x).toBeGreaterThan(15);
+    expect(Math.hypot(z.x - te.x, z.y - te.y)).toBeGreaterThanOrEqual(22);
+    // No WING anywhere: the standard shape.
+    expect(buildDiagram(card("Ace", "IZ")).players.find((p) => p.label === "Y")!.x).toBe(388);
+  });
+
   it("slides flat to his own sideline 2-3 yards behind the line", () => {
     for (const dir of ["L", "R"] as const) {
       const d = buildDiagram(card("Double Eagle", "RPO SLIDE", dir));
