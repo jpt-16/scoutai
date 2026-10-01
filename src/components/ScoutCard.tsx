@@ -161,6 +161,27 @@ function linePath(path: Point[], endInset: number): string {
   return `M ${f(start.x)} ${f(start.y)}${middle} L ${f(end.x)} ${f(end.y)}`;
 }
 
+/**
+ * A smooth route (a bubble's arc): quadratic curves through the midpoints of
+ * the path's legs, starting at the player's circle edge and ending
+ * `endInset` short of the last point, so the arrow sits on the curve's own heading.
+ */
+function curvePath(path: Point[], endInset: number): string {
+  if (path.length < 3) return linePath(path, endInset);
+  const tip = path[path.length - 1];
+  const s = heading(path[0], path[1]);
+  const e = heading(path[path.length - 2], tip);
+  const start = { x: path[0].x + 12 * s.cos, y: path[0].y + 12 * s.sin };
+  const end = { x: tip.x - endInset * e.cos, y: tip.y - endInset * e.sin };
+  let d = `M ${f(start.x)} ${f(start.y)}`;
+  for (let i = 1; i < path.length - 1; i++) {
+    const next =
+      i === path.length - 2 ? end : { x: (path[i].x + path[i + 1].x) / 2, y: (path[i].y + path[i + 1].y) / 2 };
+    d += ` Q ${f(path[i].x)} ${f(path[i].y)} ${f(next.x)} ${f(next.y)}`;
+  }
+  return d;
+}
+
 /** Block symbol: the line, then a T-bar across its end. */
 function blockPath(path: Point[]): string {
   const tip = path[path.length - 1];
@@ -443,7 +464,9 @@ export function ScoutCard({
         </g>
 
         {/* Line of scrimmage. */}
-        <rect x={0} y={diagram.losY - 2.5} width={FIELD.width} height={5} fill={c.los} />
+        {/* The LOS bar sits just in front of the line (y 134-139 offense view), so every on-ball
+            player's front edge is flush with its back edge. */}
+        <rect x={0} y={diagram.flipped ? diagram.losY + 1 : diagram.losY - 6} width={FIELD.width} height={5} fill={c.los} />
 
         {/* Blocks, pulls, fakes, routes, ball carrier. */}
         <g fill="none" stroke={c.block} strokeWidth={w(2.2)} strokeLinecap="butt" strokeLinejoin="miter">
@@ -498,7 +521,7 @@ export function ScoutCard({
             return (
               <path
                 key={`r${i}`}
-                d={linePath(live, 3)}
+                d={diagram.routeCurves[i] ? curvePath(live, 3) : linePath(live, 3)}
                 stroke={c.route}
                 strokeWidth={w(2.5)}
                 markerEnd={marker("route")}

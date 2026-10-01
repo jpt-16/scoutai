@@ -56,11 +56,13 @@ interface FormationShape {
 }
 
 const OFFENSIVE_LINE: Slot[] = [
-  { label: "", role: "OL", at: [206, 150] },
-  { label: "", role: "OL", at: [228, 150] },
-  { label: "", role: "OL", at: [250, 150] },
-  { label: "", role: "OL", at: [272, 150] },
-  { label: "", role: "OL", at: [294, 150] },
+  // Linemen (r 9, the center a square of 18) sit 2 px further up than skill players (r 11) at 150,
+  // so every on-ball player's front edge is flush with the LOS bar's back edge at y = 139.
+  { label: "", role: "OL", at: [206, 148] },
+  { label: "", role: "OL", at: [228, 148] },
+  { label: "", role: "OL", at: [250, 148] },
+  { label: "", role: "OL", at: [272, 148] },
+  { label: "", role: "OL", at: [294, 148] },
 ];
 
 export const FORMATIONS: Record<Exclude<FormationKey, "unknown">, FormationShape> = {
@@ -164,10 +166,10 @@ interface FrontShape {
 export const FRONTS: Record<Exclude<FrontKey, "unknown">, FrontShape> = {
   "4-3": {
     dl: [
-      { label: "E", at: [196, 128] },
-      { label: "T", at: [238, 128] },
-      { label: "T", at: [266, 128] },
-      { label: "E", at: [306, 128] },
+      { label: "E", at: [196, 127] },
+      { label: "T", at: [238, 127] },
+      { label: "T", at: [266, 127] },
+      { label: "E", at: [306, 127] },
     ],
     lb: [
       { label: "W", at: [204, 94] },
@@ -177,9 +179,9 @@ export const FRONTS: Record<Exclude<FrontKey, "unknown">, FrontShape> = {
   },
   "3-4": {
     dl: [
-      { label: "E", at: [214, 128] },
-      { label: "N", at: [250, 128] },
-      { label: "E", at: [286, 128] },
+      { label: "E", at: [214, 127] },
+      { label: "N", at: [250, 127] },
+      { label: "E", at: [286, 127] },
     ],
     lb: [
       { label: "W", at: [172, 118] },
@@ -190,11 +192,11 @@ export const FRONTS: Record<Exclude<FrontKey, "unknown">, FrontShape> = {
   },
   "5-2": {
     dl: [
-      { label: "E", at: [184, 128] },
-      { label: "T", at: [216, 128] },
-      { label: "N", at: [250, 128] },
-      { label: "T", at: [284, 128] },
-      { label: "E", at: [316, 128] },
+      { label: "E", at: [184, 127] },
+      { label: "T", at: [216, 127] },
+      { label: "N", at: [250, 127] },
+      { label: "T", at: [284, 127] },
+      { label: "E", at: [316, 127] },
     ],
     lb: [
       { label: "W", at: [226, 92] },
@@ -203,11 +205,11 @@ export const FRONTS: Record<Exclude<FrontKey, "unknown">, FrontShape> = {
   },
   bear: {
     dl: [
-      { label: "E", at: [178, 128] },
-      { label: "T", at: [210, 128] },
-      { label: "N", at: [250, 128] },
-      { label: "T", at: [290, 128] },
-      { label: "E", at: [322, 128] },
+      { label: "E", at: [178, 127] },
+      { label: "T", at: [210, 127] },
+      { label: "N", at: [250, 127] },
+      { label: "T", at: [290, 127] },
+      { label: "E", at: [322, 127] },
     ],
     lb: [
       { label: "W", at: [228, 92] },
@@ -595,6 +597,8 @@ export interface Diagram {
    * `ScoutCard` know which routes to draw draggable correction handles on.
    */
   routeVideoLetters: (string | null)[];
+  /** Per route (same order): true to draw it as a smooth arc (a bubble) instead of sharp breaks. */
+  routeCurves: boolean[];
   /** Scout offense: what each skill player and the QB does ("9 Fade", "Stalk", "Lead"). */
   jobs: Record<string, string>;
   /** Run blocking scheme when the play is a run. */
@@ -640,7 +644,7 @@ export interface Diagram {
 }
 
 type Placed = Player & { at: Pt };
-type LabeledPath = { path: Pt[]; label: string; videoLetter?: string };
+type LabeledPath = { path: Pt[]; label: string; videoLetter?: string; curve?: boolean };
 /** What each skill player does on the play, by label: "9 Fade", "Stalk", "Block LB". */
 type Jobs = Record<string, string>;
 
@@ -777,8 +781,16 @@ function routePath(kind: RouteKind, p: Pt, o: number, d: number): Pt[] {
       return [p, [x + o * 18, yd(1)], [sideline(o), yd(2)]];
     case "swing":
       return [p, [x + d * 34, y + 6], [x + d * 76, y - 12]];
-    case "bubble":
-      return [p, [x + o * 22, y + 16], [x + o * 56, y + 12]];
+    case "bubble": {
+      // Away from the ball, never back toward the Q: a drop step back and out,
+      // then flatten toward the sideline, still behind the line for the catch.
+      // Drawn as a smooth arc (`Diagram.routeCurves`); a receiver already split
+      // wide gets a shorter arc that stays on the field.
+      const out = Math.min(1, Math.max(0.2, ((sideline(o) - x) * o) / (7 * YARD_X)));
+      const at = (yards: number, back: number): Pt => [x + o * yards * YARD_X * out, y + back * YARD_PX];
+      // Deep enough (2.5 yards back) to pass behind the receivers blocking for it.
+      return [p, at(1.5, 1.5), at(4, 2.5), at(7, 2.5)];
+    }
     case "leak":
       return [p, [x, 132], [x + inside * 50, 120], [x + inside * 150, 108]];
   }
@@ -908,7 +920,7 @@ function buildRoutes(
   const jobs: Jobs = {};
   const assigned = new Set<Placed>();
   const run = (pl: Placed, kind: RouteKind) => {
-    routes.push({ path: routePath(kind, pl.at, side(pl.x), d), label: routeLabel(kind) });
+    routes.push({ path: routePath(kind, pl.at, side(pl.x), d), label: routeLabel(kind), curve: kind === "bubble" });
     jobs[pl.label] = routeText(kind);
     assigned.add(pl);
   };
@@ -1331,7 +1343,7 @@ export function buildDiagram(
           jobs[pl.label] = "Pass pro";
         } else if (own.route in ROUTE_NAMES) {
           const routeKind = own.route as RouteKind;
-          routes.push({ path: routePath(routeKind, pl.at, o, d), label: routeLabel(routeKind) });
+          routes.push({ path: routePath(routeKind, pl.at, o, d), label: routeLabel(routeKind), curve: routeKind === "bubble" });
           jobs[pl.label] = routeText(routeKind);
         }
       }
@@ -1374,6 +1386,7 @@ export function buildDiagram(
     routes: turnAll(points(keptRoutes.map((r) => r.path))),
     routeLabels: keptRoutes.map((r) => r.label),
     routeVideoLetters: keptRoutes.map((r) => r.videoLetter ?? null),
+    routeCurves: keptRoutes.map((r) => Boolean(r.curve)),
     routeSummary: unit === "offense" ? summarizeRoutes(card, kind, jobs) : null,
     jobs,
     scheme,

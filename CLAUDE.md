@@ -180,7 +180,10 @@ Free-text tags are classified by keyword (`classifyFormation`, `classifyFront`,
     #3 run e.g. slant / flat / hitch for "QUICK SLANT", curl / flat / go for CURL, post / dig /
     flat for POST; an inside route (FLAT, SHALLOW) goes to the #2s while the #1s clear. Tight ends
     stay in to protect. Verticals (GO, VERTS, "4 VERTS") really are everyone, and a lone tree
-    number ("2") still means every WR runs it. BUBBLE or SCREEN goes to the play-side slot. The other ball-side
+    number ("2") still means every WR runs it. BUBBLE or SCREEN goes to the play-side slot, as a
+    smooth arc (`Diagram.routeCurves`, drawn by `ScoutCard`'s `curvePath`): back and out toward the
+    sideline, never back toward the Q, settling 2.5 yards behind the line so it passes behind
+    its blockers (a receiver already split wide gets a shorter arc that stays on the field). The other ball-side
     receivers block from the inside out: the first takes the **LB** (up, then inside) and the
     second the **S/C** (up and in). With only one blocker, he takes the **C**. Each block is
     labeled at its T-bar, and backside receivers stalk.
@@ -314,6 +317,11 @@ Card look (`ScoutCard.tsx`, PlayIQ-style):
 Coordinates:
 
 - SVG viewBox `0 0 500 300`. Center/ball at **(250, 150)**, line of scrimmage at `y = 140`.
+  The blue LOS bar is drawn just in front of it (y 134-139, offense view) and every on-ball
+  player's front edge sits exactly on its back edge: skill players (r 11) at y 150, linemen (r 9,
+  the center an 18 px square) at y 148. Off-ball receivers (y 160) sit 1-2 yards behind it; the
+  backs keep their real depth (shotgun Q about 5-6 yards). Defensive linemen at y 127 clear the
+  bar on the other side.
 - Hash marks at `x = 167` / `333`. **The ball sits on its hash** (`mapToHash`). Players within
   70 px of the ball shift as a unit, and wider players keep their room to the sideline, so the
   short side bunches and the wide side spreads. The hash is also a triangle on the top edge.

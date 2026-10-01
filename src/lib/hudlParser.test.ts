@@ -535,7 +535,7 @@ describe("buildDiagram (offense only)", () => {
   it("zone: every lineman reaches playside, receivers stalk, back carries", () => {
     const d = buildDiagram(card("spread", "INSIDE ZONE"));
     expect(runScheme({ playCall: "INSIDE ZONE", concept: "inside-zone" })).toBe("zone");
-    const lineBlocks = d.blocks.filter((b) => b[0].y === 150 && b[0].x >= 206 && b[0].x <= 294);
+    const lineBlocks = d.blocks.filter((b) => b[0].y === 148 && b[0].x >= 206 && b[0].x <= 294);
     expect(lineBlocks).toHaveLength(5);
     expect(lineBlocks.every((b) => b[b.length - 1].x > b[0].x)).toBe(true); // stepping right
     expect(d.pulls).toEqual([]);
@@ -548,7 +548,7 @@ describe("buildDiagram (offense only)", () => {
       expect(runScheme({ playCall: call, concept: "power" })).toBe("power");
       const d = buildDiagram(card("i-form", call));
       expect(d.pulls).toHaveLength(1);
-      expect(d.pulls[0][0]).toEqual({ x: 228, y: 150 }); // left guard pulls on a play to the right
+      expect(d.pulls[0][0]).toEqual({ x: 228, y: 148 }); // left guard pulls on a play to the right
     }
     expect(buildDiagram(card("i-form", "COUNTER", "left")).pulls).toHaveLength(2);
   });
@@ -574,7 +574,7 @@ describe("buildDiagram (offense only)", () => {
 
   it("iso / lead: center and guards climb, fullback leads", () => {
     const d = buildDiagram(card("i-form", "ISO"));
-    const climbs = d.blocks.filter((b) => b[0].y === 150 && Math.abs(b[0].x - 250) <= 22);
+    const climbs = d.blocks.filter((b) => b[0].y === 148 && Math.abs(b[0].x - 250) <= 22);
     expect(climbs).toHaveLength(3);
     expect(climbs.every((b) => b[b.length - 1].y <= 104)).toBe(true);
     expect(d.blocks.some((b) => b[0].x === 250 && b[0].y === 198)).toBe(true); // F leads
@@ -1117,5 +1117,41 @@ PLAY #,ODK,DN,DIST,YARD LN,TYPE,G/L,OFF FORM,OFF PLAY,OFF STR,PLAY DIR,GAP,DEF F
 
   it("doesn't mistake a direction column for Run / Pass", () => {
     expect(findRunPassColumn(["DIR"], [["R"], ["R"], ["L"], ["R"]], {})).toBeNull();
+  });
+});
+
+describe("bubble and the line of scrimmage", () => {
+  const card = (formationKey: "trips" | "spread", playDir: "L" | "R") =>
+    parseHudlCsvText(`PLAY #,OFF FORM,OFF PLAY,OFF STR,PLAY DIR\n1,${formationKey},RPO BUBBLE,L,${playDir}\n`).cards[0];
+
+  it("arcs a bubble out toward the sideline, behind the line, drawn as a curve", () => {
+    for (const dir of ["L", "R"] as const) {
+      const d = buildDiagram(card("trips", dir));
+      const i = d.routeLabels.indexOf("BUBBLE");
+      expect(i).toBeGreaterThanOrEqual(0);
+      expect(d.routeCurves[i]).toBe(true);
+      const path = d.routes[i];
+      const start = path[0];
+      const out = Math.sign(start.x - 250); // away from the ball
+      for (let k = 1; k < path.length; k++) {
+        // Every point moves further toward the sideline, never back toward the Q.
+        expect((path[k].x - path[k - 1].x) * out).toBeGreaterThan(0);
+        expect(path[k].y).toBeGreaterThan(140); // still behind the line
+      }
+      expect(d.routeCurves.filter(Boolean)).toHaveLength(1); // only the bubble is curved
+    }
+  });
+
+  it("puts every on-ball player's front edge on the LOS bar's back edge, off-ball receivers 1-2 yards back", () => {
+    const d = buildDiagram(card("spread", "L"));
+    const front = (p: { y: number; label: string; role: string }) => p.y - (p.label ? 11 : 9);
+    const onBall = d.players.filter((p) => p.role === "OL" || (p.role !== "QB" && p.role !== "RB" && p.y <= 150));
+    for (const p of onBall) expect(front(p)).toBe(139);
+    const offBall = d.players.filter((p) => p.role === "WR" && p.y > 150);
+    for (const p of offBall) {
+      const yards = (front(p) - 139) / 7;
+      expect(yards).toBeGreaterThanOrEqual(1);
+      expect(yards).toBeLessThanOrEqual(2);
+    }
   });
 });
