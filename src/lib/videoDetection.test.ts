@@ -6,7 +6,7 @@ describe("buildDetectionPrompt", () => {
     const prompt = buildDetectionPrompt();
     expect(prompt.startsWith(DETECTION_PROMPT)).toBe(true);
     expect(prompt).toContain(FOOTBALL_CONCEPT_RULES);
-    for (const concept of ["MESH", "RAIL / WHEEL", "CORNER / OUT"]) expect(prompt).toContain(concept);
+    for (const concept of ["MESH", "RAIL / WHEEL", "CORNER / OUT", "RPO SLIDE / WING FLAT"]) expect(prompt).toContain(concept);
     expect(prompt).not.toContain("play call for this clip");
   });
 

@@ -163,7 +163,7 @@ export function callWords(playCall: string): string[] {
     .trim()
     .split(" ")
     .filter(Boolean)
-    .map((w) => w.replace(/^(MESH|RAIL|WHEEL|FLOOD|SMASH|DAGGER|CROSS)(ES|S)$/, "$1"));
+    .map((w) => w.replace(/^(MESH|RAIL|WHEEL|FLOOD|SMASH|DAGGER|CROSS|SLIDE|FLAT)(ES|S)$/, "$1"));
 }
 
 /**
@@ -191,3 +191,66 @@ export function matchConcept(
   }
   return null;
 }
+
+/* -------------------------------------------------------------------------- */
+/*                       Wing slide RPO ("RPO SLIDE")                         */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The wing slide RPO: the line zone blocks, the Q meshes with the back, and
+ * the pass is the play-side innermost receiver (#3) sliding to the flat right
+ * off the snap, under his outside receivers cracking and stalking the alley
+ * and perimeter defenders.
+ *
+ * Called "RPO SLIDE", "WING SLIDE" or "WING FLAT". A plain "SLIDE" with no
+ * RPO or WING stays route-tree 0 (release, build up to 5 and settle).
+ */
+export function isWingSlideCall(playCall: string): boolean {
+  const ws = callWords(playCall);
+  const slide = ws.includes("SLIDE");
+  return (ws.includes("RPO") && slide) || (ws.includes("WING") && (slide || ws.includes("FLAT")));
+}
+
+/**
+ * A receiver within this many yards outside the box edge (the tackle, or a
+ * tight end attached to him) is on the box, not split: the same three yards
+ * the Scout D alignment rules use (defensiveAligner.ts), so a player the
+ * defense treats as attached is the one the offense calls a wing.
+ */
+export const WING_MAX_SPLIT_YARDS = 3;
+
+/** How the play side's innermost receiver lines up. */
+export type InsideAlignment = "wing" | "tight-end" | "slot";
+
+/**
+ * The alignment check: a player off the line, tightly flexed within
+ * `WING_MAX_SPLIT_YARDS` of the box edge, is a WING; on the line there he's a
+ * tight end; anyone wider is a slot.
+ */
+export function insideAlignment(splitYards: number, offLine: boolean): InsideAlignment {
+  if (splitYards > WING_MAX_SPLIT_YARDS) return "slot";
+  return offLine ? "wing" : "tight-end";
+}
+
+/**
+ * The slide: an immediate flat release toward his own sideline, 2-3 yards
+ * behind the line of scrimmage, flattening out along it for the catch. Yards
+ * behind the line (positive = backfield) and yards across from his spot.
+ */
+export const SLIDE_PATH: { across: number; behind: number }[] = [
+  { across: 2, behind: 3 },
+  { across: 9, behind: 2 },
+];
+
+/**
+ * The perimeter blocks for the slide, inside out from the slider: the first
+ * receiver outside him cracks inside on the alley defender (the apex / overhang
+ * / force player), the next stalks the corner, angled inside to wall him off
+ * the flat. A lone receiver outside the slider cracks the alley. `up` is yards
+ * past the line and `inside` yards back toward the ball, from the blocker's
+ * own spot.
+ */
+export const SLIDE_BLOCKS: { target: string; job: string; up: number; inside: number }[] = [
+  { target: "ALLEY", job: "Crack the alley defender", up: 3, inside: 3.5 },
+  { target: "C", job: "Stalk the corner, inside", up: 4, inside: 1 },
+];

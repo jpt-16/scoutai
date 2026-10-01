@@ -146,7 +146,8 @@ For each player give:
 - routeType: a short guess at the route name if it's obvious (e.g. "SLANT", "GO", "BUBBLE");
   omit if you're not confident
 
-Also give playName (a short label for what the offense ran) and formation (e.g. "Spread 2x2",
+Also give playName (a short label for what the offense ran; "RPO SLIDE / WING FLAT" for a wing
+slide, with that player's routeType "SLIDE") and formation (e.g. "Spread 2x2",
 "Trips Right", "I-Form"), plus, from the anchor rule: playType ("run" or "pass"), ballCarrier (the
 letter of the player who got the ball from the QB, "Q" if he kept it, "none" if you can't tell) and
 ballDirection ("left", "right" or "middle", the offense's side).`;
@@ -167,7 +168,13 @@ includes one of these keywords:
 2. RAIL / WHEEL (a separate tag that can ride on any concept, e.g. "MESH RAIL"): the back (H in Deuces; a slot if there's no back) releases out to the flat,
    then turns vertically UP the sideline past the line of scrimmage.
 3. CORNER / OUT: outside receivers (X, Z) take a 10-yard stem, then break at a 45-degree angle
-   toward the pylon (CORNER) or break sharp at 90 degrees to the sideline (OUT).`;
+   toward the pylon (CORNER) or break sharp at 90 degrees to the sideline (OUT).
+4. RPO SLIDE / WING FLAT: detect if the innermost receiver is aligned as a flexed Wing back (off the
+   line, within about 3 yards outside the tackle or tight end). If the Wing runs flat across the
+   formation or into the immediate flat under outside blocking receivers, tag the concept as
+   "RPO SLIDE / WING FLAT". Draw his route as an immediate flat release 2-3 yards behind the
+   line of scrimmage toward the sideline (a SLIDE), and the receivers outside him as blockers:
+   short paths up and back inside at the alley and perimeter defenders (crack / stalk), not routes. Keep his own letter; "Wing" is his alignment, not a letter.`;
 
 /** Longest play call passed through to the prompt; a real call is a few words. */
 const MAX_PLAY_CALL_LENGTH = 80;

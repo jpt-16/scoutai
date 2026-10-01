@@ -203,6 +203,19 @@ Free-text tags are classified by keyword (`classifyFormation`, `classifyFront`,
     word in a concept call ("MESH GO") goes to the #1s; anyone a template doesn't name clears
     on a go. Tree numbers always read as numbers, never as a concept. A card with video routes
     keeps them per letter and falls back to this template for any letter the AI missed.
+  - **Wing slide RPO** (`conceptMapper.ts`'s `isWingSlideCall`: "RPO SLIDE", "WING SLIDE", "WING
+    FLAT"; a plain SLIDE is still tree 0): an RPO (zone blocking, mesh fake) whose pass is the play
+    side's inside receiver sliding to the flat. **Alignment check** (`insideAlignment`): walking the
+    play side inside out from the tackle, a player within `WING_MAX_SPLIT_YARDS` (3, the same
+    "attached" distance as the Scout D rules) of the box edge is on the box, a tight end on the
+    line or a **WING** off it; wider is a slot. The wing slides if there is one, else the
+    innermost receiver (trips #3 at 4½ yards reads as a slot; Double Eagle's Z is a wing). His
+    letter stays (Q/F/H/X/Y/Z); the table says "WING: slide to the flat". The **slide**
+    (`SLIDE_PATH`) is an immediate flat release 2-3 yards behind the LOS toward his sideline,
+    caught in the flat inside the next receiver out (never drawn through him). **Perimeter
+    blocks** (`SLIDE_BLOCKS`), from the receivers outside him, inside out: the first cracks the
+    **ALLEY** defender (down and in), the next stalks the **C**, angled inside; a lone one cracks
+    the alley. The backside stalks, and a tight end who slides isn't in the zone blocking.
   - **RPO / PA:** also draw a dashed mesh fake. RPO adds zone blocking; PA adds the QB's
     drop or boot.
 - **Scout defense** (`unit: "defense"`): the offensive formation (no assignments) plus
@@ -637,7 +650,10 @@ The Gemini call itself (prompt, response schema, per-step error handling) lives 
 `/api/parse-video-batch` (several) so there's exactly one place that logic can drift. The prompt
 (`buildDetectionPrompt`) carries `FOOTBALL_CONCEPT_RULES`, route geometry for MESH (drags at 3-5
 yards), RAIL / WHEEL (flat, then up the sideline) and CORNER / OUT (10-yard stem, 45° / 90°),
-matching the route tree above. Every film prompt (route detection and the secondary read) opens
+matching the route tree above, plus the wing slide: detect a flexed wing as the innermost
+receiver and, if he runs flat across the formation or into the flat under outside blocking
+receivers, tag `playName` "RPO SLIDE / WING FLAT" (which the card reads as the wing slide).
+Every film prompt (route detection and the secondary read) opens
 with `QB_ANCHOR_RULES`: find the quarterback first (the player taking the snap under center or 4-5
 yards deep); his jersey is the offense and the way he faces is upfield; everyone across the line
 facing him is defense; left / right are the offense's, never the camera's; then follow the ball

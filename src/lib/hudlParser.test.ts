@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { MOCK_HUDL_CSV } from "./demoScript";
+import { insideAlignment, isWingSlideCall, WING_MAX_SPLIT_YARDS } from "./conceptMapper";
 import {
   buildAssignments,
   buildDiagram,
@@ -1153,5 +1154,82 @@ describe("bubble and the line of scrimmage", () => {
       expect(yards).toBeGreaterThanOrEqual(1);
       expect(yards).toBeLessThanOrEqual(2);
     }
+  });
+});
+
+describe("wing slide RPO", () => {
+  const card = (formation: string, call: string, playDir: "L" | "R" = "R") =>
+    parseHudlCsvText(`PLAY #,OFF FORM,OFF PLAY,PLAY DIR\n1,${formation},${call},${playDir}\n`).cards[0];
+  const pathOf = (d: ReturnType<typeof buildDiagram>, label: string) => d.routes[d.routeLabels.indexOf(label)];
+
+  it("reads RPO SLIDE / WING SLIDE / WING FLAT as the RPO, a plain SLIDE as tree 0", () => {
+    expect(isWingSlideCall("RPO SLIDE")).toBe(true);
+    expect(isWingSlideCall("Wing Slides Rt")).toBe(true);
+    expect(isWingSlideCall("WING FLAT")).toBe(true);
+    expect(isWingSlideCall("RPO SLIDE / WING FLAT")).toBe(true); // the film AI's tag
+    expect(isWingSlideCall("FADE OUT SLIDE")).toBe(false);
+    expect(isWingSlideCall("RPO BUBBLE")).toBe(false);
+    expect(buildDiagram(card("Ace", "WING FLAT")).kind).toBe("rpo");
+    expect(buildDiagram(card("Ace", "0")).routeLabels).not.toContain("SLIDE");
+  });
+
+  it("checks the inside receiver's split: a flexed player off the line is a wing, wider is a slot", () => {
+    expect(insideAlignment(2, true)).toBe("wing");
+    expect(insideAlignment(2, false)).toBe("tight-end");
+    expect(insideAlignment(WING_MAX_SPLIT_YARDS + 1, true)).toBe("slot");
+    // Double Eagle: the wing just outside the tight end slides; the tight end blocks with the line.
+    const eagle = buildDiagram(card("Double Eagle", "RPO SLIDE"));
+    expect(eagle.jobs.Z).toBe("WING: slide to the flat");
+    expect(eagle.jobs.Y).toBeUndefined();
+    // Trips: #3 is 4½ yards off the tackle, a slot, so he slides without the WING tag.
+    const trips = buildDiagram(card("Trips", "RPO SLIDE"));
+    expect(trips.jobs.H).toBe("Slide to the flat");
+  });
+
+  it("slides flat to his own sideline 2-3 yards behind the line", () => {
+    for (const dir of ["L", "R"] as const) {
+      const d = buildDiagram(card("Double Eagle", "RPO SLIDE", dir));
+      const path = pathOf(d, "SLIDE");
+      const out = dir === "R" ? 1 : -1;
+      expect(path).toHaveLength(3);
+      for (let k = 1; k < path.length; k++) {
+        expect((path[k].x - path[k - 1].x) * out).toBeGreaterThan(0); // toward the sideline
+        const behind = (path[k].y - 140) / 7;
+        expect(behind).toBeGreaterThanOrEqual(2);
+        expect(behind).toBeLessThanOrEqual(3);
+      }
+    }
+  });
+
+  it("catches in the flat inside the next receiver out, never through him", () => {
+    for (const [formation, dir] of [["Trips", "R"], ["Spread", "L"], ["Spread", "R"]] as const) {
+      const d = buildDiagram(card(formation, "RPO SLIDE", dir));
+      const path = pathOf(d, "SLIDE");
+      const others = d.players.filter((q) => q.label && (q.x !== path[0].x || q.y !== path[0].y));
+      const out = Math.sign(path[1].x - path[0].x);
+      const end = path[path.length - 1];
+      for (const pl of others) {
+        // Nobody stands on the slide between its start and its catch point.
+        const between = (pl.x - path[0].x) * out > 0 && (end.x - pl.x) * out > -11;
+        if (between) expect(Math.abs(pl.y - end.y) > 22 || (end.x - pl.x) * out < -11).toBe(true);
+      }
+      expect(Math.abs(end.x - path[0].x)).toBeGreaterThanOrEqual(3 * (500 / (160 / 3)) - 0.01);
+    }
+  });
+
+  it("cracks the alley and stalks the corner inside, from the receivers outside the slider", () => {
+    const d = buildDiagram(card("Trips", "RPO SLIDE"));
+    expect(d.targetBlocks.map((t) => t.target)).toEqual(["ALLEY", "C"]);
+    expect(d.jobs.Y).toBe("Crack the alley defender");
+    expect(d.jobs.Z).toBe("Stalk the corner, inside");
+    for (const { path } of d.targetBlocks) {
+      const end = path[path.length - 1];
+      expect(end.x).toBeLessThan(path[0].x); // angled back inside, toward the ball
+      expect(end.y).toBeLessThan(140); // past the line, at the perimeter defenders
+    }
+    expect(d.jobs.X).toBe("Stalk"); // backside
+    expect(d.jobs.Q).toBe("Read: give or throw");
+    // A lone receiver outside the slider (Spread's Z outside Y) cracks the alley.
+    expect(buildDiagram(card("Spread", "RPO SLIDE")).targetBlocks.map((t) => t.target)).toEqual(["ALLEY"]);
   });
 });

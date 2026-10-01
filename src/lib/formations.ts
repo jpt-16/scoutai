@@ -1,5 +1,13 @@
 import type { FormationKey, FrontKey, HudlPlayCard, Side } from "./hudlParser";
-import { matchConcept, type ConceptRoute, type ConceptSlot } from "./conceptMapper";
+import {
+  insideAlignment,
+  isWingSlideCall,
+  matchConcept,
+  SLIDE_BLOCKS,
+  SLIDE_PATH,
+  type ConceptRoute,
+  type ConceptSlot,
+} from "./conceptMapper";
 import { placeDb, type DbAlignment, type DbSlot } from "./secondary";
 import {
   alignDefense,
@@ -491,7 +499,7 @@ const PASS_CONCEPTS = new Set(["verticals", "slant", "screen", "dropback", "boot
 
 export function playKind(card: Pick<HudlPlayCard, "playCall" | "concept">): PlayKind {
   const w = words(card.playCall);
-  if (/ RPO /.test(w)) return "rpo";
+  if (/ RPO /.test(w) || isWingSlideCall(card.playCall)) return "rpo";
   if (/ (PA|PLAY ACTION|BOOT|BOOTLEG|WAGGLE|NAKED) /.test(w)) return "pa";
   if (RUN_CONCEPTS.has(card.concept)) return "run";
   if (routeTokens(card.playCall).length > 0 || PASS_CONCEPTS.has(card.concept)) return "pass";
@@ -885,6 +893,7 @@ function summarizeRoutes(
   const thinCall =
     !numbered &&
     !matchConcept(card.playCall) &&
+    !isWingSlideCall(card.playCall) &&
     distinct.size <= 1 &&
     ![...distinct].some((t) => ["go", "bubble", "leak", "wheel", "swing"].includes(t));
   const ownRoutes = Object.values(card.routeOverrides ?? {}).some((o) => o.route || o.path?.length);
@@ -898,6 +907,74 @@ function summarizeRoutes(
     if (name && !names.includes(name)) names.push(name);
   }
   return names.length >= 2 ? names.join(" / ") : null;
+}
+
+/**
+ * The wing slide RPO's receivers (see conceptMapper.ts). The alignment check
+ * walks the play side inside out from the tackle like the Scout D rules do: a
+ * player within three yards of the box edge is on the box (a tight end on the
+ * line, a WING off it) and moves the edge out to him. The slider is the wing
+ * if there is one, else the play side's innermost receiver (#3 in trips, the
+ * slot in 2x2, the tight end in Pro). Receivers outside him block for it,
+ * inside out: crack the alley, then stalk the corner. The backside stalks.
+ */
+function wingSlide(
+  receivers: Placed[],
+  d: number,
+  side: (x: number) => number,
+  out: { routes: LabeledPath[]; targeted: { path: Pt[]; target: string }[]; stalks: Pt[][]; jobs: Jobs },
+): void {
+  const fromBall = (p: Placed) => Math.abs(p.x - 250);
+  const byDistance = (list: Placed[]) => list.sort((a, b) => fromBall(a) - fromBall(b));
+  const playSide = byDistance(receivers.filter((p) => side(p.x) === d));
+  const ownSide = playSide.length > 0 ? playSide : byDistance(receivers.filter((p) => side(p.x) !== d));
+  let edge = 44; // the tackle, in px from the ball
+  const aligned = ownSide.map((p) => {
+    const alignment = insideAlignment((fromBall(p) - edge) / YARD_X, p.y > 150);
+    if (alignment !== "slot") edge = Math.max(edge, fromBall(p));
+    return { p, alignment };
+  });
+  const slider = aligned.find((a) => a.alignment === "wing") ?? aligned[0];
+  if (!slider) return;
+
+  const { p, alignment } = slider;
+  const o = side(p.x);
+  const [x] = p.at;
+  const outside = ownSide.filter((r) => r !== p && fromBall(r) > fromBall(p));
+  // The catch is in the flat inside the next receiver out, never through him
+  // (at least 3 yards of slide), else out toward the sideline.
+  const room = outside[0] ? Math.max(3 * YARD_X, Math.abs(outside[0].x - x) - 20) : Math.abs(sideline(o) - x);
+  const farthest = SLIDE_PATH[SLIDE_PATH.length - 1].across * YARD_X;
+  const scale = Math.min(1, room / farthest);
+  out.routes.push({
+    path: [p.at, ...SLIDE_PATH.map(({ across: a, behind: b }) => [x + o * a * YARD_X * scale, FIELD.los + b * YARD_PX] as Pt)],
+    label: "SLIDE",
+  });
+  out.jobs[p.label] = alignment === "wing" ? "WING: slide to the flat" : "Slide to the flat";
+
+  // Outside him, inside out: crack the alley, stalk the corner, then plain stalks.
+  outside.forEach((r, i) => {
+    const block = SLIDE_BLOCKS[i];
+    const [bx] = r.at;
+    if (!block) {
+      out.stalks.push([r.at, [bx, 124]]);
+      out.jobs[r.label] = "Stalk";
+      return;
+    }
+    const ro = side(bx);
+    const path: Pt[] =
+      i === 0
+        ? [r.at, [bx - ro * YARD_X, yd(1)], [bx - ro * block.inside * YARD_X, yd(block.up)]] // crack: flat down inside
+        : [r.at, [bx, yd(2)], [bx - ro * block.inside * YARD_X, yd(block.up)]]; // stalk: up, then inside
+    out.targeted.push({ path, target: block.target });
+    out.jobs[r.label] = block.job;
+  });
+  // The backside receivers stalk; a backside tight end blocks with the line.
+  for (const r of receivers) {
+    if (r === p || outside.includes(r) || r.role !== "WR") continue;
+    out.stalks.push([r.at, [r.x, 124]]);
+    out.jobs[r.label] = "Stalk";
+  }
 }
 
 /** Receiver routes for a pass, RPO, or play-action call. */
@@ -930,6 +1007,13 @@ function buildRoutes(
   let others = tokens.filter((t) => t !== "leak");
   const leaker = skill.find((p) => p.role === "TE") ?? backs[backs.length - 1];
   if (leaks > 0 && leaker) run(leaker, "leak");
+
+  // Wing slide RPO ("RPO SLIDE", "WING FLAT"): the inside receiver slides to
+  // the flat under his outside receivers' crack / stalk blocks.
+  if (isWingSlideCall(playCall)) {
+    wingSlide(skill.filter((p) => !assigned.has(p)), d, side, { routes, targeted, stalks, jobs });
+    return { routes, stalks, targeted, jobs };
+  }
 
   // A named concept ("MESH RAIL", "SMASH"): a distinct route per position
   // from src/lib/conceptMapper.ts. Tree numbers always read as numbers.
@@ -1297,7 +1381,8 @@ export function buildDiagram(
       jobs[rb.label] ??= kind === "rpo" ? "Mesh: run it if given" : "Run fake";
       if (kind === "rpo" && mode === "team") {
         // RPO: the line blocks it like a run (zone).
-        const zone = buildBlocking("zone", [...line, ...tightEndsOnLine], [], undefined, d);
+        // A tight end with a route of his own (the slide) isn't in it.
+        const zone = buildBlocking("zone", [...line, ...tightEndsOnLine.filter((p) => !passing.jobs[p.label])], [], undefined, d);
         blocks.push(...zone.blocks);
       }
       if (kind === "pa") {
