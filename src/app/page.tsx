@@ -44,6 +44,7 @@ import {
 } from "@/components/ui/dialog";
 import { MOCK_HUDL_CSV, DEMO_FILE_NAME } from "@/lib/demoScript";
 import { parseHudlCsvText, type HudlField, type HudlParseResult, type UnsupportedFileKind } from "@/lib/hudlParser";
+import { isFilmImportEnabled } from "@/lib/featureFlags";
 import { importFilms } from "@/lib/importFilms";
 import { saveScript, storeScript } from "@/lib/scriptStore";
 import { computeTendencies } from "@/lib/tendencies";
@@ -119,10 +120,13 @@ const SOLUTION_POINTS = [
   "One script: iPad-ready or printed",
 ];
 
+/** AI film-to-card is hidden unless NEXT_PUBLIC_FILM_IMPORT=true (src/lib/featureFlags.ts). */
+const FILM = isFilmImportEnabled();
+
 const FOUR_STEPS: { icon: typeof Upload; title: string; detail: string }[] = [
-  { icon: Upload, title: "Upload", detail: "Drop this week's Hudl export — or a game clip." },
+  { icon: Upload, title: "Upload", detail: FILM ? "Drop this week's Hudl export — or a game clip." : "Drop this week's Hudl export." },
   { icon: Layers, title: "Generate", detail: "Formation, routes, blocking, and assignments draw themselves." },
-  { icon: ClipboardCheck, title: "Review", detail: "Tweak an assignment or drag an AI route into shape." },
+  { icon: ClipboardCheck, title: "Review", detail: FILM ? "Tweak an assignment or drag an AI route into shape." : "Tweak an assignment or a route to match your call." },
   { icon: Smartphone, title: "Practice", detail: "Swipe it on the iPad, or print 2 or 4 to a page." },
 ];
 
@@ -137,7 +141,9 @@ const ABOUT_POINTS: { icon: typeof Upload; title: string; detail: string }[] = [
   { icon: Layers, title: "Real coaching conventions", detail: "Q/F/H/X/Y/Z, your route tree, real run schemes." },
   { icon: Clock, title: "Minutes, not a late night", detail: "Every card draws itself from the breakdown." },
   { icon: Smartphone, title: "Built for the field", detail: "Works offline and reads in direct sunlight." },
-  { icon: Sparkles, title: "AI when you need it", detail: "No breakdown? Start from the film instead." },
+  FILM
+    ? { icon: Sparkles, title: "AI when you need it", detail: "No breakdown? Start from the film instead." }
+    : { icon: Sparkles, title: "AI where it helps", detail: "Checks your breakdown and fills in the concepts it can't place." },
 ];
 
 const FAQS: { q: string; a: string }[] = [
@@ -145,10 +151,14 @@ const FAQS: { q: string; a: string }[] = [
     q: "How do I get my breakdown out of Hudl?",
     a: "Open the opponent's film, find the data grid under the video, click the ⋯ menu at the right end of its toolbar, and choose Export Data to Excel. Drop that file straight in — .xlsx and .csv both work. The video needs breakdown data tagged on it, and your account needs coach or admin access to export.",
   },
-  {
-    q: "How accurate is the AI game-film analysis?",
-    a: "It's a first-pass read, not a measurement. The AI reads camera angle and depth by eye from a sideline or endzone clip, so treat every route as a starting point — drag each break point into shape before it's practice-ready.",
-  },
+  ...(FILM
+    ? [
+        {
+          q: "How accurate is the AI game-film analysis?",
+          a: "It's a first-pass read, not a measurement. The AI reads camera angle and depth by eye from a sideline or endzone clip, so treat every route as a starting point — drag each break point into shape before it's practice-ready.",
+        },
+      ]
+    : []),
   {
     q: "Can I edit a card after it's generated?",
     a: "Yes. Edit Play changes the formation, strength, play call, direction, hash, front, coverage, and each receiver's route. Edits save automatically and are marked \"edited\" in the play list.",
@@ -171,7 +181,9 @@ const FAQS: { q: string; a: string }[] = [
   },
   {
     q: "Do I have to upload game film?",
-    a: "No. Your Hudl export is read entirely in your browser — nothing is uploaded. AI film import is a separate, optional, paid feature for staffs without a breakdown yet.",
+    a: FILM
+      ? "No. Your Hudl export is read entirely in your browser — nothing is uploaded. AI film import is a separate, optional, paid feature for staffs without a breakdown yet."
+      : "No. Your Hudl export is read entirely in your browser — nothing is uploaded. The cards come from your breakdown, which Hudl already tags from the film.",
   },
 ];
 
@@ -337,13 +349,15 @@ export default function UploadPage() {
                     busy={busy}
                     error={error}
                   />
-                  <p className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Film className="size-4 shrink-0 text-primary" aria-hidden="true" />
-                    No breakdown handy?{" "}
-                    <a href="#ai-film" className="font-semibold text-primary underline-offset-4 hover:underline">
-                      Use your game film instead
-                    </a>
-                  </p>
+                  {FILM && (
+                    <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Film className="size-4 shrink-0 text-primary" aria-hidden="true" />
+                      No breakdown handy?{" "}
+                      <a href="#ai-film" className="font-semibold text-primary underline-offset-4 hover:underline">
+                        Use your game film instead
+                      </a>
+                    </p>
+                  )}
                   <div className="mt-2 flex flex-col gap-3 rounded-2xl border bg-background/50 p-5">
                     <p className="text-xs font-bold tracking-[0.16em] text-muted-foreground">WORKS WITH</p>
                     <div className="flex flex-wrap gap-2">
@@ -364,7 +378,8 @@ export default function UploadPage() {
           </div>
         </section>
 
-        {/* AI game-film analysis */}
+        {/* AI game-film analysis (hidden unless NEXT_PUBLIC_FILM_IMPORT=true) */}
+        {FILM && (
         <section id="ai-film" className={SECTION}>
           <div className="mx-auto max-w-6xl">
             <Reveal>
@@ -395,6 +410,7 @@ export default function UploadPage() {
             </Reveal>
           </div>
         </section>
+        )}
 
         {/* Before / after */}
         <section id="showcase" className={`${SECTION} bg-card/30`}>
@@ -492,7 +508,7 @@ export default function UploadPage() {
           <div className="mx-auto max-w-6xl">
             <Reveal>
               <SectionHeading eyebrow="HOW IT WORKS" title="Upload. Generate. Review. Practice.">
-                From a Hudl breakdown — or a game clip — to a script your whole staff can run.
+                {FILM ? "From a Hudl breakdown — or a game clip — to a script your whole staff can run." : "From a Hudl breakdown to a script your whole staff can run."}
               </SectionHeading>
             </Reveal>
             <div className="relative mt-14">

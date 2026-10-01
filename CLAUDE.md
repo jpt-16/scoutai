@@ -528,6 +528,19 @@ set to `gemini-3.6-flash`, which overrides the code default until it's removed i
 Film calls send the clip at `FILM_FPS` (8) frames a second, not Gemini's default 1, so a release
 or break isn't lost between frames: about 10-25k input tokens for a 5-12 second clip.
 
+## AI film import is hidden (`NEXT_PUBLIC_FILM_IMPORT`)
+
+A Hudl Assist breakdown is already tagged from the film by people, so the CSV draws the cards and
+the film AI below isn't needed for them. `src/lib/featureFlags.ts`'s `isFilmImportEnabled()` is
+**off by default**: the landing page drops its "AI game film" section, the single-clip uploader and
+the one-click game import, the "use your game film" link and the film copy in the steps, features
+and FAQ, and `/api/parse-video` and `/api/parse-video-batch` return 404 before any auth, rate limit
+or Gemini call, so nothing is billed. The code stays so it can come back: set
+`NEXT_PUBLIC_FILM_IMPORT=true` (it's inlined at build, so the page and the routes agree) and
+redeploy. **Still on:** the AI text work (import review, text-to-card) and the **Secondary**
+read from a pre-snap clip (`/api/read-secondary`, `/api/blob-upload`), the one thing the CSV
+can't tell you (safety depth, press vs. off). The sections below describe the film import as built.
+
 ## Video analytics service (`video-service/`)
 
 A separate Python/FastAPI microservice, groundwork for an upcoming AI feature: upload a game
@@ -545,7 +558,7 @@ provide). It's meant to be deployed separately, to its own GPU-capable host. See
 ## Video-to-card via a hosted vision model (`/api/parse-video`)
 
 A second, serverless-friendly path to the same goal as `video-service/` above, and the one
-that's actually wired into the app: **Upload game film (beta)** on the landing page uploads a
+that was wired into the app (hidden unless the flag above is on): **Upload game film (beta)** on the landing page uploads a
 clip straight to a **private** Vercel Blob store (`/api/blob-upload` authorizes the client
 upload; private, not public — opposing-team film shouldn't sit at a plain fetchable URL), then
 `/api/parse-video` fetches it back with `BLOB_READ_WRITE_TOKEN` (auto-added once a Blob store is

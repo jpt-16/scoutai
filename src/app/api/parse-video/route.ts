@@ -17,6 +17,7 @@ import { checkRateLimit } from "@vercel/firewall";
 import { GoogleGenAI } from "@google/genai";
 import { NextResponse } from "next/server";
 import { requireEntitlement } from "@/lib/entitlement";
+import { isFilmImportEnabled } from "@/lib/featureFlags";
 import { checkBlobRateLimit } from "@/lib/rateLimit";
 import { TIER_LIMITS } from "@/lib/usageLimits";
 import { detectPlayFromClip, VideoDetectionError } from "@/lib/videoDetection";
@@ -39,6 +40,12 @@ interface RequestBody {
 }
 
 export async function POST(request: Request): Promise<NextResponse> {
+  // Hidden unless NEXT_PUBLIC_FILM_IMPORT=true (src/lib/featureFlags.ts): the sheet draws the
+  // cards, so nothing here runs, and nothing is billed, while the film import is off.
+  if (!isFilmImportEnabled()) {
+    return NextResponse.json({ error: "film_import_off", message: "Film import is turned off." }, { status: 404 });
+  }
+
   // Middleware already fast-fails an unauthenticated request; this re-check
   // is authoritative for a money-costing call and is also what resolves the
   // team id used to key the rate limit below.
