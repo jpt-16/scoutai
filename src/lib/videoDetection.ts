@@ -116,6 +116,7 @@ export const FILM_ROUTE_GUIDE = `  SLIDE (0): releases outside right away and bu
   FADE (9): vertical with a slight outside release.   GO: straight vertical.
   HITCH: to 5, turn back.   DIG: 10-yard in cut.   DRAG: shallow cross at 2-3 yards.
   FLAT: out to the flat at 1-2 yards.   SWING: a back curving out to the flat behind the line.
+  WHIP: a slant inside, then a sharp break back outside to the flat.
   BUBBLE: a slot split away from the box who drops BACK first (behind where he lined up), then
     curls out toward the sideline. Only if he clearly loses ground first; a flat release is a
     SLIDE or FLAT, and a wing is never a BUBBLE.

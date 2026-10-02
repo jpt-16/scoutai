@@ -369,6 +369,7 @@ export type RouteKind =
   | "wheel"
   | "flat"
   | "swing"
+  | "whip"
   | "bubble"
   | "leak";
 
@@ -403,6 +404,7 @@ const ROUTE_NAMES: Record<RouteKind, string> = {
   wheel: "Wheel",
   flat: "Flat",
   swing: "Swing",
+  whip: "Whip",
   bubble: "Bubble",
   leak: "Leak",
 };
@@ -451,6 +453,7 @@ const ROUTE_WORDS: [RegExp, RouteKind][] = [
   [/^SLIDES?$/, "slide"],
   [/^FLATS?$/, "flat"],
   [/^SWING$/, "swing"],
+  [/^WHIPS?$/, "whip"],
   [/^(BUBBLE|SCREEN|TUNNEL|NOW)$/, "bubble"],
   [/^LEAK$/, "leak"],
 ];
@@ -540,7 +543,7 @@ export function inPeriod(
 /** Route choices a coach can give a letter (Edit play): the tree, then the rest. */
 export const ROUTE_CHOICES: { value: string; label: string }[] = [
   ...ROUTE_TREE.map((kind) => ({ value: kind, label: routeText(kind) })),
-  ...(["go", "hitch", "dig", "wheel", "flat", "swing", "bubble", "leak"] as RouteKind[]).map(
+  ...(["go", "hitch", "dig", "wheel", "flat", "swing", "whip", "bubble", "leak"] as RouteKind[]).map(
     (kind) => ({ value: kind, label: routeText(kind) }),
   ),
   { value: "stalk", label: "Stalk block" },
@@ -791,6 +794,12 @@ function routePath(kind: RouteKind, p: Pt, o: number, d: number): Pt[] {
       return [p, [x + o * 18, yd(1)], [sideline(o), yd(2)]];
     case "swing":
       return [p, [x + d * 34, y + 6], [x + d * 76, y - 12]];
+    case "whip": {
+      // A slant (three hard steps, then 45° inside), then back out to the flat.
+      const [bx, by] = diag(3);
+      const outTo = x + o * 6 * YARD_X;
+      return [p, [x, yd(3)], [x + inside * bx, yd(3) - by], [o > 0 ? Math.min(outTo, sideline(o)) : Math.max(outTo, sideline(o)), yd(2)]];
+    }
     case "bubble": {
       // Away from the ball, never back toward the Q: a drop step back and out,
       // then flatten toward the sideline, still behind the line for the catch.
@@ -808,8 +817,8 @@ function routePath(kind: RouteKind, p: Pt, o: number, d: number): Pt[] {
 
 /**
  * A concept route that isn't on the tree (drag, rail, sail, deep dig), from
- * its yard vector: stem straight up to `stemY`, then to `breakX` yards across
- * at `breakY` deep. Rails go out to the flat, then straight up the field
+ * its yard vector: stem up to `stemY` (leaning `driftIn` yards inside), then to
+ * `breakX` yards across at `breakY` deep. Rails go out to the flat, then straight up the field
  * `fromSideline` yards in from that sideline.
  */
 function conceptPath(route: ConceptRoute, pl: Placed, o: number, d: number): Pt[] {
@@ -825,7 +834,8 @@ function conceptPath(route: ConceptRoute, pl: Placed, o: number, d: number): Pt[
   }
   const endX = Math.min(FIELD.width - 12, Math.max(12, x + dir * (route.breakX ?? 0) * YARD_X));
   const path: Pt[] = [pl.at];
-  if (stem > 0) path.push([x, yd(stem)]);
+  // The stem can lean inside (the sail), so the break back out to the sideline has room.
+  if (stem > 0) path.push([x - o * (route.driftIn ?? 0) * YARD_X, yd(stem)]);
   path.push([endX, yd(route.breakY ?? stem)]);
   return path;
 }
@@ -849,6 +859,7 @@ export const ROUTE_COMBOS: Partial<Record<RouteKind, RouteKind[]>> = {
   dig: ["dig", "go", "flat"],
   shallow: ["go", "shallow", "hitch"],
   flat: ["go", "flat", "hitch"],
+  whip: ["go", "whip", "hitch"],
 };
 
 /**

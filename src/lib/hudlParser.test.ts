@@ -648,6 +648,43 @@ describe("buildDiagram (offense only)", () => {
     expect(top.y).toBeLessThan(140 - 15 * 7);
   });
 
+  it("draws a whip as a slant, then back outside to the flat, mirrored with the side", () => {
+    expect(routeTokens("WHIP")).toEqual(["whip"]);
+    expect(routeTokens("Y whip")).toEqual(["whip"]);
+    for (const dir of ["right", "left"] as const) {
+      // 2x2: a lone WHIP gives the #2s the whip, the #1s clear, as with other inside routes.
+      const d = buildDiagram(card("spread", "WHIP", dir));
+      const i = d.routeLabels.indexOf("WHIP");
+      expect(i).toBeGreaterThanOrEqual(0);
+      const path = d.routes[i];
+      const out = Math.sign(path[0].x - 250); // toward his own sideline
+      expect(path).toHaveLength(4);
+      // The stem and the slant: up 3 yards, then inside at 45°.
+      expect(path[1].y).toBeCloseTo(140 - 3 * 7, 0);
+      expect((path[2].x - path[0].x) * out).toBeLessThan(0);
+      expect(path[2].y).toBeLessThan(path[1].y);
+      // Then the break back outside, down to the flat (2 yards), past where he started.
+      expect(path[3].y).toBeCloseTo(140 - 2 * 7, 0);
+      expect((path[3].x - path[2].x) * out).toBeGreaterThan(0);
+      expect((path[3].x - path[0].x) * out).toBeGreaterThan(0);
+      expect(d.routeLabels.filter((l) => l === "GO")).toHaveLength(2); // the #1s clear
+    }
+  });
+
+  it("draws FLOOD's sail 16 up, drifting inside, then out and back to 14", () => {
+    for (const dir of ["right", "left"] as const) {
+      const d = buildDiagram(card("trips", "FLOOD", dir));
+      const sail = d.routes[d.routeLabels.indexOf("SAIL")];
+      const out = Math.sign(sail[0].x - 250); // toward his own sideline
+      expect(sail).toHaveLength(3);
+      expect(sail[1].y).toBeCloseTo(140 - 16 * 7, 0); // 16 yards up
+      expect((sail[1].x - sail[0].x) * out).toBeLessThan(0); // leaning inside
+      expect(Math.abs(sail[1].x - sail[0].x)).toBeLessThan(2 * (500 / (160 / 3))); // only a touch
+      expect(sail[2].y).toBeCloseTo(140 - 14 * 7, 0); // back down to 14
+      expect((sail[2].x - sail[0].x) * out).toBeGreaterThan(0); // finishing outside where he started
+    }
+  });
+
   it("maps other concepts by position and mirrors them with the play direction", () => {
     expect(routesBy(buildDiagram(card("spread", "SMASH")))).toEqual({ X: "HITCH", F: "7", Y: "7", Z: "HITCH" });
     expect(routesBy(buildDiagram(card("trips", "FLOOD")))).toEqual({ Z: "GO", Y: "SAIL", H: "FLAT", X: "DIG" });

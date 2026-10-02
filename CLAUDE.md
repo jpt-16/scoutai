@@ -173,7 +173,9 @@ Free-text tags are classified by keyword (`classifyFormation`, `classifyFront`,
     - "4 VERTS" is a count, not a tree call, and "24 DIVE" stays a run.
 
     Cards write each tree route's number at its arrow tip. Routes off the tree (GO, WHEEL,
-    BUBBLE, FLAT, LEAK, HITCH, DIG, SWING) are written by name.
+    BUBBLE, FLAT, LEAK, HITCH, DIG, SWING, WHIP) are written by name. A **whip** is a slant (a 3-yard
+    stem, then 45° inside) that breaks back outside to the flat; a lone "WHIP" call is a
+    combination like the other inside routes (#1s go, #2s whip, #3s hitch).
   - **Passes:** `routeTokens` reads route words (SLANT, BUBBLE, CORNER, WHEEL, ACROSS/CROSS,
     OUT, FADE, LEAK, GO, POST, CURL, DIG, FLAT, SWING). One route word is a **combination**, not
     that route for everyone (`ROUTE_COMBOS`): each side, outside in, the wide receivers #1 / #2 /
@@ -196,7 +198,8 @@ Free-text tags are classified by keyword (`classifyFormation`, `classifyFront`,
     and mirrors with the play; in Deuces going right that's Z/Y, X/F and H. A route is a tree
     kind (drawn with the staff's own technique, e.g. MESH's 8 post and 7 corner) or a yard
     vector for routes off the tree (`conceptPath`: MESH drags at 3 and 5 crossing over the ball,
-    FLOOD's sail, DAGGER's dig at 15, the deep cross). **RAIL / WHEEL are separate from the
+    FLOOD's sail (16 up, leaning inside a touch via `driftIn`, then an out break finishing outside
+    and back down at 14), DAGGER's dig at 15, the deep cross). **RAIL / WHEEL are separate from the
     concept**: a back tag (`BACK_TAGS`) that rides on any of them ("MESH RAIL", "SMASH RAIL")
     and sends the back out to the backside flat and up the sideline, stepping up in front of
     the Q first. Alone, RAIL / WHEEL is just the back's route, to his own side. Another route
@@ -595,7 +598,7 @@ PLAY DIR), and a single-clip card takes the formation, call, hash, strength and 
 
 **Route names, the catch, and repeatability.** Each player's `routeType` must be one of the
 staff's names (`videoImport.ts`'s `FILM_ROUTES`, the schema's enum, explained to the model in
-`FILM_ROUTE_GUIDE`: the tree 0-9 by name, GO, HITCH, DIG, DRAG, FLAT, SWING, BUBBLE (only if he
+`FILM_ROUTE_GUIDE`: the tree 0-9 by name, GO, HITCH, DIG, DRAG, FLAT, SWING, WHIP, BUBBLE (only if he
 loses ground first; a flat release is a SLIDE), WHEEL, RAIL, LEAK, plus BLOCK, FAKE, CARRY, NONE).
 A named route is **snapped**: redrawn exactly like the route tree from that player's spot on the
 card (`formations.ts`'s `namedRouteDeltas`), stored as a `path` plus `route` so it keeps its number,

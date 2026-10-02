@@ -414,7 +414,7 @@ export function classifyConcept(playCall: string, playType = ""): PlayConcept {
     if (has(p, /\s(BUBBLE|SCREEN|TUNNEL|SLIP|SWING|RB SCREEN|WR SCREEN|NOW)\s/)) return "screen";
     if (has(p, /\s(BOOT|BOOTLEG|NAKED|WAGGLE|SPRINT|ROLL|ROLLOUT|PA|PLAY ACTION)\s/)) return "boot";
     if (has(p, /\s(VERTS|VERT|VERTICAL|VERTICALS|4 VERTS|FOUR VERTS|GO|GOES|SEAM|SEAMS|FADE)\s/)) return "verticals";
-    if (has(p, /\s(SLANT|SLANTS|QUICK|STICK|HITCH|SPACING)\s/)) return "slant";
+    if (has(p, /\s(SLANT|SLANTS|QUICK|STICK|HITCH|SPACING|WHIP|WHIPS)\s/)) return "slant";
     if (has(p, /\s(QB|Q)\s/) && has(p, /\s(ISO|DRAW|POWER|LEAD|RUN|SNEAK|COUNTER|G|TRAP|ZONE|KEEP|B)\s/)) {
       return "qb-run";
     }

@@ -43,6 +43,7 @@ export const REVIEW_ROUTES = [
   "flat",
   "wheel",
   "swing",
+  "whip",
 ] as const;
 export const REVIEW_SLOTS: ConceptSlot[] = ["ps1", "ps2", "ps3", "bs1", "bs2", "back"];
 

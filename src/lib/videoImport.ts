@@ -37,6 +37,7 @@ export const FILM_ROUTES: Record<string, RouteKind | null> = {
   DIG: "dig",
   FLAT: "flat",
   SWING: "swing",
+  WHIP: "whip",
   BUBBLE: "bubble",
   WHEEL: "wheel",
   LEAK: "leak",

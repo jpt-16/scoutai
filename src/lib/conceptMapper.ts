@@ -25,6 +25,8 @@ export interface ConceptRoute {
   tree?: RouteKind;
   /** Vector route: yards straight up before the break. */
   stemY?: number;
+  /** Vector route: yards the stem leans toward the inside before the break (the sail's drift). */
+  driftIn?: number;
   /** Vector route: yards across from the player at the end of the route. */
   breakX?: number;
   /** Vector route: depth (yards past the line of scrimmage) at the end of the route. */
@@ -83,7 +85,16 @@ export const CONCEPT_DICTIONARY: Record<string, Concept> = {
       { who: ["ps1"], route: tree("go", "Go: clear the corner") },
       {
         who: ["ps2"],
-        route: { type: "SAIL", stemY: 8, breakX: 8, breakY: 14, toward: "outside", job: "Sail: 8 up, out to 14" },
+        // 16 yards up, leaning inside a touch, then an out break that finishes outside and back at 14.
+        route: {
+          type: "SAIL",
+          stemY: 16,
+          driftIn: 1.5,
+          breakX: 4,
+          breakY: 14,
+          toward: "outside",
+          job: "Sail: 16 up, in a touch, out and back to 14",
+        },
       },
       { who: ["ps3", "back"], route: tree("flat", "Flat") },
       { who: ["bs1"], route: tree("dig", "Dig") },
