@@ -437,6 +437,23 @@ stored in SVG viewBox coordinates in `card.drawings.offense` / `.defense`, so Sc
 Scout D each have their own layer. They print and survive reloads. Swiping and Adjust X's are
 off while drawing. `ScoutCard`'s `ink` prop enables the overlay.
 
+## Our own playbook (`#playbook`, `/script?playbook=1`)
+
+The staff's own plays aren't kept in Hudl, so they upload them to study. The landing page's
+**Study your playbook** section takes a CSV / `.xlsx` or pasted rows (`UploadDropzone` with its own
+title and no demo button) in the same columns as a Hudl export, so it goes through the exact same
+parser, classifiers and AI review (the staff's own formation names get mapped like any unknown tag).
+Only a formation and a play call are needed, with optional strength and direction; no down,
+distance or yard line. **Get the template** downloads a starter sheet (`playbookTemplate.ts`).
+It lives in its **own storage slot** (`scriptStore.ts`'s `ScriptSlot`: `playbook` →
+`scoutcard:playbook:v1`; the default `script` slot is still the week's scout script and everything
+else reads it), so studying never touches the scout script. `/script?playbook=1` is the same reader
+with the slot switched: the header says OUR PLAYBOOK, Scout O / D, filters, Print Grid and Edit play
+work, **Add plays** appends more rows, and the tendency badges, Playsheet link and demo are off (usage
+percentages mean nothing for your own book). A new upload on the landing page replaces the saved
+playbook; the section shows **Open your playbook · N plays** when one is saved. Anything that saves
+from the reader must pass `slot` (the AI-review callback depends on it).
+
 ## Practice playsheet (`/practice`, `src/lib/practicePlan.ts`)
 
 Staffs already run practice off a playsheet: each period (7v7 or team) lists the plays they'll
@@ -844,7 +861,8 @@ there's still no separate database for this either.
 
 ## Landing page (`src/app/page.tsx`)
 
-Sections, in order: hero, `#upload`, `#ai-film` (only with `NEXT_PUBLIC_FILM_IMPORT`), `#ai` ("How
+Sections, in order: hero, `#upload`, `#playbook` (upload your own plays, see "Our own playbook"),
+`#ai-film` (only with `NEXT_PUBLIC_FILM_IMPORT`), `#ai` ("How
 the AI helps": your tags win, AI fills the gaps, checked then marked; it describes the import review
 and text cards above, so keep it true to them), `#showcase`, problem/solution, on-the-field,
 `#how-it-works`, `#features`, `#about`, `#faq`, final CTA. Visuals live in

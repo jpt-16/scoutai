@@ -8,18 +8,33 @@ import { cn } from "@/lib/utils";
 interface UploadDropzoneProps {
   /** One or more Hudl CSVs or Excel workbooks (one per film). */
   onFiles: (files: File[]) => void;
-  onDemo: () => void;
+  /** The demo button; left out where there's no demo (the playbook upload). */
+  onDemo?: () => void;
   /** Pasted clipboard text (e.g. copied straight out of Excel or Google Sheets). */
   onPasteText: (text: string) => void;
   busy?: boolean;
   error?: string | null;
+  /** Headline and hint under it; the defaults are the Hudl breakdown wording. */
+  title?: string;
+  hint?: string;
+  /** What the files are called, for the file picker's accessible name and the paste hint. */
+  noun?: string;
 }
 
 function isBreakdownFile(file: File): boolean {
   return /\.(csv|xlsx)$/i.test(file.name) || file.type === "text/csv";
 }
 
-export function UploadDropzone({ onFiles, onDemo, onPasteText, busy, error }: UploadDropzoneProps) {
+export function UploadDropzone({
+  onFiles,
+  onDemo,
+  onPasteText,
+  busy,
+  error,
+  title = "Drop your Hudl .csv or .xlsx exports here",
+  hint = "One file per film. Add as many games as you want in one script.",
+  noun = "breakdown",
+}: UploadDropzoneProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
@@ -69,10 +84,8 @@ export function UploadDropzone({ onFiles, onDemo, onPasteText, busy, error }: Up
             <Upload className="size-7 text-primary" aria-hidden="true" />
           </div>
           <div className="flex flex-col gap-1">
-            <p className="text-xl font-bold sm:text-[22px]">Drop your Hudl .csv or .xlsx exports here</p>
-            <p className="text-[15px] text-muted-foreground">
-              One file per film. Add as many games as you want in one script.
-            </p>
+            <p className="text-xl font-bold sm:text-[22px]">{title}</p>
+            <p className="text-[15px] text-muted-foreground">{hint}</p>
           </div>
         </div>
         <div className="flex flex-wrap gap-3">
@@ -80,13 +93,15 @@ export function UploadDropzone({ onFiles, onDemo, onPasteText, busy, error }: Up
             <FileText aria-hidden="true" />
             {busy ? "Reading files…" : "Choose files"}
           </Button>
-          <Button size="xl" variant="outline" onClick={onDemo} disabled={busy}>
-            <Play aria-hidden="true" className="fill-current" />
-            Load demo script · 5 plays
-          </Button>
+          {onDemo && (
+            <Button size="xl" variant="outline" onClick={onDemo} disabled={busy}>
+              <Play aria-hidden="true" className="fill-current" />
+              Load demo script · 5 plays
+            </Button>
+          )}
           <Button size="xl" variant="outline" onClick={() => setPasting((p) => !p)} disabled={busy}>
             <ClipboardPaste aria-hidden="true" />
-            {pasting ? "Cancel paste" : "Paste breakdown"}
+            {pasting ? "Cancel paste" : `Paste ${noun}`}
           </Button>
           <input
             ref={inputRef}
@@ -94,7 +109,7 @@ export function UploadDropzone({ onFiles, onDemo, onPasteText, busy, error }: Up
             accept=".csv,.xlsx,text/csv"
             multiple
             className="sr-only"
-            aria-label="Hudl breakdown files"
+            aria-label={`${noun} files`}
             onChange={(e) => {
               accept(e.target.files);
               e.target.value = "";
@@ -104,7 +119,7 @@ export function UploadDropzone({ onFiles, onDemo, onPasteText, busy, error }: Up
         {pasting && (
           <textarea
             autoFocus
-            placeholder="Click here, then paste (Ctrl+V / Cmd+V) a breakdown copied from Excel or Google Sheets…"
+            placeholder={`Click here, then paste (Ctrl+V / Cmd+V) a ${noun} copied from Excel or Google Sheets…`}
             className="min-h-28 w-full resize-y rounded-xl border-2 border-input bg-background p-3 text-sm outline-none focus:border-primary"
             disabled={busy}
             onPaste={(e) => {

@@ -60,7 +60,7 @@ import {
   type PracticePlan,
 } from "@/lib/practicePlan";
 import { applyReview, reviewRows, type ReviewResult } from "@/lib/importReview";
-import { loadScript, saveScript, storeScript, type StoredScript } from "@/lib/scriptStore";
+import { loadScript, saveScript, storeScript, type ScriptSlot, type StoredScript } from "@/lib/scriptStore";
 import { cn } from "@/lib/utils";
 
 type View = "field" | "print";
@@ -142,6 +142,9 @@ function ScriptApp({ demoMode = false }: { demoMode?: boolean }) {
   const router = useRouter();
   // undefined while reading localStorage, null when nothing is loaded.
   const [script, setScript] = useState<StoredScript | null | undefined>(undefined);
+  // /script?playbook=1 studies the staff's own playbook (its own storage slot), not the scout script.
+  const [slot, setSlot] = useState<ScriptSlot>("script");
+  const isPlaybook = slot === "playbook";
   const [view, setView] = useState<View>("field");
   const [modeChoice, setMode] = useState<Mode>("all");
   const [unitChoice, setUnit] = useState<ScoutUnit>("offense");
@@ -185,11 +188,13 @@ function ScriptApp({ demoMode = false }: { demoMode?: boolean }) {
   scriptRef.current = script;
 
   useEffect(() => {
-    setScript(loadScript());
-    // A fresh import: let the AI read what the rules couldn't place (below).
-    if (new URLSearchParams(window.location.search).get("loaded") === "1") reviewPending.current = true;
     const params = new URLSearchParams(window.location.search);
-    const dayId = params.get("practice");
+    const which: ScriptSlot = params.get("playbook") === "1" ? "playbook" : "script";
+    setSlot(which);
+    setScript(loadScript(which));
+    // A fresh import: let the AI read what the rules couldn't place (below).
+    if (params.get("loaded") === "1") reviewPending.current = true;
+    const dayId = which === "script" ? params.get("practice") : null;
     if (!dayId) return;
     const plan = loadPlan();
     const day = plan.days.find((d) => d.id === dayId);
@@ -343,7 +348,7 @@ function ScriptApp({ demoMode = false }: { demoMode?: boolean }) {
       delete copy.secondary;
       return copy;
     });
-    setScript(storeScript({ ...script, cards: stored }));
+    setScript(storeScript({ ...script, cards: stored }, slot));
   };
 
   /**
@@ -441,7 +446,7 @@ function ScriptApp({ demoMode = false }: { demoMode?: boolean }) {
     }
     const latest = scriptRef.current ?? base;
     const { cards: reviewed, filled } = applyReview(latest.cards, payload.reviewedIds, payload.results);
-    setScript(storeScript({ ...latest, cards: reviewed }));
+    setScript(storeScript({ ...latest, cards: reviewed }, slot));
     if (filled > 0) {
       setNotice((n) => ({
         heading: `AI filled in ${filled} ${filled === 1 ? "play" : "plays"}`,
@@ -451,7 +456,7 @@ function ScriptApp({ demoMode = false }: { demoMode?: boolean }) {
         trigger: n.trigger + 1,
       }));
     }
-  }, []);
+  }, [slot]);
   useEffect(() => {
     if (script && reviewPending.current) {
       reviewPending.current = false;
@@ -466,12 +471,15 @@ function ScriptApp({ demoMode = false }: { demoMode?: boolean }) {
       ? `Added ${imported.cards.length} ${imported.cards.length === 1 ? "play" : "plays"}`
       : "No plays added";
     if (imported.cards.length) {
-      const next = storeScript({
-        ...script,
-        films: [...script.films, ...imported.films],
-        cards: [...script.cards, ...imported.cards],
-        warnings: [...script.warnings, ...imported.warnings],
-      });
+      const next = storeScript(
+        {
+          ...script,
+          films: [...script.films, ...imported.films],
+          cards: [...script.cards, ...imported.cards],
+          warnings: [...script.warnings, ...imported.warnings],
+        },
+        slot,
+      );
       setScript(next);
       reviewPending.current = true;
     }
@@ -498,6 +506,7 @@ function ScriptApp({ demoMode = false }: { demoMode?: boolean }) {
         script
           ? { ...script, cards: [...existing, added] }
           : { fileName: "", films: [], savedAt: "", cards: [added], warnings: [] },
+        slot,
       ),
     );
     // Show it: every play, Scout O, no filters, so the new card is last.
@@ -526,19 +535,25 @@ function ScriptApp({ demoMode = false }: { demoMode?: boolean }) {
       <main className="flex min-h-dvh flex-col items-center justify-center gap-6 px-6 text-center">
         <BrandMark />
         <div className="flex flex-col gap-2">
-          <h1 className="font-display text-4xl font-bold">No scout script loaded</h1>
+          <h1 className="font-display text-4xl font-bold">
+            {isPlaybook ? "No playbook uploaded yet" : "No scout script loaded"}
+          </h1>
           <p className="text-lg text-muted-foreground">
-            Upload this week&apos;s Hudl breakdown, or try the 5-play demo.
+            {isPlaybook
+              ? "Upload your own plays, a spreadsheet or pasted rows, and study them here."
+              : "Upload this week's Hudl breakdown, or try the 5-play demo."}
           </p>
         </div>
         <div className="flex flex-wrap justify-center gap-3">
-          <Button size="xl" onClick={() => router.push("/")}>
+          <Button size="xl" onClick={() => router.push(isPlaybook ? "/#playbook" : "/")}>
             <Upload aria-hidden="true" />
-            Upload a Hudl CSV
+            {isPlaybook ? "Upload your playbook" : "Upload a Hudl CSV"}
           </Button>
-          <Button size="xl" variant="outline" onClick={loadDemo}>
-            Load demo script
-          </Button>
+          {!isPlaybook && (
+            <Button size="xl" variant="outline" onClick={loadDemo}>
+              Load demo script
+            </Button>
+          )}
           <Button size="xl" variant="outline" onClick={() => setGenerating(true)}>
             <Sparkles aria-hidden="true" />
             Draw a play with AI
@@ -558,7 +573,7 @@ function ScriptApp({ demoMode = false }: { demoMode?: boolean }) {
       <header className="no-print flex h-16 shrink-0 items-center gap-4 border-b px-4 sm:px-6">
         <Button asChild variant="outline" size="icon" className="border">
           <Link
-            href={practice ? `/practice?day=${practice.day.id}` : "/"}
+            href={practice ? `/practice?day=${practice.day.id}` : isPlaybook ? "/#playbook" : "/"}
             aria-label={practice ? "Back to the playsheet" : "Back to upload"}
           >
             <ChevronLeft className="size-5" />
@@ -566,7 +581,7 @@ function ScriptApp({ demoMode = false }: { demoMode?: boolean }) {
         </Button>
         <div className="flex min-w-0 flex-1 flex-col">
           <span className="text-xs font-bold tracking-[0.14em] text-primary">
-            {practice ? `PRACTICE · ${practice.day.name.toUpperCase()}` : "SCOUT SCRIPT"}
+            {practice ? `PRACTICE · ${practice.day.name.toUpperCase()}` : isPlaybook ? "OUR PLAYBOOK" : "SCOUT SCRIPT"}
           </span>
           <span className="font-display truncate text-2xl leading-[1.05] font-bold">
             {practicePeriod
@@ -880,16 +895,18 @@ function ScriptApp({ demoMode = false }: { demoMode?: boolean }) {
           )}
           {!practice && !demoMode && (
             <>
-              <Button asChild size="lg" variant="outline">
-                <Link href="/practice">
-                  <ClipboardList aria-hidden="true" />
-                  Playsheet
-                </Link>
-              </Button>
+              {!isPlaybook && (
+                <Button asChild size="lg" variant="outline">
+                  <Link href="/practice">
+                    <ClipboardList aria-hidden="true" />
+                    Playsheet
+                  </Link>
+                </Button>
+              )}
               <Button size="lg" variant="outline" onClick={() => addFilmInput.current?.click()}>
                 <FilePlus2 aria-hidden="true" />
-                <span className="hidden xl:inline">Add film</span>
-                <span className="xl:hidden">Film</span>
+                <span className="hidden xl:inline">{isPlaybook ? "Add plays" : "Add film"}</span>
+                <span className="xl:hidden">{isPlaybook ? "Plays" : "Film"}</span>
               </Button>
               <Button size="lg" variant="outline" onClick={() => setGenerating(true)}>
                 <Sparkles aria-hidden="true" />
@@ -955,7 +972,7 @@ function ScriptApp({ demoMode = false }: { demoMode?: boolean }) {
             const next = { ...script.dbAlignments };
             if (alignment) next[key] = alignment;
             else delete next[key];
-            setScript(storeScript({ ...script, dbAlignments: next }));
+            setScript(storeScript({ ...script, dbAlignments: next }, slot));
             setSecondaryOpen(false);
           }}
         />
@@ -1024,7 +1041,7 @@ function ScriptApp({ demoMode = false }: { demoMode?: boolean }) {
                     card={current}
                     mode={cardMode}
                     unit={unit}
-                    tendencies={editable ? tendencies : undefined}
+                    tendencies={editable && !isPlaybook ? tendencies : undefined}
                     contrast={sunlight ? "high" : "normal"}
                     onMoveDefender={
                       adjusting && unit === "defense"

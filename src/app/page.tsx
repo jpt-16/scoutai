@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
@@ -9,11 +9,13 @@ import {
   ClipboardCheck,
   ClipboardList,
   Clock,
+  Download,
   Film,
   Layers,
   Lock,
   Play,
   Printer,
+  BookOpen,
   Smartphone,
   Sparkles,
   Upload,
@@ -46,7 +48,8 @@ import { MOCK_HUDL_CSV, DEMO_FILE_NAME } from "@/lib/demoScript";
 import { parseHudlCsvText, type HudlField, type HudlParseResult, type UnsupportedFileKind } from "@/lib/hudlParser";
 import { isFilmImportEnabled } from "@/lib/featureFlags";
 import { importFilms } from "@/lib/importFilms";
-import { saveScript, storeScript } from "@/lib/scriptStore";
+import { PLAYBOOK_TEMPLATE_CSV, PLAYBOOK_TEMPLATE_NAME } from "@/lib/playbookTemplate";
+import { loadScript, saveScript, storeScript } from "@/lib/scriptStore";
 import { computeTendencies } from "@/lib/tendencies";
 
 // Smash (X hitch, F corner — F is the slot in Deuces Gun, H stays in the
@@ -259,6 +262,56 @@ export default function UploadPage() {
     }
   };
 
+  // The staff's own playbook: same readers, its own storage slot, studied at /script?playbook=1.
+  const [savedPlaybook, setSavedPlaybook] = useState<number | null>(null);
+  useEffect(() => setSavedPlaybook(loadScript("playbook")?.cards.length ?? null), []);
+
+  const handlePlaybookFiles = async (files: File[]) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const imported = await importFilms(files);
+      if (imported.cards.length > 0) {
+        storeScript(
+          { fileName: "", films: imported.films, savedAt: "", cards: imported.cards, warnings: imported.warnings },
+          "playbook",
+        );
+        router.push("/script?playbook=1&loaded=1");
+        return;
+      }
+      const [first] = imported.failed;
+      setReport({
+        fileName: files.length > 1 ? `${first.name} (and ${files.length - 1} more)` : first.name,
+        result: first.result,
+      });
+    } catch {
+      setError("Couldn't read those files. Save the sheet as .xlsx or CSV and try again.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handlePlaybookPaste = (text: string) => {
+    const result = parseHudlCsvText(text);
+    if (result.cards.length > 0) {
+      saveScript("Pasted playbook", result, "playbook");
+      router.push("/script?playbook=1&loaded=1");
+      return;
+    }
+    setReport({ fileName: "Pasted playbook", result });
+  };
+
+  const downloadPlaybookTemplate = () => {
+    const url = URL.createObjectURL(new Blob([PLAYBOOK_TEMPLATE_CSV], { type: "text/csv" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = PLAYBOOK_TEMPLATE_NAME;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  };
+
   const handleDemo = () => {
     saveScript(DEMO_FILE_NAME, parseHudlCsvText(MOCK_HUDL_CSV));
     router.push("/script");
@@ -399,6 +452,86 @@ export default function UploadPage() {
               </Reveal>
               <Reveal delay={120} className="lg:order-1">
                 <HudlExportGuide />
+              </Reveal>
+            </div>
+          </div>
+        </section>
+
+        {/* Our own playbook: the staff's plays aren't in Hudl, so they upload them to study. */}
+        <section id="playbook" className={`${SECTION} bg-card/30`}>
+          <div className="mx-auto max-w-6xl">
+            <Reveal>
+              <SectionHeading
+                eyebrow="YOUR OWN PLAYS"
+                title={
+                  <>
+                    Study <span className="text-primary">your playbook</span>
+                  </>
+                }
+              >
+                Your own plays aren&apos;t in Hudl, so put them here. Upload a sheet of your plays and flip through
+                them on the iPad, kept apart from this week&apos;s scout script.
+              </SectionHeading>
+            </Reveal>
+            <div className="mt-12 grid items-start gap-8 lg:grid-cols-2 lg:gap-10">
+              <Reveal>
+                <div className="flex flex-col gap-5 rounded-3xl border bg-card p-7">
+                  <span className="flex size-12 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lg shadow-primary/30">
+                    <BookOpen className="size-6" aria-hidden="true" />
+                  </span>
+                  <p className="font-display text-2xl font-extrabold uppercase">What goes in the sheet</p>
+                  <ul className="flex flex-col gap-3 text-[15px] leading-relaxed text-muted-foreground">
+                    <li className="flex gap-3">
+                      <Check className="mt-1 size-4 shrink-0 text-primary" aria-hidden="true" />
+                      <span>
+                        One row per play: the <strong className="text-foreground">formation</strong> and the{" "}
+                        <strong className="text-foreground">play call</strong>, like &ldquo;TRIPS · QUICK SLANT&rdquo;.
+                      </span>
+                    </li>
+                    <li className="flex gap-3">
+                      <Check className="mt-1 size-4 shrink-0 text-primary" aria-hidden="true" />
+                      <span>Optional: strength (L / R) and play direction (L / R). No down, distance or yard line needed.</span>
+                    </li>
+                    <li className="flex gap-3">
+                      <Check className="mt-1 size-4 shrink-0 text-primary" aria-hidden="true" />
+                      <span>
+                        Same columns as a Hudl export, so the cards draw exactly like the scout cards. Your own
+                        names for formations are read too.
+                      </span>
+                    </li>
+                  </ul>
+                  <div className="flex flex-wrap gap-3">
+                    <Button size="lg" variant="outline" onClick={downloadPlaybookTemplate}>
+                      <Download aria-hidden="true" />
+                      Get the template
+                    </Button>
+                    {savedPlaybook !== null && (
+                      <Button size="lg" onClick={() => router.push("/script?playbook=1")}>
+                        <BookOpen aria-hidden="true" />
+                        Open your playbook · {savedPlaybook} {savedPlaybook === 1 ? "play" : "plays"}
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </Reveal>
+              <Reveal delay={120}>
+                <AppGate variant="section">
+                  <div className="flex flex-col gap-3">
+                    <UploadDropzone
+                      onFiles={handlePlaybookFiles}
+                      onPasteText={handlePlaybookPaste}
+                      busy={busy}
+                      error={error}
+                      title="Drop your playbook .csv or .xlsx here"
+                      hint={
+                        savedPlaybook !== null
+                          ? "A new upload replaces your saved playbook. Add more plays later from the playbook itself."
+                          : "One row per play: formation and play call."
+                      }
+                      noun="playbook"
+                    />
+                  </div>
+                </AppGate>
               </Reveal>
             </div>
           </div>
