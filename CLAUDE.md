@@ -323,6 +323,13 @@ Card look (`ScoutCard.tsx`, PlayIQ-style):
   - Fade (9): go straight, with a slight outside release — self-explanatory.
 - **Pass pro:** on passes and play action in Team, the line takes short angle-back sets, and
   any TE or back without a route protects (T-bars).
+- **Everyone has a job** (end of `buildDiagram`, tested by `assignments.test.ts` across every
+  formation, call, period and direction): on a called play every receiver and back either runs a
+  route or blocks. Anyone the call, the AI or a template left without a drawn path gets the default
+  for his spot: a wide receiver **stalks**, a tight end or back **pass-pros** (**blocks** on an RPO)
+  in 7v7 as well as Team (no line to set there), and on a run the back who isn't carrying it
+  **fakes** (dashed). A play with no call is a formation rep and stays bare, and a coach's explicit
+  "No route" is respected.
 - **Assignment table** (`buildAssignments`), with text generated from the diagram's `jobs` and
   the run scheme:
   - Runs: `Y, PST, PSG, C, BSG, BST, NOTES`.

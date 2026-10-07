@@ -770,12 +770,13 @@ describe("buildDiagram (offense only)", () => {
     expect(corner[2].x).toBeGreaterThan(corner[1].x - 0.001);
   });
 
-  it("pass protection only in team: backs and TEs without a route protect", () => {
+  it("backs and TEs without a route protect, in 7v7 too (there's just no line to set)", () => {
     const team = buildDiagram(card("pro", "FADE"));
     expect(team.jobs.F).toBe("Pass pro");
     expect(team.jobs.Y).toBe("Pass pro");
     const seven = buildDiagram(card("pro", "FADE"), "7v7");
-    expect(seven.blocks).toEqual([]);
+    expect(seven.jobs).toMatchObject({ F: "Pass pro", H: "Pass pro", Y: "Pass pro" });
+    expect(seven.blocks).toHaveLength(3); // the TE and both backs; no linemen in 7v7
   });
 
   it("builds the assignment table for runs, passes, and scout defense", () => {

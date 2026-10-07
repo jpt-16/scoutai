@@ -1600,6 +1600,44 @@ export function buildDiagram(
     }
   }
 
+  // Nobody stands around: on a called play every receiver and back either runs a route or
+  // blocks. Whatever the call (or the AI) left without a drawn assignment gets the default for
+  // his spot. A coach's explicit "No route" stays, and an untagged play (kind "none") is only a
+  // formation rep, so there's nothing to assign.
+  if (unit === "offense" && kind !== "none") {
+    const drawn = [
+      ...routes.map((r) => r.path),
+      ...blocks,
+      ...targetBlocks.map((t) => t.path),
+      ...pulls,
+      ...fakes,
+      ...(carrier ? [carrier] : []),
+    ];
+    const hasAssignment = (pl: Placed) =>
+      drawn.some((path) => path.length > 0 && path[0][0] === pl.at[0] && path[0][1] === pl.at[1]);
+    const jobIfBlank = (pl: Placed, job: string) => {
+      if (!jobs[pl.label] || jobs[pl.label] === "—") jobs[pl.label] = job;
+    };
+    for (const pl of [...skill, ...backs]) {
+      if (hasAssignment(pl) || card.routeOverrides?.[pl.label]?.route === "none") continue;
+      const o = pl.x >= 250 ? 1 : -1;
+      if (pl.role === "WR") {
+        blocks.push([pl.at, [pl.x, 124]]);
+        jobIfBlank(pl, "Stalk");
+      } else if (pl.role === "TE") {
+        blocks.push(pl.y === 150 ? [pl.at, [pl.x + o * 8, 162]] : [pl.at, [pl.x + o * 14, pl.y - 12]]);
+        jobIfBlank(pl, kind === "rpo" ? "Block" : "Pass pro");
+      } else if (kind === "run") {
+        // A back who isn't carrying it sells the fake.
+        fakes.push([pl.at, [pl.x + d * 10, pl.y - 22]]);
+        jobIfBlank(pl, "Fake");
+      } else {
+        blocks.push([pl.at, [pl.x + o * 14, pl.y - 12]]);
+        jobIfBlank(pl, kind === "rpo" ? "Block" : "Pass pro");
+      }
+    }
+  }
+
   const skeleton = mode === "7v7";
   const players: Player[] = [...(skeleton ? [] : line), qb, ...backs, ...skill].map(
     ({ label, role, x, y, ball }) => ({ label, role, x, y, ...(ball ? { ball } : {}) }),
