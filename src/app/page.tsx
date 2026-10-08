@@ -172,9 +172,31 @@ const ABOUT_POINTS: { icon: typeof Upload; title: string; detail: string }[] = [
 ];
 
 const FAQS: { q: string; a: string }[] = [
+  // Getting started
   {
     q: "How do I get my breakdown out of Hudl?",
     a: "Open the opponent's film, find the data grid under the video, click the ⋯ menu at the right end of its toolbar, and choose Export Data to Excel. Drop that file straight in — .xlsx and .csv both work. The video needs breakdown data tagged on it, and your account needs coach or admin access to export.",
+  },
+  {
+    q: "What can I upload?",
+    a: "A Hudl export as .csv or .xlsx, or rows copied from Excel or Google Sheets and pasted in. Drop several files at once to put a whole season in one script. An old .xls needs to be re-saved as .xlsx or CSV first. Title lines above the header are skipped, and common column names are matched, so a hand-typed sheet usually reads without changes.",
+  },
+  {
+    q: "Can I add our own playbook?",
+    a: "Yes. Hudl doesn't hold your own plays, so Study your playbook takes a sheet of them (a formation and a play call per row, with strength and direction if you like) and opens them as cards in the same viewer. They're kept apart from the week's scout script, and there's a template to start from.",
+  },
+  {
+    q: "Do I need an account?",
+    a: "ScoutCard AI is in a private pilot with coaching staffs: sign in with the email your staff was invited with. The 5-play demo is open to anyone, so you can swipe through cards, switch between Scout O and Scout D, and print before you sign in.",
+  },
+  // How it reads your plays
+  {
+    q: "Does it use our route names and letters?",
+    a: "Yes. Skill players are Q, F, H, X, Y and Z, and routes follow the 0-9 route tree, from 0 slide to 9 fade. Call words like mesh, flood, smash, dagger, rail, wheel, whip, bubble and wing slide draw the way a staff runs them, and every receiver and back on a called play either runs a route or blocks.",
+  },
+  {
+    q: "What's the difference between Scout O, Scout D, 7v7 and Team?",
+    a: "Scout O draws each play the way your scout offense runs it, with routes and blocks. Scout D shows the formation and where each defender lines up against it, turned so the offense is on top the way your defense sees it. 7v7 drops the linemen and lists the passes, RPOs and play action; Team shows all eleven on offense, runs and passes.",
   },
   ...(FILM
     ? [
@@ -188,10 +210,20 @@ const FAQS: { q: string; a: string }[] = [
     q: "Does the AI change my breakdown?",
     a: "No. Your tags always win. The AI only looks at plays the app can't place on its own, like a formation name it doesn't know or a call that isn't clearly a run or a pass, and it fills in only what the file left open. Anything it filled in is tagged \"AI\" with a notice to check it, and if it can't be reached the cards draw exactly as your file reads.",
   },
+  // Working with the cards
   {
     q: "Can I edit a card after it's generated?",
-    a: "Yes. Edit Play changes the formation, strength, play call, direction, hash, front, coverage, and each receiver's route. Edits save automatically and are marked \"edited\" in the play list.",
+    a: "Yes. Edit Play changes the formation, strength, play call, direction, hash, front, coverage, notes and each receiver's route, and it can duplicate or delete a play. You can type into the assignment boxes and draw on a card with Apple Pencil. Edits save automatically, are marked \"edited\" in the play list, and never leave your device.",
   },
+  {
+    q: "Hudl doesn't say where their safeties line up. Can I show that?",
+    a: "Yes. Set the opponent's secondary once per formation, by typing it (\"FS 12 middle, SS 8 #3 inside, corners 7 outside\") or by reading it from a pre-snap clip, then fine-tune it against a live card. It's drawn on every Scout D card in that formation, and you can still drag a single defender on one play.",
+  },
+  {
+    q: "Can I run practice off my playsheet?",
+    a: "Yes. Paste each period's calls the way your offensive coach reads them, straight from Excel if that's where they live, and every call becomes a Scout D card drawn against a look from the opponent's film, mixed in proportion to what they actually showed. Periods where your defense is up run the opponent's plays instead.",
+  },
+  // Printing and the field
   {
     q: "Can I print the scout cards?",
     a: "Yes. Print Grid lays out 2 or 4 cards per letter-size page, tuned for black-and-white printing, through your browser's Print / Save PDF.",
@@ -206,13 +238,18 @@ const FAQS: { q: string; a: string }[] = [
   },
   {
     q: "Does it work on an iPad?",
-    a: "Yes — add it to your Home Screen from Safari and it keeps working offline after the first load, including the script you already imported.",
+    a: "Yes — add it to your Home Screen from Safari and it keeps working offline after the first load, including the script and playbook you already imported.",
+  },
+  // Privacy
+  {
+    q: "Is my data uploaded anywhere?",
+    a: "Your breakdown and playbook are read in your browser and saved on your device. The only things sent to a server are the AI features: the few plays it can't place (as text), a play call you ask the AI to draw, and a pre-snap clip if you read the secondary from film.",
   },
   {
     q: "Do I have to upload game film?",
     a: FILM
       ? "No. Your Hudl export is read entirely in your browser — nothing is uploaded. AI film import is a separate, optional, paid feature for staffs without a breakdown yet."
-      : "No. Your Hudl export is read entirely in your browser — nothing is uploaded. The cards come from your breakdown, which Hudl already tags from the film.",
+      : "No. The cards come from your breakdown, which Hudl already tags from the film. The only film the app can use is an optional pre-snap clip for the secondary.",
   },
 ];
 

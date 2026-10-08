@@ -893,6 +893,9 @@ and text cards above, so keep it true to them), `#showcase`, problem/solution, o
 - Motion keyframes (`sc-float`, `sc-draw`, `sc-flow`, `sc-row-pulse`, `sc-ping`) are in
   `globals.css` and all switch off under `prefers-reduced-motion`. Reveal content is hidden only
   once `layout.tsx`'s inline script has added `html.js`, so it never stays invisible without JS.
+- The FAQ (`FAQS`, grouped: getting started, how it reads your plays, working with the cards,
+  printing and the field, privacy) describes what the app does today: the playbook, route names, the
+  AI's limits, the secondary, the playsheet, access. When a feature changes, update the answer.
 - Don't add testimonials, usage numbers, or customer logos that aren't real.
 
 ## Conventions
