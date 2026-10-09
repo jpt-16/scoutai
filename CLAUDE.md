@@ -898,6 +898,17 @@ and text cards above, so keep it true to them), `#showcase`, problem/solution, o
   AI's limits, the secondary, the playsheet, access. When a feature changes, update the answer.
 - Don't add testimonials, usage numbers, or customer logos that aren't real.
 
+## Privacy and terms (`/privacy`, `/terms`)
+
+Both pages (`src/app/privacy/page.tsx`, `src/app/terms/page.tsx`, shell in `LegalLayout.tsx`)
+describe what the product does today, so **update them whenever data handling changes**: what stays in
+`localStorage` (script, playbook, playsheet, sunlight, the 14-day access cache), what each AI feature
+sends to Gemini (import review rows as text, typed AI-card calls, the secondary-read clip), that
+uploaded clips sit in private Blob storage with no deletion schedule, the usage counters, the
+Clerk / Stripe / Google / Vercel processors, and the private-pilot sign-in. The AI game-film import is
+off, and the pages say so. Still placeholders to fill in by hand: the support email and the governing
+law (state / country). They're a draft, not legal advice.
+
 ## Conventions
 
 - Keep `src/lib/*` framework-free (relative imports, no React) so Vitest runs it directly.

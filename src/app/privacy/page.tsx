@@ -3,101 +3,151 @@ import { LegalLayout, LegalSection } from "@/components/LegalLayout";
 
 export const metadata: Metadata = {
   title: "Privacy Policy — ScoutCard AI",
-  description: "How ScoutCard AI handles your data — the free CSV path, and the paid AI film feature.",
+  description:
+    "How ScoutCard AI handles your data: what stays on your device, what the AI features send, and who we share it with.",
 };
 
 export default function PrivacyPage() {
   return (
-    <LegalLayout title="Privacy Policy" lastUpdated="[insert launch date]">
+    <LegalLayout title="Privacy Policy" lastUpdated="October 9, 2026">
       <p>
         This policy explains what ScoutCard AI does and doesn&apos;t do with your data. The short
-        version: the CSV import, scout cards, and print tools never send anything to a server —
-        they run entirely in your browser. The optional, paid AI film feature is different, and is
-        covered in detail below.
+        version: your Hudl breakdown, your playbook, your playsheet and your edits are read and
+        saved in your browser, on your device. The only things that leave your device are the AI
+        features, and they send only what&apos;s described below.
       </p>
 
-      <LegalSection title="The free CSV path: nothing leaves your device">
+      <LegalSection title="What stays on your device">
         <p>
-          Uploading a Hudl breakdown CSV, generating scout cards, editing plays, drawing on cards,
-          and printing all happen entirely client-side, in your browser. The file is parsed on your
-          device and never uploaded to us or any third party. The resulting script is stored only in
-          your browser&apos;s local storage, on your device — we have no server-side database and no
-          way to see, back up, or recover it. Clearing your browser data or switching devices means
-          starting over unless you re-import the CSV.
+          Uploading a Hudl breakdown (a CSV, an Excel file or pasted rows), uploading your own
+          playbook, building a practice playsheet, generating scout cards, editing plays, drawing on
+          cards and printing all happen in your browser. Those files are parsed on your device and
+          are not uploaded to us or to anyone else.
+        </p>
+        <p>
+          The results are saved in your browser&apos;s local storage on your device: your scout
+          script, your playbook, your practice playsheet, your sunlight-mode setting, and a note that
+          your sign-in was verified. We have no server-side database of your scripts and no way to
+          see, back up or recover them. Clearing your browser data, or switching devices, means
+          importing again.
         </p>
       </LegalSection>
 
-      <LegalSection title="If you create an account (AI film import)">
+      <LegalSection title="Signing in">
         <p>
-          The AI game-film import feature requires signing in and is billed per coaching staff. If
-          you use it, we (through our authentication provider, Clerk) collect your email address and
-          basic account/organization information to identify you and your team, and to manage
-          membership and permissions.
+          ScoutCard AI is in a private pilot with coaching staffs, so using the app requires signing
+          in. Our authentication provider, Clerk, collects your email address and basic
+          account and organization (coaching staff) information to identify you and your team and to
+          manage membership. We check your verified sign-in email against the list of invited
+          coaches. Once your device has been verified it&apos;s trusted for up to 14 days, so the app
+          keeps working on a field with no signal.
+        </p>
+        <p>The five-play demo on the home page needs no account and sends nothing.</p>
+      </LegalSection>
+
+      <LegalSection title="What the AI features send">
+        <p>
+          The AI features send text, or a clip, to our servers and on to Google&apos;s Gemini API.
+          They are only used while you&apos;re signed in. Specifically:
+        </p>
+        <ul className="ml-5 list-disc space-y-2">
+          <li>
+            <strong className="text-foreground">Import review.</strong> After you import a breakdown
+            or a playbook, the plays the app couldn&apos;t place on its own (a formation name or
+            front it doesn&apos;t know, or a call that isn&apos;t clearly a run or a pass) are sent as
+            text: the formation, play call, front and play type for those plays. The rest of your
+            file is not sent.
+          </li>
+          <li>
+            <strong className="text-foreground">AI cards.</strong> If you ask the AI to draw a play,
+            the play call, formation and defensive call you typed are sent.
+          </li>
+          <li>
+            <strong className="text-foreground">Secondary read from film.</strong> If you read the
+            opponent&apos;s secondary from a pre-snap clip, the clip you choose is uploaded, as
+            described next.
+          </li>
+        </ul>
+        <p>
+          If an AI feature can&apos;t be reached, the app keeps working and draws cards exactly as
+          your file reads. AI game-film import, which draws routes from a game clip, is currently
+          switched off.
         </p>
       </LegalSection>
 
-      <LegalSection title="Game film you upload">
+      <LegalSection title="Film clips you upload">
         <p>
-          A clip you upload for AI analysis is stored in a private cloud file (Vercel Blob) — it is
-          not publicly accessible — and sent to Google&apos;s Gemini AI to detect player routes. That
-          detection result is stored as part of your team&apos;s scout script. We do not currently run
-          an automatic deletion schedule for uploaded clips; they remain in private storage tied to
-          your account. If you want a clip removed, contact us using the details below.
+          A clip you upload for the secondary read is stored in a private cloud file (Vercel Blob),
+          which is not publicly accessible, and sent to Google&apos;s Gemini API to read where the
+          defensive backs line up. We don&apos;t currently run an automatic deletion schedule for
+          uploaded clips; they remain in private storage tied to your account. To have a clip
+          removed, contact us using the details below.
         </p>
         <p>
           <strong className="text-foreground">
             Only upload film you have the right to use, and be mindful that game film of high school
             athletes may include images of minors.
           </strong>{" "}
-          You&apos;re responsible for having any consent or authorization your school, league, or
-          conference requires before uploading and sharing game film through this service. Don&apos;t
-          upload film you&apos;re not authorized to share off-device.
+          You&apos;re responsible for any consent or authorization your school, league or conference
+          requires before you upload or share film through this service. Don&apos;t upload film
+          you&apos;re not authorized to share off your device.
+        </p>
+      </LegalSection>
+
+      <LegalSection title="Usage counters">
+        <p>
+          To keep the AI features from being overused, we keep small usage counters: a timestamp and
+          a hashed identifier for your team, stored in private cloud storage. They contain none of
+          your plays, files or clips.
         </p>
       </LegalSection>
 
       <LegalSection title="Billing information">
         <p>
-          Subscriptions are processed by Stripe. We never see or store your full payment card
-          details — Stripe collects and handles that directly, under its own privacy policy. We
-          store only what&apos;s needed to know your team&apos;s subscription status (active, trialing,
-          canceled, etc.) and Stripe&apos;s reference IDs for your account.
+          Where your staff has a paid plan, subscriptions are processed by Stripe. We never see or
+          store your full payment card details; Stripe collects and handles them directly, under its
+          own privacy policy. We store only what&apos;s needed to know your team&apos;s subscription
+          status (active, trialing, canceled and so on) and Stripe&apos;s reference IDs for your
+          account.
         </p>
       </LegalSection>
 
       <LegalSection title="Who we share data with">
         <ul className="ml-5 list-disc space-y-2">
           <li>
-            <strong className="text-foreground">Clerk</strong> — authentication and team/organization
-            management.
+            <strong className="text-foreground">Clerk</strong> — sign-in and team management.
+          </li>
+          <li>
+            <strong className="text-foreground">Google (Gemini API)</strong> — reads the text and
+            clips the AI features send, as described above, under Google&apos;s own terms and
+            privacy policy.
           </li>
           <li>
             <strong className="text-foreground">Stripe</strong> — subscription billing and payment
             processing.
           </li>
           <li>
-            <strong className="text-foreground">Google (Gemini API)</strong> — analyzes uploaded game
-            clips to detect player routes, only when you use the AI film import feature.
-          </li>
-          <li>
             <strong className="text-foreground">Vercel</strong> — hosts the app and stores uploaded
-            clips in private cloud storage.
+            clips and usage counters in private cloud storage.
           </li>
         </ul>
-        <p>We don&apos;t sell your data, and we don&apos;t share it for advertising purposes.</p>
+        <p>We don&apos;t sell your data, and we don&apos;t share it for advertising.</p>
       </LegalSection>
 
-      <LegalSection title="Cookies">
+      <LegalSection title="Cookies and local storage">
         <p>
-          If you sign in for AI film import, Clerk sets session cookies to keep you signed in. The
-          free CSV path sets no cookies and requires no sign-in.
+          Clerk sets session cookies to keep you signed in. The app also uses your browser&apos;s
+          local storage for the saved items described above. We don&apos;t use advertising or
+          analytics trackers.
         </p>
       </LegalSection>
 
       <LegalSection title="Your choices">
         <p>
-          You can stop using the AI film feature and its account at any time. To cancel a
-          subscription, use the billing portal link in the app (powered by Stripe). To request
-          deletion of your account, team data, or uploaded clips, contact us below.
+          You can delete your scripts and playbook at any time by clearing this site&apos;s data in
+          your browser. You can stop using the service whenever you like. To cancel a paid
+          subscription, use the billing portal in the app (powered by Stripe). To request deletion
+          of your account, team data or uploaded clips, contact us below.
         </p>
       </LegalSection>
 
