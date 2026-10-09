@@ -487,6 +487,12 @@ Each period says which side is ours, and the scout team is the converse:
   `left hash`, and `vs 3-4 C1` to call a look. A bare leading number with no punctuation stays
   in the call ("24 DIVE"). Every call becomes a Scout D card (`periodRepCards`): our call is the
   formation and play call, drawn against a look from the opponent's film.
+  - **Add from your playbook** (`PlaybookPicker.tsx`): instead of pasting, pick plays from the saved
+    playbook (`/#playbook`, its own storage slot). Each pick becomes a line (`playbookCallLine`:
+    formation, strength side if the name has none, then the call) appended to the period's text, so
+    the text stays the source of truth and the look matching below applies as usual. A 7v7 period
+    lists passes first (`inPeriod`), with "Show runs too". A formation name the classifier doesn't
+    know but the playbook import placed keeps that shape (`formationAliases`).
   - **Looks** (`opponentLooks`): the opponent's front + coverage pairs, from ODK `D` rows when the
     breakdown tags ODK, else every row with a front/coverage (like normal Scout D cards).
   - `assignLooks` matches each rep to what they showed against that same formation (else their

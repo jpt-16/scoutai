@@ -3,6 +3,8 @@ import {
   classifyFormation,
   deriveCard,
   parseHash,
+  parseSide,
+  parseSideTag,
   type FormationKey,
   type Hash,
   type HudlPlayCard,
@@ -222,6 +224,22 @@ export function parsePlaysheet(text: string): PlaysheetRep[] {
     .split(/\r?\n/)
     .map((l, i) => parsePlaysheetLine(l, i))
     .filter((r): r is PlaysheetRep => r !== null);
+}
+
+/**
+ * One of our own plays (from the saved playbook) as a playsheet line, the way
+ * the staff writes it: formation, then its strength side when the name doesn't
+ * carry one, then the call ("TRIPS RT 836", "DEUCES LT IZ").
+ */
+export function playbookCallLine(card: Pick<HudlPlayCard, "formation" | "playCall" | "offStrength">): string {
+  const formation = card.formation.trim();
+  const side = parseSide(` ${formation} `) ? null : parseSideTag(card.offStrength);
+  const tag = side === "left" ? "LT" : side === "right" ? "RT" : "";
+  return [formation, tag, card.playCall.trim()]
+    .filter(Boolean)
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .toUpperCase();
 }
 
 /** First word of a call, the key for the staff's own formation names. */

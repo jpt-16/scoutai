@@ -6,6 +6,7 @@ import {
   ArrowDown,
   ArrowUp,
   ChevronLeft,
+  BookOpen,
   ClipboardList,
   Play,
   Plus,
@@ -13,6 +14,7 @@ import {
   TriangleAlert,
 } from "lucide-react";
 import { AppGate } from "@/components/AppGate";
+import { PlaybookPicker } from "@/components/PlaybookPicker";
 import { BrandMark } from "@/components/BrandMark";
 import { Button } from "@/components/ui/button";
 import { FORMATION_LABELS } from "@/lib/formations";
@@ -29,6 +31,7 @@ import {
   opponentLooks,
   parsePlaysheet,
   periodScoutOCards,
+  playbookCallLine,
   repFormationKey,
   savePlan,
   setLineLook,
@@ -95,15 +98,21 @@ function OffensePeriod({
   period,
   looks,
   aliases,
+  playbook,
   onText,
   onAlias,
+  onAddPlaybook,
 }: {
   period: PracticePeriod;
   looks: ScoutLook[];
   aliases: Record<string, FormationKey>;
+  /** The staff's saved playbook (our offense's plays), if there is one. */
+  playbook: HudlPlayCard[];
   onText: (text: string) => void;
   onAlias: (word: string, key: FormationKey) => void;
+  onAddPlaybook: (picked: HudlPlayCard[]) => void;
 }) {
+  const [picking, setPicking] = useState(false);
   const reps = useMemo(
     () =>
       parsePlaysheet(period.text).map((r) => ({
@@ -132,6 +141,28 @@ function OffensePeriod({
           spellCheck={false}
           rows={Math.max(6, Math.min(16, period.text.split("\n").length + 1))}
           className="w-full resize-y rounded-lg border-2 border-input bg-background px-3 py-2.5 font-mono text-[15px] leading-relaxed uppercase outline-none placeholder:normal-case placeholder:text-muted-foreground/60 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+        />
+        <div className="flex flex-wrap items-center gap-2">
+          {playbook.length > 0 ? (
+            <Button variant="outline" size="lg" onClick={() => setPicking(true)}>
+              <BookOpen aria-hidden="true" />
+              Add from your playbook · {playbook.length}
+            </Button>
+          ) : (
+            <Button asChild variant="outline" size="lg">
+              <Link href="/#playbook">
+                <BookOpen aria-hidden="true" />
+                Upload your playbook to pick plays
+              </Link>
+            </Button>
+          )}
+        </div>
+        <PlaybookPicker
+          open={picking}
+          onOpenChange={setPicking}
+          cards={playbook}
+          kind={period.kind}
+          onAdd={onAddPlaybook}
         />
         <p className="text-sm leading-relaxed text-muted-foreground">
           One call per line, exactly as it reads on your playsheet. Rows copied from Excel or Sheets keep
@@ -243,12 +274,14 @@ function PracticeApp() {
   // undefined while reading localStorage.
   const [plan, setPlan] = useState<PracticePlan | undefined>(undefined);
   const [script, setScript] = useState<StoredScript | null>(null);
+  const [playbook, setPlaybook] = useState<HudlPlayCard[]>([]);
   const [dayId, setDayId] = useState<string | null>(null);
 
   useEffect(() => {
     const loaded = loadPlan();
     setPlan(loaded);
     setScript(loadScript());
+    setPlaybook(loadScript("playbook")?.cards ?? []);
     const wanted = new URLSearchParams(window.location.search).get("day");
     setDayId(loaded.days.find((d) => d.id === wanted)?.id ?? loaded.days[0]?.id ?? null);
   }, []);
@@ -461,6 +494,29 @@ function PracticeApp() {
                     period={period}
                     looks={looks}
                     aliases={plan.formationAliases}
+                    playbook={playbook}
+                    onAddPlaybook={(picked) => {
+                      // Each pick is a line, in the staff's own words. A formation name the app
+                      // doesn't know but the playbook import already placed keeps that shape.
+                      const lines = picked.map(playbookCallLine);
+                      const aliases = { ...plan.formationAliases };
+                      picked.forEach((c, k) => {
+                        const rep = { call: lines[k], formation: lines[k] };
+                        if (repFormationKey(rep, aliases) === "unknown" && c.formationKey !== "unknown") {
+                          aliases[aliasKey(lines[k])] = c.formationKey;
+                        }
+                      });
+                      const text = [period.text.trimEnd(), ...lines].filter(Boolean).join("\n");
+                      commit({
+                        ...plan,
+                        formationAliases: aliases,
+                        days: plan.days.map((d) =>
+                          d.id === day.id
+                            ? { ...d, periods: d.periods.map((p) => (p.id === period.id ? { ...p, text } : p)) }
+                            : d,
+                        ),
+                      });
+                    }}
                     onText={(text) => updatePeriod(period.id, { text })}
                     onAlias={(word, key) =>
                       commit({

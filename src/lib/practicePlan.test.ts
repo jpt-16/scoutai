@@ -6,6 +6,7 @@ import {
   opponentLooks,
   parsePlaysheet,
   parsePlaysheetLine,
+  playbookCallLine,
   periodRepCards,
   periodScoutOCards,
   setLineLook,
@@ -170,5 +171,24 @@ describe("periodScoutOCards", () => {
     expect(periodScoutOCards({ kind: "team" }, film).map((c) => c.playNumber)).toEqual([7]);
     const untagged = parseHudlCsvText("PLAY #,OFF FORM,OFF PLAY\n1,SPREAD,IZ\n2,TRIPS,SLANT").cards;
     expect(periodScoutOCards({ kind: "7v7" }, untagged).map((c) => c.playNumber)).toEqual([2]);
+  });
+});
+
+describe("playbookCallLine", () => {
+  const line = (csv: string) => playbookCallLine(parseHudlCsvText(csv).cards[0]);
+
+  it("writes a playbook play the way a playsheet reads", () => {
+    expect(line("OFF FORM,OFF PLAY\nTrips Rt,836\n")).toBe("TRIPS RT 836");
+  });
+
+  it("adds the strength side when the formation name doesn't carry one", () => {
+    expect(line("OFF FORM,OFF STR,OFF PLAY\nDeuces,L,IZ\n")).toBe("DEUCES LT IZ");
+  });
+
+  it("round-trips: the line draws a Scout D card in the same formation", () => {
+    const text = line("OFF FORM,OFF STR,OFF PLAY\nTrips,L,Mesh\n");
+    const [rep] = periodRepCards(period(text), [], {});
+    expect(rep.formationKey).toBe("trips");
+    expect(rep.formationSide).toBe("left");
   });
 });
