@@ -13,7 +13,21 @@ chip uses its own GPU) and the film never leaves it.
 
 **Keep the clips out of git.** `video-service/clips/` is ignored; put them there.
 
-## One-time setup (Terminal, from the repo)
+## One-time setup (Terminal)
+
+First get the code onto the Mac. If you don't have the repo yet:
+
+```bash
+cd ~/Documents
+git clone -b claude/scoutcard-ai-v1-scaffold-c4bgpf https://github.com/jpt-16/scoutai.git
+cd scoutai
+```
+
+(No git? On github.com open the repo, switch to the `claude/scoutcard-ai-v1-scaffold-c4bgpf`
+branch, then Code > Download ZIP, unzip it, and `cd` into the folder.) If you already have
+it, `git pull` on that branch. `pwd` and `ls` should show a `video-service` folder.
+
+Then:
 
 ```bash
 cd video-service
