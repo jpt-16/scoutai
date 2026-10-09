@@ -134,8 +134,48 @@ export interface HudlPlayCard {
    */
   secondary?: DbAlignment;
 
+  /**
+   * The play's tags exactly as they came in (Hudl Assist's, or the staff's own sheet), kept
+   * so a coach's fixes can be told from what the file said (src/lib/review.ts). Set once, when
+   * the card is first derived, and never changed by edits.
+   */
+  tagged?: TagSnapshot;
+  /** When a coach checked this play in Review mode (ISO time); the play counts as "fixed" if its tags differ from `tagged`. */
+  reviewedAt?: string;
+
   /** Every column of the original row, keyed by the normalized header. */
   raw: Record<string, string>;
+}
+
+/** The tags a coach checks in Review mode, as the file wrote them. */
+export interface TagSnapshot {
+  formation: string;
+  offStrength: string;
+  playCall: string;
+  playDir: string;
+  hash: Hash | null;
+  defFront: string;
+  coverage: string;
+}
+
+export function snapshotTags(card: {
+  formation?: string;
+  offStrength?: string;
+  playCall?: string;
+  playDir?: string;
+  hash?: Hash | null;
+  defFront?: string;
+  coverage?: string;
+}): TagSnapshot {
+  return {
+    formation: card.formation ?? "",
+    offStrength: card.offStrength ?? "",
+    playCall: card.playCall ?? "",
+    playDir: card.playDir ?? "",
+    hash: card.hash ?? null,
+    defFront: card.defFront ?? "",
+    coverage: card.coverage ?? "",
+  };
 }
 
 /** The AI import review's reading of a play's unrecognized tags (see `aiHints`). */
@@ -715,6 +755,7 @@ export function deriveCard(base: PlaySource): HudlPlayCard {
   const classifiedFront = classifyFront(defFront);
   return {
     ...base,
+    tagged: base.tagged ?? snapshotTags({ ...base, formation, playCall, offStrength, playDir, defFront }),
     formation,
     playCall,
     playType,

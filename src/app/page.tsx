@@ -213,6 +213,10 @@ const FAQS: { q: string; a: string }[] = [
   },
   // Working with the cards
   {
+    q: "Hudl Assist tagged some plays wrong. Can I check them fast?",
+    a: "Yes. Review (on the script reader) steps through the plays: the tags the file came with sit above the card, and one tap on Looks right checks the play, or Fix opens Edit play. It counts how many of Assist's tags were right, tag by tag, and keeps what the file said next to what you changed, so you can see where it misses. The Scorecard also downloads two sheets, as tagged and as corrected, for the plays you checked.",
+  },
+  {
     q: "Can I edit a card after it's generated?",
     a: "Yes. Edit Play changes the formation, strength, play call, direction, hash, front, coverage, notes and each receiver's route, and it can duplicate or delete a play. You can type into the assignment boxes and draw on a card with Apple Pencil. Edits save automatically, are marked \"edited\" in the play list, and are saved to your device and, when you're signed in, to your team's shared copy.",
   },

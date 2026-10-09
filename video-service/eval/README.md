@@ -11,6 +11,10 @@ chip uses its own GPU) and the film never leaves it.
 - `corrected.csv`: the same game after your coach fixed it. Both just need a play
   number and a formation column (`OFF FORM`).
 
+  **Easiest way to get both:** in the app, open the game's script, tap **Review**, check the plays
+  (Looks right / Fix), then **Scorecard** and download **As tagged** and **Corrected**. Those two files
+  are exactly this pair, for the plays that were checked.
+
 **Keep the clips out of git.** `video-service/clips/` is ignored; put them there.
 
 ## One-time setup (Terminal)

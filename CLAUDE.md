@@ -557,6 +557,26 @@ device copy stays the one the app reads and writes (it works with no signal); sy
   dialog rather than a merge; per-coach names on a save; a size over 4 MB gzipped stays on the device.
 - The privacy policy, terms and FAQ say all of this; keep them in step with it.
 
+## Review mode: check Hudl Assist's tags (`src/lib/review.ts`, `ReviewBar.tsx`)
+
+A staff re-checks Hudl Assist's tags every Sunday because many are wrong. **Review** on the script
+reader (not in practice mode, not the demo) turns that into one tap a play: the strip under the toolbar
+shows the tags the file came with (formation, strength, play call, direction, hash, front, coverage), **Looks
+right** checks the play and moves to the next unchecked one, **Fix** opens Edit play (saving counts as
+checking it), **Undo** un-checks, **Unchecked only** filters the list, and **Scorecard** opens the tally.
+
+- **Data:** every card keeps `tagged` (`TagSnapshot`: the tags as first derived, set once in `deriveCard`,
+  never changed by edits, so a script saved before this feature starts from its values at first load) and
+  `reviewedAt` (when it was checked). Both live on the card, so they save with the script and are shared
+  with the team like everything else. A play is "fixed" when a tag differs from `tagged`, **judged by meaning**
+  (`changedFields`): "TRIO RT" to "Trips Rt" and "4-3" to "4-3 OVER" are not fixes; Pro to Trips, a different
+  side, call, direction, hash, front or coverage is. The play list shows ✓ or "fixed".
+- **Scorecard** (`summarize`): checked / total, % right as tagged, wrong counts per tag, and the most common
+  formation fixes. It only counts plays that were checked. **As tagged (hudl.csv)** and **Corrected
+  (corrected.csv)** download the checked plays in Hudl's own column names (`taggedCsv`, `correctedCsv`), the
+  same pair `video-service/eval/score.py` reads, so a coach's Sunday pass produces the evaluation data with no
+  separate export from Hudl.
+
 ## Sideline screens: sunlight mode and CoachPad export
 
 - **Sunlight** (script header toggle, remembered per device in `scoutcard:sunlight:v1`):
@@ -655,7 +675,8 @@ provide). It's meant to be deployed separately, to its own GPU-capable host. See
 
 **Formation check against Hudl Assist (`video-service/eval/`, runs on a Mac).** The goal is to beat
 Hudl Assist's tags, which a coach re-checks every Sunday, so the first thing built is a score sheet:
-`python -m eval.score --hudl hudl.csv --corrected corrected.csv --ours ours.csv` compares Hudl's formation
+`python -m eval.score --hudl hudl.csv --corrected corrected.csv --ours ours.csv` (the app's Review
+mode **Scorecard** downloads that pair) compares Hudl's formation
 tags and ours against the coach's corrected sheet, through the app's own vocabulary (`eval/vocab.py`, a
 port of `classifyFormation`; `test_eval.py` fails if the two drift). Ours comes from `eval/presnap.py`:
 one pre-snap frame per clip (picked, with four yard-line / hash clicks and the ball, by `eval/calibrate.py`),

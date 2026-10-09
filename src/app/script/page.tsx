@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import {
   ChevronLeft,
   ChevronRight,
+  ClipboardCheck,
   ClipboardList,
   FilePlus2,
   Grid2x2,
@@ -61,7 +62,9 @@ import {
 } from "@/lib/practicePlan";
 import { applyReview, reviewRows, type ReviewResult } from "@/lib/importReview";
 import { SyncBadge } from "@/components/CloudSync";
+import { ReviewBar, ReviewSummaryDialog } from "@/components/ReviewBar";
 import { loadScript, saveScript, storeScript, type ScriptSlot, type StoredScript } from "@/lib/scriptStore";
+import { nextUnchecked, reviewStatus } from "@/lib/review";
 import { useRemoteApplied } from "@/lib/useRemoteApplied";
 import { cn } from "@/lib/utils";
 
@@ -167,6 +170,10 @@ function ScriptApp({ demoMode = false }: { demoMode?: boolean }) {
   const [adjusting, setAdjusting] = useState(false);
   // Scout O: every route's break points become draggable.
   const [adjustingArrows, setAdjustingArrows] = useState(false);
+  // Review mode: go through the plays, confirm or fix each tag, keep score (src/lib/review.ts).
+  const [reviewing, setReviewing] = useState(false);
+  const [onlyUnchecked, setOnlyUnchecked] = useState(false);
+  const [summaryOpen, setSummaryOpen] = useState(false);
   // Sunlight mode (black and white, thick lines), remembered on this iPad.
   const [sunlight, setSunlight] = useState(false);
   useEffect(() => {
@@ -255,12 +262,13 @@ function ScriptApp({ demoMode = false }: { demoMode?: boolean }) {
       : modeCards.filter(
           (c) =>
             (down === "all" || c.down === down) &&
-            (formation === "all" || c.formationKey === formation),
+            (formation === "all" || c.formationKey === formation) &&
+            !(reviewing && onlyUnchecked && c.reviewedAt),
         );
     // Scout D: the staff's secondary for each card's formation (src/lib/secondary.ts).
     if (unit !== "defense" || !dbAlignments) return list;
     return list.map((c) => (dbAlignments[c.formationKey] ? { ...c, secondary: dbAlignments[c.formationKey] } : c));
-  }, [modeCards, down, formation, practicePeriod, unit, dbAlignments]);
+  }, [modeCards, down, formation, practicePeriod, unit, dbAlignments, reviewing, onlyUnchecked]);
   const cardMode = mode === "7v7" ? "7v7" : "team";
 
   const downOptions: FilterOption<DownFilter>[] = [
@@ -366,6 +374,32 @@ function ScriptApp({ demoMode = false }: { demoMode?: boolean }) {
       return copy;
     });
     setScript(storeScript({ ...script, cards: stored }, slot));
+  };
+
+  /** Review mode: checks (or un-checks) a play, keeping what the file said next to what it reads now. */
+  const markChecked = (id: string, on: boolean) =>
+    saveCards(
+      cards.map((c) => {
+        if (c.id !== id) return c;
+        const next = { ...c };
+        if (on) next.reviewedAt = new Date().toISOString();
+        else delete next.reviewedAt;
+        return next;
+      }),
+    );
+  /** After a play is checked: on to the next one still unchecked, or the scorecard when none are left. */
+  const afterChecked = (id: string) => {
+    const left = cards.filter((c) => !c.reviewedAt && c.id !== id);
+    if (left.length === 0) {
+      setSummaryOpen(true);
+      return;
+    }
+    if (onlyUnchecked) return; // the checked play leaves the list, so the next one is already here
+    const next = nextUnchecked(
+      filtered.map((c) => (c.id === id ? { ...c, reviewedAt: "now" } : c)),
+      position,
+    );
+    if (next !== null) setIndex(next);
   };
 
   /**
@@ -867,6 +901,21 @@ function ScriptApp({ demoMode = false }: { demoMode?: boolean }) {
               {drawing ? "Done" : "Draw"}
             </Button>
           )}
+          {view === "field" && !drawing && !demoMode && !practice && (
+            <Button
+              size="lg"
+              variant={reviewing ? "default" : "outline"}
+              aria-pressed={reviewing}
+              onClick={() => {
+                setReviewing((r) => !r);
+                setOnlyUnchecked(false);
+              }}
+              disabled={!editable}
+            >
+              <ClipboardCheck aria-hidden="true" />
+              {reviewing ? "Done" : "Review"}
+            </Button>
+          )}
           {unit === "offense" && view === "field" && !drawing && !demoMode && (
             <>
               <Button
@@ -1006,6 +1055,28 @@ function ScriptApp({ demoMode = false }: { demoMode?: boolean }) {
         />
       )}
 
+      {reviewing && view === "field" && current && editable && !practice && (
+        <ReviewBar
+          card={current}
+          cards={cards}
+          position={position}
+          shown={filtered.length}
+          onlyUnchecked={onlyUnchecked}
+          onOnlyUnchecked={(on) => {
+            setOnlyUnchecked(on);
+            setIndex(0);
+          }}
+          onRight={() => {
+            markChecked(current.id, true);
+            afterChecked(current.id);
+          }}
+          onUndo={() => markChecked(current.id, false)}
+          onFix={() => setEditing(true)}
+          onSummary={() => setSummaryOpen(true)}
+        />
+      )}
+      <ReviewSummaryDialog open={summaryOpen} onOpenChange={setSummaryOpen} cards={cards} film={script.fileName} />
+
       <ImportNotice
         heading={
           notice.trigger
@@ -1046,8 +1117,11 @@ function ScriptApp({ demoMode = false }: { demoMode?: boolean }) {
           open={editing}
           onOpenChange={setEditing}
           onSave={(updated) => {
-            saveCards(cards.map((c) => (c.id === updated.id ? updated : c)));
+            // In Review mode, saving a fix counts as checking the play.
+            const saved = reviewing && !updated.reviewedAt ? { ...updated, reviewedAt: new Date().toISOString() } : updated;
+            saveCards(cards.map((c) => (c.id === saved.id ? saved : c)));
             setEditing(false);
+            if (reviewing && !updated.reviewedAt) afterChecked(saved.id);
           }}
           onDuplicate={(copy) => {
             const at = cards.findIndex((c) => c.id === current.id);
@@ -1251,6 +1325,7 @@ function ScriptApp({ demoMode = false }: { demoMode?: boolean }) {
                             : card.playCall || "—"}
                           {card.aiHints && " · AI"}
                           {card.edited && " · edited"}
+                          {card.reviewedAt && (reviewStatus(card) === "fixed" ? " · fixed" : " · ✓")}
                         </span>
                       </span>
                     </button>
