@@ -13,6 +13,7 @@ import { placeDb, type DbAlignment, type DbSlot } from "./secondary";
 import {
   alignDefense,
   coverageStyleFor,
+  safetyDepthFor,
   safetyY,
   type AlignDefender,
   type DefensiveAlignment,
@@ -321,13 +322,10 @@ function buildDefense(
   // The play's safety depth: FS and SS keep their spot across, move up or back.
   const all = [
     ...line,
-    ...aligned.defenders.map((d) => ({
-      label: d.label,
-      at: [
-        d.x,
-        call?.safetyDepthY != null && (d.label === "FS" || d.label === "SS") ? safetyY(call.safetyDepthY) : d.y,
-      ] as Pt,
-    })),
+    ...aligned.defenders.map((d) => {
+      const depth = safetyDepthFor(call, d.label);
+      return { label: d.label, at: [d.x, depth != null ? safetyY(depth) : d.y] as Pt };
+    }),
   ];
   // Ids count per label ("C1", "C2"). Line labels (E/T/N) never repeat among the
   // backers or DBs, so dropping the line in 7v7 doesn't renumber anyone.
@@ -419,6 +417,11 @@ export function routeText(kind: RouteKind): string {
 export function routeLabel(kind: RouteKind): string {
   const n = ROUTE_TREE.indexOf(kind);
   return n >= 0 ? String(n) : kind.toUpperCase();
+}
+
+/** The route kind a printed arrow label names ("2" → slant, "WHEEL" → wheel), else null. */
+export function routeKindForLabel(label: string): RouteKind | null {
+  return (Object.keys(ROUTE_NAMES) as RouteKind[]).find((k) => routeLabel(k) === label) ?? null;
 }
 
 export const PLAY_KIND_LABELS: Record<PlayKind, string> = {
@@ -610,6 +613,17 @@ export interface Diagram {
    * `ScoutCard` know which routes to draw draggable correction handles on.
    */
   routeVideoLetters: (string | null)[];
+  /**
+   * The player each route belongs to (same order), for every route that starts
+   * on a skill player or back. Lets a coach drag any arrow's break points
+   * (`ScoutCard`'s `adjustRoutes`), not just film or AI routes.
+   */
+  routeLetters: (string | null)[];
+  /**
+   * The route-tree / named kind each route draws as, when its label names one
+   * ("2" → slant, "WHEEL" → wheel), so an adjusted arrow keeps its number.
+   */
+  routeKinds: (string | null)[];
   /** Per route (same order): true to draw it as a smooth arc (a bubble) instead of sharp breaks. */
   routeCurves: boolean[];
   /** Scout offense: what each skill player and the QB does ("9 Fade", "Stalk", "Lead"). */
@@ -1669,6 +1683,10 @@ export function buildDiagram(
     routes: turnAll(points(keptRoutes.map((r) => r.path))),
     routeLabels: keptRoutes.map((r) => r.label),
     routeVideoLetters: keptRoutes.map((r) => r.videoLetter ?? null),
+    routeLetters: keptRoutes.map(
+      (r) => [...skill, ...backs].find((pl) => pl.at[0] === r.path[0][0] && pl.at[1] === r.path[0][1])?.label ?? null,
+    ),
+    routeKinds: keptRoutes.map((r) => routeKindForLabel(r.label)),
     routeCurves: keptRoutes.map((r) => Boolean(r.curve)),
     routeSummary: unit === "offense" ? summarizeRoutes(card, kind, jobs) : null,
     jobs,

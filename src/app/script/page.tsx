@@ -43,7 +43,7 @@ import {
   type Period,
   type ScoutUnit,
 } from "@/lib/formations";
-import { coverageStyleFor, safetyY, type DefensiveAlignment } from "@/lib/defensiveAligner";
+import { coverageStyleFor, safetyDepthFor, safetyY, type DefensiveAlignment } from "@/lib/defensiveAligner";
 import {
   parseHudlCsvText,
   type FormationKey,
@@ -163,6 +163,8 @@ function ScriptApp({ demoMode = false }: { demoMode?: boolean }) {
   const [generating, setGenerating] = useState(false);
   const [secondaryOpen, setSecondaryOpen] = useState(false);
   const [adjusting, setAdjusting] = useState(false);
+  // Scout O: every route's break points become draggable.
+  const [adjustingArrows, setAdjustingArrows] = useState(false);
   // Sunlight mode (black and white, thick lines), remembered on this iPad.
   const [sunlight, setSunlight] = useState(false);
   useEffect(() => {
@@ -294,6 +296,7 @@ function ScriptApp({ demoMode = false }: { demoMode?: boolean }) {
       setIndex(toEnd ? Math.max((periodCards[at]?.length ?? 1) - 1, 0) : 0);
       setDrawing(false);
       setAdjusting(false);
+      setAdjustingArrows(false);
       const q = new URLSearchParams({
         practice: practice.day.id,
         period: String(at),
@@ -360,12 +363,10 @@ function ScriptApp({ demoMode = false }: { demoMode?: boolean }) {
     saveCards(
       cards.map((c) => {
         if (c.id !== current.id) return c;
-        const depth = next?.safetyDepthY;
         const overrides = { ...c.defenseOverrides };
-        if (depth != null) {
-          for (const id of Object.keys(overrides)) {
-            if (/^(FS|SS)\d/.test(id)) overrides[id] = { ...overrides[id], y: safetyY(depth) };
-          }
+        for (const id of Object.keys(overrides)) {
+          const depth = safetyDepthFor(next, id.replace(/\d+$/, ""));
+          if (depth != null) overrides[id] = { ...overrides[id], y: safetyY(depth) };
         }
         return {
           ...c,
@@ -377,14 +378,16 @@ function ScriptApp({ demoMode = false }: { demoMode?: boolean }) {
     );
   };
 
-  /** Where the current Scout D card draws its deepest safety, in yards (the slider's auto value). */
-  const drawnSafetyDepth = useMemo(() => {
-    if (!current || unit !== "defense") return 12;
+  /** Where the current Scout D card draws each safety, in yards (what the depth boxes show on auto). */
+  const drawnSafetyDepths = useMemo(() => {
+    const none = { FS: 12, SS: 12 };
+    if (!current || unit !== "defense") return none;
     const d = buildDiagram({ ...current, defenseAlignment: undefined }, cardMode, "defense");
-    const ys = d.defense
-      .filter((p) => p.label === "FS" || p.label === "SS")
-      .map((p) => fromCardPoint(d, p).y);
-    return ys.length ? Math.round(((140 - Math.min(...ys)) / 7) * 2) / 2 : 12;
+    const yards = (label: string, fallback: number) => {
+      const p = d.defense.find((x) => x.label === label);
+      return p ? Math.round(((140 - fromCardPoint(d, p).y) / 7) * 2) / 2 : fallback;
+    };
+    return { FS: yards("FS", 12), SS: yards("SS", 12) };
   }, [current, unit, cardMode]);
 
   /** Replaces the current card's pencil strokes for the unit on screen. */
@@ -838,6 +841,7 @@ function ScriptApp({ demoMode = false }: { demoMode?: boolean }) {
               onClick={() => {
                 setDrawing((d) => !d);
                 setAdjusting(false);
+                setAdjustingArrows(false);
                 setConfirmClear(false);
               }}
               disabled={!editable}
@@ -845,6 +849,44 @@ function ScriptApp({ demoMode = false }: { demoMode?: boolean }) {
               <PenLine aria-hidden="true" />
               {drawing ? "Done" : "Draw"}
             </Button>
+          )}
+          {unit === "offense" && view === "field" && !drawing && !demoMode && (
+            <>
+              <Button
+                size="lg"
+                variant={adjustingArrows ? "default" : "outline"}
+                aria-pressed={adjustingArrows}
+                onClick={() => setAdjustingArrows((a) => !a)}
+                disabled={!editable}
+              >
+                <Move aria-hidden="true" />
+                {adjustingArrows ? "Done" : "Adjust arrows"}
+              </Button>
+              {adjustingArrows && current?.routeOverrides && Object.values(current.routeOverrides).some((o) => o.source === "coach") && (
+                <Button
+                  size="lg"
+                  variant="outline"
+                  onClick={() =>
+                    saveCards(
+                      cards.map((c) => {
+                        if (c.id !== current.id || !c.routeOverrides) return c;
+                        // Back to the play call's own arrow; a tag the coach wrote stays.
+                        const kept = Object.fromEntries(
+                          Object.entries(c.routeOverrides).flatMap(([letter, o]) => {
+                            if (o.source !== "coach" || !o.path) return [[letter, o]];
+                            return o.tag ? [[letter, { tag: o.tag }]] : [];
+                          }),
+                        );
+                        return { ...c, routeOverrides: Object.keys(kept).length ? kept : undefined };
+                      }),
+                    )
+                  }
+                >
+                  <RotateCcw aria-hidden="true" />
+                  Reset arrows
+                </Button>
+              )}
+            </>
           )}
           {unit === "defense" && view === "field" && !drawing && !demoMode && (
             <Button size="lg" variant="outline" onClick={() => setSecondaryOpen(true)}>
@@ -942,7 +984,7 @@ function ScriptApp({ demoMode = false }: { demoMode?: boolean }) {
         <SafetyDepthControl
           value={current.defenseAlignment}
           autoStyle={coverageStyleFor(current.coverage)}
-          drawnDepth={drawnSafetyDepth}
+          drawnDepths={drawnSafetyDepths}
           onChange={setDefenseAlignment}
         />
       )}
@@ -1019,7 +1061,7 @@ function ScriptApp({ demoMode = false }: { demoMode?: boolean }) {
               const start = pointerStart.current;
               pointerStart.current = null;
               // No swiping while dragging X's around or drawing.
-              if (!start || drawing || (adjusting && unit === "defense")) return;
+              if (!start || drawing || (adjusting && unit === "defense") || (adjustingArrows && unit === "offense")) return;
               const dx = e.clientX - start.x;
               const dy = e.clientY - start.y;
               if (Math.abs(dx) < SWIPE_THRESHOLD || Math.abs(dx) < Math.abs(dy)) return;
@@ -1075,23 +1117,30 @@ function ScriptApp({ demoMode = false }: { demoMode?: boolean }) {
                     }
                     onEditDetectedRoute={
                       editable && !drawing
-                        ? (letter, path) =>
+                        ? (letter, path, route) =>
                             saveCards(
-                              cards.map((c) =>
-                                c.id === current.id
-                                  ? {
-                                      ...c,
-                                      routeOverrides: {
-                                        ...c.routeOverrides,
-                                        [letter]: { ...c.routeOverrides?.[letter], path },
-                                      },
-                                      edited: true,
-                                    }
-                                  : c,
-                              ),
+                              cards.map((c) => {
+                                if (c.id !== current.id) return c;
+                                const own = c.routeOverrides?.[letter];
+                                return {
+                                  ...c,
+                                  routeOverrides: {
+                                    ...c.routeOverrides,
+                                    // A route the play call drew keeps its number; the shape is the coach's.
+                                    [letter]: {
+                                      ...(own?.route ? {} : route ? { route } : {}),
+                                      ...own,
+                                      path,
+                                      source: own?.source ?? "coach",
+                                    },
+                                  },
+                                  edited: true,
+                                };
+                              }),
                             )
                         : undefined
                     }
+                    adjustRoutes={adjustingArrows && unit === "offense"}
                     onAssignmentChange={(key, text) =>
                       saveCards(
                         cards.map((c) => {

@@ -258,7 +258,10 @@ Free-text tags are classified by keyword (`classifyFormation`, `classifyFront`,
   per play, the safety depth (Press 4 / Normal 9 / Deep shell 13, or a 2-18 yard slider) and the
   slot style, saved in `card.defenseAlignment` (`safetyDepthY` in yards, `coverageStyle`).
   FS and SS keep their spot across and only change depth; a safety a coach already dragged moves
-  to the new depth too. **Auto** clears it. Order of precedence: the rules, then the staff's
+  to the new depth too. Two number boxes, **FREE** (FS) and **ROVER** (SS), take an exact depth for
+  each safety (`freeDepthY` / `roverDepthY`, half-yard steps, 2-18), so they needn't match; a preset
+  or the slider sets both and clears those numbers, and `safetyDepthFor` picks his own number, then
+  the shared one, else the rules. **Auto** clears it. Order of precedence: the rules, then the staff's
   secondary table (DBs stay where it says; backers still match what's left uncovered), then the
   play's safety depth, then Adjust X's drags.
 
@@ -437,6 +440,13 @@ replaces the arrow label and appends to the table box. A play with only override
 pass (`hasCoachRoutes`) and is listed in 7v7 and Team. Choices live in `ROUTE_CHOICES`.
 Picking a route kind from the dropdown (including "Auto") clears any AI-detected `path` on that
 letter first — see the video-to-card section below for why.
+
+**Adjust arrows:** **Adjust arrows** (Scout O, field view) puts a draggable handle on every break
+point of every route, not only film and AI routes (`ScoutCard`'s `adjustRoutes`, `Diagram.routeLetters`
+and `routeKinds`). Dragging one saves the whole route as the coach's own shape (`routeOverrides[letter]`
+with a `path` and `source: "coach"`), keeping its number when the label names a route kind. **Reset
+arrows** puts the play call's arrows back (a typed tag stays). Blocks and the ball carrier's path aren't
+draggable yet.
 
 **Pencil drawing:** **Draw** (field view) turns the card into a drawing surface for Apple
 Pencil or a finger. There are four colors, plus **Undo** and **Clear** (tap twice). Strokes are
@@ -906,7 +916,7 @@ describe what the product does today, so **update them whenever data handling ch
 sends to Gemini (import review rows as text, typed AI-card calls, the secondary-read clip), that
 uploaded clips sit in private Blob storage with no deletion schedule, the usage counters, the
 Clerk / Stripe / Google / Vercel processors, and the private-pilot sign-in. The AI game-film import is
-off, and the pages say so. Still placeholders to fill in by hand: the support email and the governing
+off, and the pages say so. The support email is `jake@jtbuildsco.com` (for now). Still a placeholder to fill in by hand: the governing
 law (state / country). They're a draft, not legal advice.
 
 ## Conventions

@@ -179,6 +179,27 @@ describe("Scout D alignment rules", () => {
     expect(d.defenseNotes).toEqual(["S apex Y"]);
   });
 
+  it("the free and the rover take a depth of his own, so they needn't match", () => {
+    const c = card("Trips Rt", "Cover 3");
+    const base = spots(buildDiagram(c, "team", "defense"));
+    const run = (defenseAlignment: object) => spots(buildDiagram({ ...c, defenseAlignment }, "team", "defense"));
+    // FS 12 and SS 6 at once; neither moves across, nobody else moves.
+    const split = run({ freeDepthY: 12, roverDepthY: 6 });
+    expect(depth(split.FS1.y)).toBe(12);
+    expect(depth(split.SS1.y)).toBe(6);
+    expect(split.FS1.x).toBe(base.FS1.x);
+    expect(split.SS1.x).toBe(base.SS1.x);
+    expect(split.C1).toEqual(base.C1);
+    // Only the rover set: the free stays where the rules put him.
+    const roverOnly = run({ roverDepthY: 7.5 });
+    expect(depth(roverOnly.SS1.y)).toBeCloseTo(7.5, 0); // card px are whole numbers
+    expect(roverOnly.FS1).toEqual(base.FS1);
+    // His own number wins over the depth for both; the other safety follows the shared one.
+    const mixed = run({ safetyDepthY: 9, roverDepthY: 5 });
+    expect(depth(mixed.FS1.y)).toBe(9);
+    expect(depth(mixed.SS1.y)).toBe(5);
+  });
+
   it("a per-play safety depth moves FS and SS up or back without moving them across", () => {
     const c = card("Trips Rt", "Cover 3");
     const base = spots(buildDiagram(c, "team", "defense"));

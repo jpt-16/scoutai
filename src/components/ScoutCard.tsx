@@ -47,7 +47,13 @@ interface ScoutCardProps {
    * release with the letter and its full updated path (see
    * `RouteOverride.path` — deltas from the player's own position).
    */
-  onEditDetectedRoute?: (letter: string, path: [number, number][]) => void;
+  onEditDetectedRoute?: (letter: string, path: [number, number][], route?: string) => void;
+  /**
+   * With `onEditDetectedRoute`, puts a draggable handle on every break point of
+   * every route (Scout O), not just film and AI routes. A route the play call
+   * drew becomes the coach's own shape, keeping its number (`route`).
+   */
+  adjustRoutes?: boolean;
   /**
    * Scout-report tendencies for the whole loaded script (see
    * `src/lib/tendencies.ts`), computed once by the caller and handed to
@@ -219,6 +225,7 @@ export function ScoutCard({
   onAssignmentChange,
   ink,
   onEditDetectedRoute,
+  adjustRoutes = false,
   tendencies,
   contrast = "normal",
   className,
@@ -235,6 +242,9 @@ export function ScoutCard({
   const [stroke, setStroke] = useState<[number, number][] | null>(null);
   // Live-drag state for a video-detected route's break point (index within
   // that route's own path, 1-based — index 0 is the player, never draggable).
+  /** The player whose route gets handles: film / AI routes always, any route while adjusting. */
+  const handleLetter = (i: number) =>
+    diagram.routeVideoLetters[i] ?? (adjustRoutes ? diagram.routeLetters[i] : null);
   const [routeDrag, setRouteDrag] = useState<{ letter: string; pointIndex: number; x: number; y: number } | null>(
     null,
   );
@@ -523,7 +533,7 @@ export function ScoutCard({
             />
           ))}
           {diagram.routes.map((p, i) => {
-            const letter = diagram.routeVideoLetters[i];
+            const letter = handleLetter(i);
             // While a break point is being dragged, preview the path live.
             const drag = routeDrag && letter && routeDrag.letter === letter ? routeDrag : null;
             const live = drag ? p.map((pt, j) => (j === drag.pointIndex ? { x: drag.x, y: drag.y } : pt)) : p;
@@ -591,7 +601,7 @@ export function ScoutCard({
         {/* AI-detected routes: draggable handles at each break point. */}
         {onEditDetectedRoute &&
           diagram.routes.map((p, i) => {
-            const letter = diagram.routeVideoLetters[i];
+            const letter = handleLetter(i);
             if (!letter) return null;
             return p.slice(1).map((point, k) => {
               const pointIndex = k + 1; // index within `p`; 0 is the player, never draggable
@@ -623,20 +633,31 @@ export function ScoutCard({
                       const raw = fromCardPoint(diagram, { x: drag.x, y: drag.y });
                       const player = diagram.players.find((pl) => pl.label === letter);
                       const startRaw = player && fromCardPoint(diagram, player);
-                      const original = card.routeOverrides?.[letter]?.path ?? [];
+                      // The shape as drawn now, as deltas from his own spot (a route the play
+                      // call drew has no saved path yet, so read it off the card).
+                      const saved = card.routeOverrides?.[letter]?.path;
+                      const original: [number, number][] =
+                        saved && saved.length === p.length - 1
+                          ? saved
+                          : p.slice(1).map((pt) => {
+                              const r = fromCardPoint(diagram, pt);
+                              return [r.x - (startRaw?.x ?? 0), r.y - (startRaw?.y ?? 0)] as [number, number];
+                            });
                       if (startRaw) {
                         const updated = original.map((delta, idx) =>
                           idx === pointIndex - 1
                             ? ([raw.x - startRaw.x, raw.y - startRaw.y] as [number, number])
                             : delta,
                         );
-                        onEditDetectedRoute(letter, updated);
+                        onEditDetectedRoute(letter, updated, diagram.routeKinds[i] ?? undefined);
                       }
                     }
                     setRouteDrag(null);
                   }}
                   onPointerCancel={() => setRouteDrag(null)}
                 >
+                  {/* A bigger invisible target, so a fingertip finds the point. */}
+                  <circle cx={at.x} cy={at.y} r={18} fill="transparent" />
                   <circle
                     cx={at.x}
                     cy={at.y}

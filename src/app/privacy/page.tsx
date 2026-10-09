@@ -161,10 +161,9 @@ export default function PrivacyPage() {
       <LegalSection title="Contact">
         <p>
           Questions about this policy or your data:{" "}
-          <a href="mailto:support@scoutcardai.com" className="font-semibold text-primary underline-offset-4 hover:underline">
-            support@scoutcardai.com
-          </a>{" "}
-          <span className="text-sm text-muted-foreground">(placeholder — replace with your real inbox)</span>.
+          <a href="mailto:jake@jtbuildsco.com" className="font-semibold text-primary underline-offset-4 hover:underline">
+            jake@jtbuildsco.com
+          </a>
         </p>
       </LegalSection>
 

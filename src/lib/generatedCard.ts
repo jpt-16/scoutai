@@ -21,7 +21,7 @@ import { detectedRouteToPathDeltas } from "./coordinateMapper";
 import { buildDiagram, FIELD, fromCardPoint } from "./formations";
 import { deriveCard, type HudlPlayCard, type RouteOverride } from "./hudlParser";
 import { FOOTBALL_CONCEPT_RULES } from "./videoDetection";
-import { clampSafetyDepth, safetyY } from "./defensiveAligner";
+import { clampSafetyDepth, safetyDepthFor, safetyY } from "./defensiveAligner";
 
 export interface GenerateCardInput {
   playName: string;
@@ -268,8 +268,8 @@ export function applyGeneratedPlay(
     // Defense stays on its own side of the ball.
     const at = fromGrid({ x: p.x, y: Math.min(p.y, LOS_GRID - 1) });
     // The coach's safety depth wins over the model's.
-    const depth = card.defenseAlignment?.safetyDepthY;
-    const y = depth != null && (slot.label === "FS" || slot.label === "SS") ? safetyY(depth) : at.y;
+    const depth = safetyDepthFor(card.defenseAlignment, slot.label);
+    const y = depth != null ? safetyY(depth) : at.y;
     defenseOverrides[slot.id] = { x: Math.round(at.x), y: Math.round(y) };
   }
 

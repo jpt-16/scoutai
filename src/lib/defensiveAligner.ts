@@ -33,6 +33,10 @@ export type CoverageStyle = "MAN_OVER" | "ZONE_APEX" | "DEEP_SHELL";
 export interface DefensiveAlignment {
   /** Where the safeties (FS and SS) line up, in yards off the line of scrimmage. */
   safetyDepthY?: number;
+  /** The free safety (FS) on his own, in yards; wins over `safetyDepthY` for him. */
+  freeDepthY?: number;
+  /** The rover (SS) on his own, in yards; wins over `safetyDepthY` for him. */
+  roverDepthY?: number;
   /** How the slots are played; defaults from the card's COVERAGE tag (`coverageStyleFor`). */
   coverageStyle?: CoverageStyle;
 }
@@ -69,6 +73,19 @@ const DEPTH = {
   overSafety: 6,
   middle: 12,
 } as const;
+
+/**
+ * The depth a coach set for one safety, in yards: his own number (free = FS,
+ * rover = SS) before the one for both, else null (the alignment rules decide).
+ */
+export function safetyDepthFor(
+  call: Pick<DefensiveAlignment, "safetyDepthY" | "freeDepthY" | "roverDepthY"> | undefined,
+  label: string,
+): number | null {
+  if (label === "FS") return call?.freeDepthY ?? call?.safetyDepthY ?? null;
+  if (label === "SS") return call?.roverDepthY ?? call?.safetyDepthY ?? null;
+  return null;
+}
 
 export function clampSafetyDepth(yards: number): number {
   return Math.min(MAX_SAFETY_DEPTH, Math.max(MIN_SAFETY_DEPTH, Math.round(yards * 2) / 2));

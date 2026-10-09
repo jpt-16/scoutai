@@ -64,3 +64,45 @@ describe("every receiver and back runs a route or blocks", () => {
     expect(none.jobs.X).toBe("—");
   });
 });
+
+describe("adjusting an arrow", () => {
+  const base = () => parseHudlCsvText(`OFF FORM,OFF PLAY\ntrips,QUICK SLANT\n`).cards[0];
+
+  it("names the player and the route kind behind every called route", () => {
+    const d = buildDiagram(base(), "team", "offense");
+    expect(d.routeLetters).toHaveLength(d.routes.length);
+    expect(d.routeLetters.every(Boolean)).toBe(true);
+    // Slant is tree route 2, so an adjusted slant keeps its number.
+    expect(d.routeKinds).toContain("slant");
+  });
+
+  it("a dragged break point becomes the coach's own shape and moves only that point", () => {
+    const card = base();
+    const before = buildDiagram(card, "team", "offense");
+    const i = before.routeKinds.indexOf("slant");
+    const letter = before.routeLetters[i]!;
+    const player = before.players.find((p) => p.label === letter)!;
+    const deltas = before.routes[i].slice(1).map((pt) => [pt.x - player.x, pt.y - player.y] as [number, number]);
+    const last = deltas.length - 1;
+    deltas[last] = [deltas[last][0] + 30, deltas[last][1] - 20];
+    const after = buildDiagram(
+      { ...card, routeOverrides: { [letter]: { route: "slant", path: deltas, source: "coach" } } },
+      "team",
+      "offense",
+    );
+    const route = after.routes.find((_, k) => after.routeLetters[k] === letter)!;
+    const old = before.routes[i];
+    expect(route).toHaveLength(old.length);
+    expect(route[route.length - 1].x).toBeCloseTo(old[old.length - 1].x + 30, 0);
+    expect(route[route.length - 1].y).toBeCloseTo(old[old.length - 1].y - 20, 0);
+    // The stem is where it was, and the arrow keeps its number.
+    expect(route[1].x).toBeCloseTo(old[1].x, 0);
+    expect(after.routeLabels[after.routeLetters.indexOf(letter)]).toBe("2");
+    // Nobody else's route moved.
+    after.routes.forEach((r, k) => {
+      if (after.routeLetters[k] === letter) return;
+      const j = before.routeLetters.indexOf(after.routeLetters[k]);
+      expect(r).toEqual(before.routes[j]);
+    });
+  });
+});
