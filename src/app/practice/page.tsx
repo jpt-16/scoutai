@@ -14,6 +14,7 @@ import {
   TriangleAlert,
 } from "lucide-react";
 import { AppGate } from "@/components/AppGate";
+import { SyncBadge } from "@/components/CloudSync";
 import { PlaybookPicker } from "@/components/PlaybookPicker";
 import { BrandMark } from "@/components/BrandMark";
 import { Button } from "@/components/ui/button";
@@ -45,6 +46,7 @@ import {
   type ScoutLook,
 } from "@/lib/practicePlan";
 import { loadScript, type StoredScript } from "@/lib/scriptStore";
+import { useRemoteApplied } from "@/lib/useRemoteApplied";
 import { cn } from "@/lib/utils";
 
 const inputClass =
@@ -339,6 +341,13 @@ function PracticeApp() {
     setDayId(loaded.days.find((d) => d.id === wanted)?.id ?? loaded.days[0]?.id ?? null);
   }, []);
 
+  // The staff's copy just landed on this device: show it.
+  useRemoteApplied(["script", "playbook", "practice"], (applied) => {
+    if (applied === "practice") setPlan(loadPlan());
+    else if (applied === "script") setScript(loadScript());
+    else setPlaybook(loadScript("playbook")?.cards ?? []);
+  });
+
   const cards: HudlPlayCard[] = useMemo(() => script?.cards ?? [], [script]);
   const looks = useMemo(() => opponentLooks(cards), [cards]);
 
@@ -373,7 +382,10 @@ function PracticeApp() {
           </Link>
         </Button>
         <div className="flex min-w-0 flex-1 flex-col">
-          <span className="text-xs font-bold tracking-[0.14em] text-primary">PRACTICE PLAYSHEET</span>
+          <span className="flex items-center gap-2">
+            <span className="text-xs font-bold tracking-[0.14em] text-primary">PRACTICE PLAYSHEET</span>
+            <SyncBadge className="h-6" />
+          </span>
           <span className="font-display truncate text-2xl leading-[1.05] font-bold">
             {day.name} · {day.periods.length} {day.periods.length === 1 ? "period" : "periods"}
           </span>
@@ -639,7 +651,7 @@ function PracticeApp() {
 
         <footer className="flex items-center gap-3 border-t pt-6 text-sm text-muted-foreground">
           <BrandMark />
-          <span>Saved on this device. Nothing is uploaded.</span>
+          <span>Saved on this device, and to your team when you&apos;re signed in.</span>
         </footer>
       </main>
     </div>

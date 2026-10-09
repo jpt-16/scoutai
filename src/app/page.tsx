@@ -50,6 +50,7 @@ import { isFilmImportEnabled } from "@/lib/featureFlags";
 import { importFilms } from "@/lib/importFilms";
 import { PLAYBOOK_TEMPLATE_CSV, PLAYBOOK_TEMPLATE_NAME } from "@/lib/playbookTemplate";
 import { loadScript, saveScript, storeScript } from "@/lib/scriptStore";
+import { useRemoteApplied } from "@/lib/useRemoteApplied";
 import { computeTendencies } from "@/lib/tendencies";
 
 // Smash (X hitch, F corner — F is the slot in Deuces Gun, H stays in the
@@ -213,7 +214,7 @@ const FAQS: { q: string; a: string }[] = [
   // Working with the cards
   {
     q: "Can I edit a card after it's generated?",
-    a: "Yes. Edit Play changes the formation, strength, play call, direction, hash, front, coverage, notes and each receiver's route, and it can duplicate or delete a play. You can type into the assignment boxes and draw on a card with Apple Pencil. Edits save automatically, are marked \"edited\" in the play list, and never leave your device.",
+    a: "Yes. Edit Play changes the formation, strength, play call, direction, hash, front, coverage, notes and each receiver's route, and it can duplicate or delete a play. You can type into the assignment boxes and draw on a card with Apple Pencil. Edits save automatically, are marked \"edited\" in the play list, and are saved to your device and, when you're signed in, to your team's shared copy.",
   },
   {
     q: "Hudl doesn't say where their safeties line up. Can I show that?",
@@ -243,7 +244,11 @@ const FAQS: { q: string; a: string }[] = [
   // Privacy
   {
     q: "Is my data uploaded anywhere?",
-    a: "Your breakdown and playbook are read in your browser and saved on your device. The only things sent to a server are the AI features: the few plays it can't place (as text), a play call you ask the AI to draw, and a pre-snap clip if you read the secondary from film.",
+    a: "Your breakdown and playbook are read in your browser and kept on your device, so the app works with no signal. When you're signed in, your script, playbook and practice playsheet are also saved to private cloud storage for your team. Beyond that, only the AI features send anything: the few plays it can't place (as text), a play call you ask the AI to draw, and a pre-snap clip if you read the secondary from film.",
+  },
+  {
+    q: "Can the other coaches on my staff see my script?",
+    a: "Yes, if they're on the same team in the app. Everyone on a team shares one script, playbook and playsheet, so a coach who signs in on a new iPad, or a second coach, sees the same thing. If two coaches change the same one, the app asks which version to keep instead of overwriting either. Someone who isn't on your team sees nothing.",
   },
   {
     q: "Do I have to upload game film?",
@@ -302,6 +307,7 @@ export default function UploadPage() {
   // The staff's own playbook: same readers, its own storage slot, studied at /script?playbook=1.
   const [savedPlaybook, setSavedPlaybook] = useState<number | null>(null);
   useEffect(() => setSavedPlaybook(loadScript("playbook")?.cards.length ?? null), []);
+  useRemoteApplied(["playbook"], () => setSavedPlaybook(loadScript("playbook")?.cards.length ?? null));
 
   const handlePlaybookFiles = async (files: File[]) => {
     setBusy(true);
@@ -429,7 +435,7 @@ export default function UploadPage() {
               </div>
               <p className="flex items-center justify-center gap-2 text-sm text-muted-foreground lg:justify-start">
                 <Lock className="size-4 shrink-0" aria-hidden="true" />
-                Read on your device. Nothing is uploaded.
+                Read on your device, shared only with your team.
               </p>
             </div>
 

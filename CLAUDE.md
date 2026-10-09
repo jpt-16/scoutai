@@ -2,8 +2,8 @@
 
 Web app for high school football staffs: upload the weekly **Hudl breakdown CSV** and get
 vector-drawn **scout team cards**, which you can flip through on an iPad at practice or print
-2 or 4 to a page. The CSV is parsed in the browser and never uploaded; only the AI features send
-anything to a server. On production the app itself is behind sign-in (see "Access" below); preview
+2 or 4 to a page. The CSV is parsed in the browser and never uploaded; only the AI features and the staff's shared
+copy (see "Saved for the staff") send anything to a server. On production the app itself is behind sign-in (see "Access" below); preview
 deploys and a local checkout are open.
 
 ## Stack
@@ -521,6 +521,42 @@ adjacent period. Rep cards (`id` starts `rep-`, `isRepCard`) aren't in the saved
 play / Draw / Adjust X's are off for them and they show no tendency badges. Print Grid prints the
 current period.
 
+## Saved for the staff (`/api/sync`, `src/lib/cloudSync.ts`)
+
+Signed in, the **scout script, the playbook and the practice playsheet** (the three `SyncSlot`s in
+`syncMeta.ts`, the same localStorage keys as always) are also saved to a private Vercel Blob per team
+(`syncStore.ts`: `sync/<sha256 of the team id>/<slot>`, the team being the Clerk organization, or
+`user-<id>` for a coach without one: the same `teamId` `requireEntitlement()` returns). Every coach on
+the team reads and writes the same copy, so a second coach or a new iPad sees the same thing. The
+device copy stays the one the app reads and writes (it works with no signal); sync only moves it.
+
+- **Wire:** `GET /api/sync?slot=&etag=` (200 body + `x-sync-etag`, 204 none, 304 unchanged) and
+  `PUT /api/sync?slot=&base=` (200 `{etag}`, 409 someone saved since, 413 over 4 MB). The body is the
+  slot's JSON gzipped in the browser (`CompressionStream`), stored as sent. The blob's own ETag is the
+  version: a write is `put(..., { ifMatch: base })`, so the store itself refuses a stale write (no
+  read-then-write race), and the first write refuses to overwrite another coach's first write. The
+  route is off (403) wherever the AI gate is bypassed (open preview / local), since that would be one
+  shared copy for anyone holding the URL, and 501 with no `BLOB_READ_WRITE_TOKEN`.
+- **When it moves** (`CloudSync` in the root layout, only while `useAuth()` says signed in; engine
+  `cloudSync`): on sign-in, when the tab comes back, on `online`, every 60 s while visible, and 2.5 s
+  after any save. `storeScript` and `savePlan` call `notifyLocalChange(slot)` (marks the slot dirty in
+  `scoutcard:sync:v1` and fires an event), so every save path is covered without each caller knowing.
+- **The rule** (`decideSync`, tested): it never overwrites work it hasn't seen. Nothing saved yet +
+  something here → push. Nothing here → pull. Same version as last time → push only if edited here.
+  The staff's copy moved and this device has no edits → pull. **The staff's copy moved and this device
+  has edits, or this device has its own copy and has never synced** → a dialog (`CloudSync.tsx`) asks
+  "Use my staff's version" or "Keep this device's and replace theirs"; nothing changes until a coach
+  picks. A downloaded copy lands in localStorage without marking it dirty and fires
+  `scoutcard:remote-applied`, which `useRemoteApplied` pages use to reload (script, practice, landing
+  playbook count, `/practice`). The public demo script and an empty playsheet are never pushed.
+- **Different team or coach on the device** (`scoutcard:sync-owner:v1`) starts the device's sync history
+  fresh, so the first-sign-in conflict rule applies again. `SyncBadge` in the reader and playsheet
+  headers shows Saved / Saving / Offline / Choose a version. Deleting a staff's copy isn't built (ask
+  by email); clearing the browser removes the device copy only.
+- Not covered yet: two coaches editing the same slot at the same moment still get the choose-a-version
+  dialog rather than a merge; per-coach names on a save; a size over 4 MB gzipped stays on the device.
+- The privacy policy, terms and FAQ say all of this; keep them in step with it.
+
 ## Sideline screens: sunlight mode and CoachPad export
 
 - **Sunlight** (script header toggle, remembered per device in `scoutcard:sunlight:v1`):
@@ -543,7 +579,7 @@ current period.
 - `public/sw.js` registers only in production builds (`npm run build && npm start` or on
   Vercel). Open the app once while online and it keeps working offline.
 - The loaded script lives in `localStorage` (`scoutcard:script:v1`), so it survives
-  restarts. Bump `CACHE_VERSION` in `sw.js` when changing caching behavior.
+  restarts, and signed in it is also saved for the staff (next section). Bump `CACHE_VERSION` in `sw.js` when changing caching behavior.
 
 ## Deploying to Vercel
 
@@ -941,7 +977,9 @@ and text cards above, so keep it true to them), `#showcase`, problem/solution, o
 
 Both pages (`src/app/privacy/page.tsx`, `src/app/terms/page.tsx`, shell in `LegalLayout.tsx`)
 describe what the product does today, so **update them whenever data handling changes**: what stays in
-`localStorage` (script, playbook, playsheet, sunlight, the 14-day access cache), what each AI feature
+`localStorage` (script, playbook, playsheet, sunlight, the 14-day access cache), what's also saved for the
+team (script, playbook, playsheet in private Blob, shared by everyone on the team, kept until replaced or
+deleted on request), what each AI feature
 sends to Gemini (import review rows as text, typed AI-card calls, the secondary-read clip), that
 uploaded clips sit in private Blob storage with no deletion schedule, the usage counters, the
 Clerk / Stripe / Google / Vercel processors, and the private-pilot sign-in. The AI game-film import is

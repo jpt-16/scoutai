@@ -1,5 +1,6 @@
 import { deriveCard, type HudlParseResult, type HudlPlayCard } from "./hudlParser";
 import type { DbAlignments } from "./secondary";
+import { notifyLocalChange } from "./syncMeta";
 
 /**
  * The loaded script lives in localStorage so the reader keeps working on the
@@ -40,6 +41,8 @@ export function storeScript(script: StoredScript, slot: ScriptSlot = "script"): 
   const next = { ...script, fileName: scriptTitle(script.films, slot), savedAt: new Date().toISOString() };
   try {
     window.localStorage.setItem(STORAGE_KEYS[slot], JSON.stringify(next));
+    // Signed in, this also goes up to the staff's copy (src/lib/cloudSync.ts).
+    notifyLocalChange(slot);
   } catch {
     // Private mode or storage full: the reader falls back to its empty state.
   }

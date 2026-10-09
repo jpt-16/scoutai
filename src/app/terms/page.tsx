@@ -19,7 +19,9 @@ export default function TermsPage() {
           ScoutCard AI turns a Hudl breakdown (a CSV, an Excel file or pasted rows) into scout team
           cards for high school football coaching staffs. It also lets a staff load its own playbook
           to study and build a practice playsheet. Reading your files, drawing cards, editing,
-          printing and exporting happen in your browser. Some features use AI: reviewing plays the
+          printing and exporting happen in your browser. Your script, playbook and playsheet are
+          kept on your device and, when you&apos;re signed in, saved to private storage shared by
+          everyone on your coaching team. Some features use AI: reviewing plays the
           app couldn&apos;t place, drawing a play from a typed call, and reading the opponent&apos;s
           secondary from a pre-snap clip. See the Privacy Policy for what each one sends.
         </p>
@@ -30,7 +32,8 @@ export default function TermsPage() {
           ScoutCard AI is currently in a private pilot with coaching staffs. Using the app requires
           an account, and access is by invitation. You&apos;re responsible for what happens under
           your account, including the coaches you invite to your team, and for keeping your sign-in
-          secure. We may change, limit or end the pilot, or any feature in it, at any time. The
+          secure. Everyone on a team can see and change the team&apos;s shared script, playbook and
+          playsheet, so only add coaches you want to share them with. We may change, limit or end the pilot, or any feature in it, at any time. The
           five-play demo is open without an account.
         </p>
       </LegalSection>
@@ -39,8 +42,8 @@ export default function TermsPage() {
         <p>
           You&apos;re responsible for the breakdowns, playbooks, plays and film you upload. By
           uploading content, you represent that you have the right to use and share it through this
-          service, including any consent your school, league or conference requires, particularly
-          given that game film of high school athletes may include images of minors. We may remove
+          service (including storing it for, and showing it to, your team), including any consent
+          your school, league or conference requires, particularly given that game film of high school athletes may include images of minors. We may remove
           content or suspend an account we believe violates this.
         </p>
       </LegalSection>
@@ -86,8 +89,10 @@ export default function TermsPage() {
         <p>
           The service is provided &ldquo;as is,&rdquo; without warranties of any kind, express or
           implied. We don&apos;t guarantee the service will be uninterrupted or error-free, or that
-          AI-generated content will be accurate. Your scripts are saved in your own browser, and we
-          can&apos;t recover them if that data is cleared.
+          AI-generated content will be accurate. Your work is saved in your own browser and, when
+          you&apos;re signed in, to your team&apos;s shared copy, where the latest save replaces the
+          one before. We don&apos;t guarantee a backup, or that it can be recovered if it&apos;s cleared or
+          overwritten, so keep your original Hudl exports.
         </p>
       </LegalSection>
 

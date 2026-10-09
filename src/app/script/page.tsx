@@ -60,7 +60,9 @@ import {
   type PracticePlan,
 } from "@/lib/practicePlan";
 import { applyReview, reviewRows, type ReviewResult } from "@/lib/importReview";
+import { SyncBadge } from "@/components/CloudSync";
 import { loadScript, saveScript, storeScript, type ScriptSlot, type StoredScript } from "@/lib/scriptStore";
+import { useRemoteApplied } from "@/lib/useRemoteApplied";
 import { cn } from "@/lib/utils";
 
 type View = "field" | "print";
@@ -205,6 +207,18 @@ function ScriptApp({ demoMode = false }: { demoMode?: boolean }) {
     const at = Number.parseInt(params.get("period") ?? "0", 10);
     setPeriodIndex(Number.isFinite(at) ? Math.min(Math.max(at, 0), day.periods.length - 1) : 0);
   }, []);
+
+  // The staff's copy just landed on this device (another coach saved, or a first sign-in).
+  useRemoteApplied(["script", "playbook", "practice"], (applied) => {
+    if (applied === "practice") {
+      const dayId = new URLSearchParams(window.location.search).get("practice");
+      const plan = loadPlan();
+      const day = plan.days.find((d) => d.id === dayId);
+      if (day && day.periods.length > 0) setPractice({ plan, day });
+    } else if (applied === slot) {
+      setScript(loadScript(applied));
+    }
+  });
 
   const cards = useMemo(() => script?.cards ?? [], [script]);
   const practicePeriod = practice?.day.periods[periodIndex];
@@ -583,8 +597,11 @@ function ScriptApp({ demoMode = false }: { demoMode?: boolean }) {
           </Link>
         </Button>
         <div className="flex min-w-0 flex-1 flex-col">
-          <span className="text-xs font-bold tracking-[0.14em] text-primary">
-            {practice ? `PRACTICE · ${practice.day.name.toUpperCase()}` : isPlaybook ? "OUR PLAYBOOK" : "SCOUT SCRIPT"}
+          <span className="flex items-center gap-2">
+            <span className="text-xs font-bold tracking-[0.14em] text-primary">
+              {practice ? `PRACTICE · ${practice.day.name.toUpperCase()}` : isPlaybook ? "OUR PLAYBOOK" : "SCOUT SCRIPT"}
+            </span>
+            <SyncBadge className="h-6" />
           </span>
           <span className="font-display truncate text-2xl leading-[1.05] font-bold">
             {practicePeriod

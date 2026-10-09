@@ -1,4 +1,5 @@
 import { inPeriod, playKind } from "./formations";
+import { notifyLocalChange } from "./syncMeta";
 import {
   classifyConcept,
   classifyFormation,
@@ -540,6 +541,7 @@ export function loadPlan(): PracticePlan {
 export function savePlan(plan: PracticePlan): PracticePlan {
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(plan));
+    notifyLocalChange("practice");
   } catch {
     // Private mode or storage full: the plan lasts until the tab closes.
   }

@@ -8,6 +8,7 @@ import "@fontsource/barlow-condensed/600.css";
 import "@fontsource/barlow-condensed/700.css";
 import "@fontsource/barlow-condensed/800.css";
 import "./globals.css";
+import { CloudSync } from "@/components/CloudSync";
 import { ServiceWorkerRegister } from "@/components/ServiceWorkerRegister";
 import { isClerkConfigured } from "@/lib/clerkConfig";
 
@@ -44,6 +45,8 @@ export default function RootLayout({
     <body className="antialiased">
       {children}
       <ServiceWorkerRegister />
+      {/* Saves the script, playbook and playsheet to the staff while a coach is signed in. */}
+      <CloudSync />
     </body>
   );
 

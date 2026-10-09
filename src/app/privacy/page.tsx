@@ -12,12 +12,14 @@ export default function PrivacyPage() {
     <LegalLayout title="Privacy Policy" lastUpdated="October 9, 2026">
       <p>
         This policy explains what ScoutCard AI does and doesn&apos;t do with your data. The short
-        version: your Hudl breakdown, your playbook, your playsheet and your edits are read and
-        saved in your browser, on your device. The only things that leave your device are the AI
-        features, and they send only what&apos;s described below.
+        version: your Hudl breakdown, your playbook, your playsheet and your edits are read in your
+        browser and kept on your device. When you&apos;re signed in, your script, playbook and
+        playsheet are also saved to private storage for your coaching team, so every coach on the
+        team sees the same thing. The AI features send the little that&apos;s described below.
+        Nothing else leaves your device.
       </p>
 
-      <LegalSection title="What stays on your device">
+      <LegalSection title="What's saved, and where">
         <p>
           Uploading a Hudl breakdown (a CSV, an Excel file or pasted rows), uploading your own
           playbook, building a practice playsheet, generating scout cards, editing plays, drawing on
@@ -27,9 +29,17 @@ export default function PrivacyPage() {
         <p>
           The results are saved in your browser&apos;s local storage on your device: your scout
           script, your playbook, your practice playsheet, your sunlight-mode setting, and a note that
-          your sign-in was verified. We have no server-side database of your scripts and no way to
-          see, back up or recover them. Clearing your browser data, or switching devices, means
-          importing again.
+          your sign-in was verified. That&apos;s what lets the app work on a field with no signal.
+        </p>
+        <p>
+          <strong className="text-foreground">Saved for your team.</strong> While you&apos;re signed in,
+          your scout script, playbook and practice playsheet (the plays, your edits, notes and
+          drawings in them) are also saved to private cloud storage, kept apart for your team.
+          Every coach on your team can read and change that shared copy, which is how a second coach,
+          or a new iPad, sees the same thing. A coach who isn&apos;t on a team has a copy of their
+          own. The copy is replaced each time someone saves and is kept until you ask us to delete
+          it. Clearing your browser data does not remove it. The sunlight setting and the
+          verified-sign-in note stay on your device only.
         </p>
       </LegalSection>
 
@@ -127,8 +137,9 @@ export default function PrivacyPage() {
             processing.
           </li>
           <li>
-            <strong className="text-foreground">Vercel</strong> — hosts the app and stores uploaded
-            clips and usage counters in private cloud storage.
+            <strong className="text-foreground">Vercel</strong> — hosts the app and stores your
+            team&apos;s shared script, playbook and playsheet, uploaded clips and usage counters in
+            private cloud storage.
           </li>
         </ul>
         <p>We don&apos;t sell your data, and we don&apos;t share it for advertising.</p>
@@ -144,10 +155,11 @@ export default function PrivacyPage() {
 
       <LegalSection title="Your choices">
         <p>
-          You can delete your scripts and playbook at any time by clearing this site&apos;s data in
-          your browser. You can stop using the service whenever you like. To cancel a paid
-          subscription, use the billing portal in the app (powered by Stripe). To request deletion
-          of your account, team data or uploaded clips, contact us below.
+          Clearing this site&apos;s data in your browser removes the copy on that device only; your
+          team&apos;s shared copy stays until it&apos;s replaced or you ask us to delete it. You can
+          stop using the service whenever you like. To cancel a paid subscription, use the billing
+          portal in the app (powered by Stripe). To request deletion of your account, your
+          team&apos;s shared script, playbook and playsheet, or uploaded clips, contact us below.
         </p>
       </LegalSection>
 
