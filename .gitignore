@@ -45,3 +45,9 @@ video-service/__pycache__/
 video-service/**/__pycache__/
 video-service/.venv/
 video-service/*.pyc
+
+# Game film (minors) and what is read from it never goes in git
+video-service/clips/
+video-service/debug/
+video-service/ours.csv
+video-service/.pytest_cache/

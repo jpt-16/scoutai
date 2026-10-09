@@ -30,6 +30,7 @@ from typing import Optional
 import cv2
 import numpy as np
 import torch
+from devices import pick_device
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 
 from geometry import (
@@ -65,7 +66,7 @@ LOST_TRACK_BUFFER = int(os.environ.get("LOST_TRACK_BUFFER", "60"))
 # unset (the default), inference runs the HF model directly on GPU in fp16.
 TENSORRT_ENGINE_PATH = os.environ.get("TENSORRT_ENGINE_PATH") or None
 
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+DEVICE = pick_device()  # cuda, then Apple's mps (a Mac), then cpu
 
 
 # --------------------------------------------------------------------------

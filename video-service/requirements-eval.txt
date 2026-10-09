@@ -1,0 +1,8 @@
+# Everything the formation check (eval/) needs on a Mac or any machine, no web server.
+# Install torch first: `pip install torch` (the Mac build already uses the Apple GPU).
+numpy==1.26.4
+opencv-python==4.10.0.84  # the full build, for the click window in eval.calibrate
+pydantic==2.10.5
+fastapi==0.115.6  # geometry.py imports it for its error type
+transformers==4.47.1  # RT-DETRv2 (Apache-2.0), no ultralytics
+pytest==8.3.4

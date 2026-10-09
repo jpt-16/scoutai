@@ -617,6 +617,20 @@ provide). It's meant to be deployed separately, to its own GPU-capable host. See
 `video-service/README.md` for setup, licensing notes (RT-DETRv2 via `transformers`, ByteTrack via
 `supervision` — deliberately not the AGPL-licensed `ultralytics` package), and the API contract.
 
+**Formation check against Hudl Assist (`video-service/eval/`, runs on a Mac).** The goal is to beat
+Hudl Assist's tags, which a coach re-checks every Sunday, so the first thing built is a score sheet:
+`python -m eval.score --hudl hudl.csv --corrected corrected.csv --ours ours.csv` compares Hudl's formation
+tags and ours against the coach's corrected sheet, through the app's own vocabulary (`eval/vocab.py`, a
+port of `classifyFormation`; `test_eval.py` fails if the two drift). Ours comes from `eval/presnap.py`:
+one pre-snap frame per clip (picked, with four yard-line / hash clicks and the ball, by `eval/calibrate.py`),
+people found by RT-DETRv2 (tiled, since players are small in a wide shot), put on the field in yards through
+`geometry.py`'s homography, split into offense and defense by jersey color (`eval/teams.py`: the group
+lined up behind the other is the offense), then named by plain rules in `eval/formation.py` (thresholds at
+the top, so a wrong answer can be traced). `devices.py` picks cuda, then the Mac's `mps`, then cpu, and
+`main.py` uses it. `test_presnap.py` runs it end to end on a drawn field with a stand-in detector;
+the detector itself hasn't been run on real film yet. Clips (minors) stay on the machine:
+`video-service/clips/` and `debug/` are gitignored. Setup and commands: `video-service/eval/README.md`.
+
 ## Video-to-card via a hosted vision model (`/api/parse-video`)
 
 A second, serverless-friendly path to the same goal as `video-service/` above, and the one
