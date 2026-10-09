@@ -28,11 +28,13 @@ import {
   newDay,
   newPeriod,
   nextDayName,
+  normalizePlaysheetPaste,
   opponentLooks,
   parsePlaysheet,
   periodScoutOCards,
   playbookCallLine,
   repFormationKey,
+  repKind,
   savePlan,
   setLineLook,
   type PeriodKind,
@@ -118,6 +120,7 @@ function OffensePeriod({
       parsePlaysheet(period.text).map((r) => ({
         ...r,
         formationKey: repFormationKey(r, aliases),
+        kind: repKind(r.call),
       })),
     [period.text, aliases],
   );
@@ -137,6 +140,15 @@ function OffensePeriod({
           id={textId}
           value={period.text}
           onChange={(e) => onText(e.target.value)}
+          onPaste={(e) => {
+            // A script copied with every cell on its own line comes back as one line a rep.
+            const pasted = e.clipboardData.getData("text");
+            const fixed = normalizePlaysheetPaste(pasted);
+            if (fixed === pasted) return;
+            e.preventDefault();
+            const box = e.currentTarget;
+            onText(period.text.slice(0, box.selectionStart) + fixed + period.text.slice(box.selectionEnd));
+          }}
           placeholder={PLACEHOLDER}
           spellCheck={false}
           rows={Math.max(6, Math.min(16, period.text.split("\n").length + 1))}
@@ -199,6 +211,8 @@ function OffensePeriod({
                       {FORMATION_LABELS[rep.formationKey === "unknown" ? "spread" : rep.formationKey]}
                       {rep.formationKey === "unknown" && " (not recognized)"}
                       {rep.hash && ` · ${rep.hash} hash`}
+                      {rep.kind && ` · ${rep.kind}`}
+                      {rep.personnel && ` · ${rep.personnel}`}
                     </span>
                   </span>
                   <select
@@ -259,6 +273,45 @@ function OffensePeriod({
         ))}
       </div>
     </div>
+  );
+}
+
+/** What the opponent's defense showed against each formation: the film the matches come from. */
+function FilmByFormation({ looks }: { looks: ScoutLook[] }) {
+  const rows = useMemo(() => {
+    const byFormation = new Map<FormationKey, { look: ScoutLook; n: number }[]>();
+    for (const look of looks) {
+      for (const [key, n] of Object.entries(look.vs) as [FormationKey, number][]) {
+        byFormation.set(key, [...(byFormation.get(key) ?? []), { look, n }]);
+      }
+    }
+    return [...byFormation.entries()]
+      .map(([key, list]) => ({
+        key,
+        total: list.reduce((sum, x) => sum + x.n, 0),
+        list: list.sort((a, b) => b.n - a.n),
+      }))
+      .sort((a, b) => b.total - a.total);
+  }, [looks]);
+  return (
+    <details className="group rounded-xl border bg-card px-4 py-3">
+      <summary className="cursor-pointer text-sm font-bold tracking-[0.08em] text-muted-foreground select-none">
+        FILM: WHAT THEY PLAYED AGAINST EACH FORMATION
+      </summary>
+      <ul className="mt-3 grid gap-x-6 gap-y-2 sm:grid-cols-2">
+        {rows.map((r) => (
+          <li key={r.key} className="flex flex-col text-sm">
+            <span className="font-bold">
+              {FORMATION_LABELS[r.key === "unknown" ? "spread" : r.key]}
+              {r.key === "unknown" && " (not recognized)"} · {r.total}
+            </span>
+            <span className="text-muted-foreground">
+              {r.list.map((x) => `${lookLabel(x.look)} ×${x.n}`).join("  ·  ")}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </details>
   );
 }
 
@@ -414,6 +467,8 @@ function PracticeApp() {
               : "no fronts or coverages tagged, so cards draw a 4-3 unless you call a look."}
           </p>
         )}
+
+        {looks.length > 0 && <FilmByFormation looks={looks} />}
 
         <ol className="flex flex-col gap-4">
           {day.periods.map((period, i) => {

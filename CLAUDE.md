@@ -493,10 +493,19 @@ Each period says which side is ours, and the scout team is the converse:
     the text stays the source of truth and the look matching below applies as usual. A 7v7 period
     lists passes first (`inPeriod`), with "Show runs too". A formation name the classifier doesn't
     know but the playbook import placed keeps that shape (`formationAliases`).
+  - **A script with a personnel column** (Number | Personnel | Formation | Play: "1 Boston Pro rt Duo
+    rt"): the personnel package ("Boston", "Miami") is kept apart from the call (`PlaysheetRep.personnel`,
+    read from a header row naming Personnel, or a lone unknown word ahead of a known formation), header
+    and title rows ("Offensive Practice Scripts", "Number Play") are skipped, and a script pasted with
+    **every cell on its own line** is put back one rep a line on paste (`normalizePlaysheetPaste`, run by
+    the textarea's `onPaste`, so `rep.line` stays one line a rep for `setLineLook`). Each rep row shows
+    run / pass and the personnel; the card's notes carry "Personnel: Boston." `classifyConcept` knows DUO
+    and CROSSBUCK. A collapsible **Film** panel lists what the opponent played against each formation.
   - **Looks** (`opponentLooks`): the opponent's front + coverage pairs, from ODK `D` rows when the
     breakdown tags ODK, else every row with a front/coverage (like normal Scout D cards).
-  - `assignLooks` matches each rep to what they showed against that same formation (else their
-    overall mix) and spreads reps in proportion (smooth weighted round-robin, deterministic), so
+  - `assignLooks` matches each rep to what they showed against that same formation **and kind of play**
+    (`repKind`: run or pass; used once there are `MIN_KIND_REPS` (3) snaps of it, since a defense calls
+    runs and passes differently), else that formation, else their overall mix, and spreads reps in proportion (smooth weighted round-robin, deterministic), so
     a 60/40 defense gets 6 and 4 of 10 reps, mixed in. A look written on the line always wins.
     The editor's per-rep dropdown rewrites the line's `vs …` (`setLineLook`), so the pasted text
     stays the single source of truth.

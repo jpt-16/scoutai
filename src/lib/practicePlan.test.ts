@@ -5,7 +5,9 @@ import {
   assignLooks,
   opponentLooks,
   parsePlaysheet,
+  normalizePlaysheetPaste,
   parsePlaysheetLine,
+  repKind,
   playbookCallLine,
   periodRepCards,
   periodScoutOCards,
@@ -190,5 +192,72 @@ describe("playbookCallLine", () => {
     const [rep] = periodRepCards(period(text), [], {});
     expect(rep.formationKey).toBe("trips");
     expect(rep.formationSide).toBe("left");
+  });
+});
+
+describe("an offensive practice script with a personnel column", () => {
+  const rows = [
+    [1, "Boston", "Pro rt", "Duo rt"],
+    [2, "Boston", "Twins Rt", "Bubble Rt"],
+    [3, "Boston", "Pro Lt", "Toss Lt"],
+    [12, "Jacksonville", "Aces Right", "Z motion Jet Right"],
+    [14, "Miami", "Duces Gun", "Tiger 22"],
+    [17, "Miami", "Trio RI", "Quick Rt"],
+  ];
+  const tabs = ["Number\tPersonnel\tFormation\tPlay", ...rows.map((r) => r.join("\t"))].join("\n");
+  // The same script with every cell on its own line (copied out of a document).
+  const vertical = ["Offensive Practice Scripts", "Number Play", "Personnel", "Formation", "Play", ...rows.flat().map(String)].join("\n");
+
+  it("keeps personnel out of the call and the header out of the reps", () => {
+    const reps = parsePlaysheet(tabs);
+    expect(reps).toHaveLength(6);
+    expect(reps[0]).toMatchObject({ personnel: "Boston", formation: "Pro rt", call: "Pro rt Duo rt" });
+    expect(reps[3]).toMatchObject({ personnel: "Jacksonville", call: "Aces Right Z motion Jet Right" });
+  });
+
+  it("puts a one-cell-per-line paste back on one line a rep", () => {
+    const fixed = normalizePlaysheetPaste(vertical);
+    expect(parsePlaysheet(fixed).map((r) => r.call)).toEqual(parsePlaysheet(tabs).map((r) => r.call));
+    // Typed or tab-separated text is left alone.
+    expect(normalizePlaysheetPaste(tabs)).toBe(tabs);
+    expect(normalizePlaysheetPaste("1. TRIPS RT 836\n2. DEUCES LT IZ")).toBe("1. TRIPS RT 836\n2. DEUCES LT IZ");
+  });
+
+  it("reads each formation and tells runs from passes", () => {
+    const cards = periodRepCards(period(tabs), [], {});
+    expect(cards.map((c) => c.formationKey)).toEqual(["pro", "pro", "pro", "spread", "spread", "trips"]);
+    expect(["Duo rt", "Bubble Rt", "Toss Lt", "Z motion Jet Right", "Quick Rt"].map(repKind)).toEqual([
+      "run", "pass", "run", "run", "pass",
+    ]);
+    expect(cards[0].notes).toContain("Personnel: Boston");
+  });
+});
+
+describe("matching looks by formation and kind of play", () => {
+  const film = parseHudlCsvText(
+    [
+      "OFF FORM,OFF PLAY,DEF FRONT,COVERAGE",
+      ...Array(3).fill("Pro,Toss,4-3,Cover 3"),
+      ...Array(3).fill("Pro,Quick Slant,3-4,Cover 1"),
+    ].join("\n"),
+  ).cards;
+
+  it("gives a run the look they showed against runs from that formation", () => {
+    const looks = opponentLooks(film);
+    const [run, pass] = assignLooks(
+      [
+        { formationKey: "pro", look: null, kind: "run" },
+        { formationKey: "pro", look: null, kind: "pass" },
+      ],
+      looks,
+    );
+    expect(run).toMatchObject({ front: "4-3", coverage: "Cover 3" });
+    expect(pass).toMatchObject({ front: "3-4", coverage: "Cover 1" });
+  });
+
+  it("falls back to the formation when there is too little film for the kind", () => {
+    const looks = opponentLooks(film.slice(0, 4));
+    const [run] = assignLooks([{ formationKey: "pro", look: null, kind: "run" }], looks);
+    expect(run?.fromFilm).toBe(true);
   });
 });

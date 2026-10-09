@@ -420,9 +420,9 @@ export function classifyConcept(playCall: string, playType = ""): PlayConcept {
     }
     if (has(p, /\s(SWEEP|TOSS|PITCH|JET|FLY|BUCK SWEEP|REVERSE|OPTION|SPEED OPTION|SPEED)\s/)) return "sweep";
     if (has(p, /\s(OZ|OUTSIDE ZONE|STRETCH|WIDE ZONE|OUTSIDE)\s/)) return "outside-zone";
-    if (has(p, /\s(POWER|COUNTER|TREY|GT|TRAP|ISO|LEAD|BELLY|DART|G)\s/)) return "power";
+    if (has(p, /\s(POWER|COUNTER|TREY|GT|TRAP|ISO|LEAD|BELLY|DART|CROSSBUCK|CROSS BUCK|G)\s/)) return "power";
     if (has(p, /\s(SNEAK|QB DRAW|QB RUN|QB POWER|QB COUNTER|DRAW|VEER|INVERTED VEER|SCRAMBLE)\s/)) return "qb-run";
-    if (has(p, /\s(IZ|INSIDE ZONE|ZONE|DIVE|MID ZONE|SPLIT ZONE|ZONE READ|RPO)\s/)) return "inside-zone";
+    if (has(p, /\s(IZ|INSIDE ZONE|ZONE|DIVE|DUO|MID ZONE|SPLIT ZONE|ZONE READ|RPO)\s/)) return "inside-zone";
     if (has(p, /\s(PASS|DROPBACK|DROP|SMASH|CURL|FLAT|FLOOD|MESH|SAIL|DIG|POST|CORNER|OUT|DAGGER|Y CROSS|CROSS|SHALLOW)\s/)) return "dropback";
     if (has(p, /\sRUN\s/)) return "inside-zone";
   }

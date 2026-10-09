@@ -1,5 +1,6 @@
-import { inPeriod } from "./formations";
+import { inPeriod, playKind } from "./formations";
 import {
+  classifyConcept,
   classifyFormation,
   deriveCard,
   parseHash,
@@ -62,6 +63,8 @@ export interface PlaysheetRep {
   call: string;
   /** The formation part (first cell of a pasted row, else the whole call). */
   formation: string;
+  /** The personnel package a script names ("Boston", "Miami"), kept apart from the call. */
+  personnel?: string;
   hash: Hash | null;
   /** A look written on the playsheet after "vs" ("vs 3-4 C1"). */
   look: { front: string; coverage: string } | null;
@@ -78,7 +81,21 @@ export interface ScoutLook {
   count: number;
   /** How often it showed up against each formation. */
   vs: Partial<Record<FormationKey, number>>;
+  /** Against each formation and kind of play: key `"trips|pass"`. */
+  vsKind: Record<string, number>;
 }
+
+/** Run or pass, the split a defense calls differently against. */
+export type RepKind = "run" | "pass";
+
+/** Run or pass for a call ("DUO RT", "BUBBLE RT"), or null when it can't be told. */
+export function repKind(call: string): RepKind | null {
+  const kind = playKind({ playCall: call, concept: classifyConcept(call) });
+  return kind === "run" ? "run" : kind === "none" ? null : "pass";
+}
+
+/** At least this many film snaps against a formation and kind before the kind picks the look. */
+export const MIN_KIND_REPS = 3;
 
 export const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -158,9 +175,19 @@ export function splitLook(text: string): { front: string; coverage: string } {
  * (L / M / R) sets the hash, and the rest is the call. Typed lines can lead
  * with "1." or "3)" and carry "LH" / "R hash" and "vs 3-4 C1".
  */
-export function parsePlaysheetLine(text: string, line = 0): PlaysheetRep | null {
+const HEADER_WORD =
+  /^(#|no\.?|number|number\s+play|rep|personnel|pers\.?|formation|form|play|play\s*call|call|hash|offense|offensive\s+(play|formation))$/i;
+
+export function parsePlaysheetLine(
+  text: string,
+  line = 0,
+  opts: { personnel?: boolean } = {},
+): PlaysheetRep | null {
   const raw = text.replace(/ /g, " ").trim();
   if (!raw || /^[-=_*#\s]+$/.test(raw)) return null;
+  // A title or the header row of a script ("Number | Personnel | Formation | Play").
+  if (/practice\s+scripts?\s*$/i.test(raw)) return null;
+  if (raw.split("\t").map((c) => c.trim()).filter(Boolean).every((c) => HEADER_WORD.test(c))) return null;
 
   let cells = raw.includes("\t")
     ? raw
@@ -186,6 +213,17 @@ export function parsePlaysheetLine(text: string, line = 0): PlaysheetRep | null 
     }
     return true;
   });
+
+  // A script with a personnel column ("Boston", "Miami"): not part of the call. Told by its
+  // header, or by a lone unknown word ahead of a formation the app knows.
+  let personnel: string | undefined;
+  if (
+    cells.length >= 3 &&
+    (opts.personnel || (classifyFormation(cells[0]) === "unknown" && classifyFormation(cells[1]) !== "unknown"))
+  ) {
+    personnel = cells[0];
+    cells = cells.slice(1);
+  }
 
   let body = cells.join(" ").replace(/\s+/g, " ").trim();
   let look: PlaysheetRep["look"] = null;
@@ -215,14 +253,42 @@ export function parsePlaysheetLine(text: string, line = 0): PlaysheetRep | null 
   if (!body) return null;
   // With separate cells, the first one left is the formation column.
   const formationCell = cells.length > 1 ? cells[0].split(VS)[0].trim() : "";
-  return { call: body, formation: formationCell || body, hash, look, line };
+  return { call: body, formation: formationCell || body, ...(personnel ? { personnel } : {}), hash, look, line };
+}
+
+/**
+ * A script copied out of a document sometimes arrives with every cell on its own
+ * line: a rep number, then the personnel, formation and play, then the next number.
+ * This puts each rep back on one tab-separated line (the same shape Excel and Sheets
+ * paste), so one rep stays one line. Anything else comes back unchanged.
+ */
+export function normalizePlaysheetPaste(text: string): string {
+  const lines = text
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean);
+  // One cell per line: nearly no tabs, and several lines that are only a number.
+  if (lines.length < 6 || lines.filter((l) => l.includes("\t")).length > lines.length / 4) return text;
+  const body = lines.filter((l) => !HEADER_WORD.test(l) && !/practice\s+scripts?\s*$/i.test(l));
+  const at = body.map((l, i) => (/^\d{1,3}$/.test(l) ? i : -1)).filter((i) => i >= 0);
+  if (at.length < 2) return text;
+  // Every rep has the same number of cells between one number and the next.
+  const cellCount = at[1] - at[0] - 1;
+  if (cellCount < 2 || cellCount > 4 || at[0] !== 0) return text;
+  if (!at.every((start, k) => (k < at.length - 1 ? at[k + 1] - start : body.length - start) === cellCount + 1)) {
+    return text;
+  }
+  const rows = at.map((start) => body.slice(start, start + cellCount + 1).join("\t"));
+  // Three cells per rep read as personnel, formation, play; say so with a header row.
+  return [...(cellCount === 3 ? ["NUMBER\tPERSONNEL\tFORMATION\tPLAY"] : []), ...rows].join("\n");
 }
 
 /** Every rep in a period's text, in order. */
 export function parsePlaysheet(text: string): PlaysheetRep[] {
+  const personnel = /(^|\t)\s*personnel\s*(\t|$)/im.test(text);
   return text
     .split(/\r?\n/)
-    .map((l, i) => parsePlaysheetLine(l, i))
+    .map((l, i) => parsePlaysheetLine(l, i, { personnel }))
     .filter((r): r is PlaysheetRep => r !== null);
 }
 
@@ -297,9 +363,12 @@ export function opponentLooks(cards: HudlPlayCard[]): ScoutLook[] {
       coverage: c.coverage.trim(),
       count: 0,
       vs: {},
+      vsKind: {},
     };
     look.count += 1;
     look.vs[c.formationKey] = (look.vs[c.formationKey] ?? 0) + 1;
+    const kind = repKind(c.playCall);
+    if (kind) look.vsKind[`${c.formationKey}|${kind}`] = (look.vsKind[`${c.formationKey}|${kind}`] ?? 0) + 1;
     looks.set(key, look);
   }
   return [...looks.values()].sort((a, b) => b.count - a.count || a.key.localeCompare(b.key));
@@ -313,18 +382,31 @@ export function opponentLooks(cards: HudlPlayCard[]): ScoutLook[] {
  * in rather than bunched. Same input, same picks.
  */
 export function assignLooks(
-  reps: { formationKey: FormationKey; look: PlaysheetRep["look"] }[],
+  reps: { formationKey: FormationKey; look: PlaysheetRep["look"]; kind?: RepKind | null }[],
   looks: ScoutLook[],
 ): ({ front: string; coverage: string; fromFilm: boolean } | null)[] {
   const state = new Map<string, Map<string, number>>();
   return reps.map((rep) => {
     if (rep.look) return { ...rep.look, fromFilm: false };
     if (looks.length === 0) return null;
+    const known = rep.formationKey !== "unknown";
+    // Narrowest pool with enough film: this formation and kind of play, this formation, then everything.
+    const kindKey = rep.kind ? `${rep.formationKey}|${rep.kind}` : null;
+    const vsKind = kindKey ? looks.filter((l) => (l.vsKind[kindKey] ?? 0) > 0) : [];
+    const kindTotal = kindKey ? vsKind.reduce((sum, l) => sum + (l.vsKind[kindKey] ?? 0), 0) : 0;
     const vsThis = looks.filter((l) => (l.vs[rep.formationKey] ?? 0) > 0);
-    const useVs = rep.formationKey !== "unknown" && vsThis.length > 0;
-    const candidates = useVs ? vsThis : looks;
-    const weight = (l: ScoutLook) => (useVs ? (l.vs[rep.formationKey] ?? 0) : l.count);
-    const bucket = useVs ? rep.formationKey : "*";
+    let candidates = looks;
+    let weight = (l: ScoutLook) => l.count;
+    let bucket = "*";
+    if (known && kindKey && kindTotal >= MIN_KIND_REPS) {
+      candidates = vsKind;
+      weight = (l) => l.vsKind[kindKey] ?? 0;
+      bucket = kindKey;
+    } else if (known && vsThis.length > 0) {
+      candidates = vsThis;
+      weight = (l) => l.vs[rep.formationKey] ?? 0;
+      bucket = rep.formationKey;
+    }
     const current = state.get(bucket) ?? new Map<string, number>();
     state.set(bucket, current);
     const total = candidates.reduce((sum, l) => sum + weight(l), 0);
@@ -365,6 +447,7 @@ export function periodRepCards(
   const reps = parsePlaysheet(period.text).map((rep) => ({
     ...rep,
     formationKey: repFormationKey(rep, aliases),
+    kind: repKind(rep.call),
   }));
   const picks = assignLooks(reps, opponentLooks(scriptCards));
   return reps.map((rep, i) => {
@@ -387,7 +470,9 @@ export function periodRepCards(
       defFront: look?.front ?? "",
       coverage: look?.coverage ?? "",
       result: "",
-      notes: look && !look.fromFilm ? "Look from the playsheet." : "",
+      notes: [rep.personnel ? `Personnel: ${rep.personnel}.` : "", look && !look.fromFilm ? "Look from the playsheet." : ""]
+        .filter(Boolean)
+        .join(" "),
       source: PLAYSHEET_SOURCE,
       raw: {},
     });
