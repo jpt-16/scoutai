@@ -688,6 +688,23 @@ the top, so a wrong answer can be traced). `devices.py` picks cuda, then the Mac
 the detector itself hasn't been run on real film yet. Clips (minors) stay on the machine:
 `video-service/clips/` and `debug/` are gitignored. Setup and commands: `video-service/eval/README.md`.
 
+**Route reader (`src/lib/routeReader.ts`): the scout-offense priority.** Hudl Assist can't read routes,
+so the core is a path-in-yards → route-tree label step that doesn't depend on where the path came from
+(a tracker on film, an AI read, a coach's drawn arrow). `readRoute(track, outside)` puts the path on his
+own spot with his sideline as +x, then compares it to every route shape the app itself draws
+(`formations.ts`'s `routeTemplateYards`, the same shapes the cards use) over the same stretch of path:
+the shape is carried straight on past its end (the run after the catch), allowed 0.8-1.25x depth and width,
+scored by the average gap plus the worst gap (so a go isn't taken for a comeback) with a small
+benefit of the doubt for the simpler route (`SIMPLICITY`). It answers `block` for a player who stays at
+his spot, `unknown` when nothing fits, else the route with a `confidence` (the margin over the runner-up) and
+the full ranking, so only unsure plays need a coach. Tested on simulated played routes (jittered stems and
+breaks, rounded corners, tracker noise, run-on past the catch): about 91% right on the route tree and 92% off
+it; GO vs FADE and a path seen only part way (11 yards of a deep route) are the real ambiguities, and
+show as low confidence. **Not yet run on real film.** The tracker that produces the paths (camera-pan
+compensation to the snap frame, then each player mapped to his letter from the pre-snap formation) is the
+next piece. The answer key for routes is free: the coach's corrected play call, expanded by `buildDiagram`
+into a route per letter, against the same call as Assist tagged it.
+
 ## Video-to-card via a hosted vision model (`/api/parse-video`)
 
 A second, serverless-friendly path to the same goal as `video-service/` above, and the one

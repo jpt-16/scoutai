@@ -937,6 +937,20 @@ function summarizeRoutes(
 }
 
 /**
+ * A route as the staff draws it, in yards from the player's own spot: x toward his sideline
+ * (`outside`, +1 for the right sideline, -1 for the left, mirrored so "outside" is always
+ * positive when `outside` is +1), y upfield. The reference shape the route reader
+ * (`routeReader.ts`) compares a path from film against.
+ */
+export function routeTemplateYards(kind: RouteKind, outside: 1 | -1 = 1): [number, number][] {
+  // A receiver off the line, a little outside the numbers, so sideline-bound breaks have room.
+  const start: Pt = [FIELD.center.x + outside * 130, FIELD.los + 10];
+  return routePath(kind, start, outside, outside).map(
+    ([x, y]) => [((x - start[0]) / YARD_X) * outside, (start[1] - y) / YARD_PX] as [number, number],
+  );
+}
+
+/**
  * A named route's shape for one letter on this card, as deltas from his own
  * spot (the `RouteOverride.path` form): how a film route the AI named
  * ("SLIDE") is drawn exactly like the route tree, from wherever that player
