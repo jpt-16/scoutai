@@ -147,6 +147,10 @@ describe("a track the tracker handed to another man", () => {
     ]);
     expect(cut).toHaveLength(5);
     expect(trimAtJump([[0, 0, 0], [0.5, 0, 3], [1, 0, 6]])).toHaveLength(3);
+    // Missed for two-thirds of a second, then found 9 yards away: someone else.
+    expect(trimAtJump([[0, 0, 0], [0.1, 0.2, 0.5], [0.77, 0.4, 9.8], [0.83, 0.4, 10.2]])).toHaveLength(2);
+    // Missed for the same time, found 5 yards on: a sprint.
+    expect(trimAtJump([[0, 0, 0], [0.1, 0.2, 0.5], [0.77, 0.4, 5.2], [0.83, 0.4, 5.6]])).toHaveLength(4);
   });
 
   it("reads a path that ended before the route showed as unclear, not as a guess", () => {

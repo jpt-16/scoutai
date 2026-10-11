@@ -64,6 +64,10 @@ const SNAP_LEAD_SECONDS = 0.35;
  * bigger jump is the tracker changing men.
  */
 const MAX_YARDS_PER_SECOND = 24;
+/** Across a gap in a track (the man was missed), how far he can have gone: slack plus a runner's speed. */
+const GAP_SECONDS = 0.15;
+const GAP_SLACK_YARDS = 1.5;
+const GAP_YARDS_PER_SECOND = 9;
 /** Compare points at least this far apart in time, so a frame of jitter doesn't look like a jump. */
 const JUMP_WINDOW_SECONDS = 0.3;
 /** Two tracks starting this close are one man followed twice. */
@@ -80,6 +84,11 @@ type ReadKind = RouteKind | "block" | "unknown";
  */
 export function trimAtJump(points: [number, number, number][]): [number, number, number][] {
   for (let i = 1; i < points.length; i++) {
+    // A track missing for a while and found again far away: a runner covers about 9 yd/s, plus the detector's jitter.
+    const missed = points[i][0] - points[i - 1][0];
+    if (missed > GAP_SECONDS && Math.hypot(points[i][1] - points[i - 1][1], points[i][2] - points[i - 1][2]) > GAP_SLACK_YARDS + GAP_YARDS_PER_SECOND * missed) {
+      return points.slice(0, i);
+    }
     let j = i - 1;
     while (j > 0 && points[i][0] - points[j][0] < JUMP_WINDOW_SECONDS) j -= 1;
     const dt = points[i][0] - points[j][0];
