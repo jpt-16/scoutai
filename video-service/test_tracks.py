@@ -222,3 +222,40 @@ def test_two_people_who_cross_keep_their_own_tracks_by_their_jerseys():
     colors = [[(60.0, 160.0, 150.0), (120.0, 120.0, 90.0)] for _ in range(n)]
     tracks = follow(per_frame[0], per_frame, colors)
     assert [t.points[-1][1] for t in tracks] == [red[-1][0], blue[-1][0]]
+
+
+def test_pictures_of_the_tracking_are_written_and_a_handed_off_track_is_reported(tmp_path):
+    from eval.trackdebug import find_jumps, write_pictures
+
+    frames, boxes, calibration, _receivers, _truth, _ = simulate(tmp_path)
+    debug: dict = {}
+    track_play(frames, boxes, calibration, jersey_team, FPS, debug)
+    report = write_pictures(debug, tmp_path / "debug", "play_01")
+    assert (tmp_path / "debug" / "play_01_trk_sheet.jpg").exists()
+    assert (tmp_path / "debug" / "play_01_trk_0s.jpg").exists()
+    assert any("pictures:" in line for line in report)
+    # A clean simulated play has no hand-offs; one forced jump is found and named.
+    assert not any(" jumped at " in line for line in report)
+    points = [(i, 0.0, i * 0.2) for i in range(10)] + [(i, 9.0, i * 0.2 + 9.0) for i in range(10, 14)]
+    assert [f for f, _ in find_jumps(points, FPS)] == [10]
+
+
+def test_the_picture_draws_each_box_in_its_tracks_color_and_rings_a_jump():
+    from eval.tracks import Track
+    from eval.trackdebug import draw_frame, track_color
+
+    boxes = [[(100.0, 100.0, 130.0, 180.0, 0.9), (300.0, 100.0, 330.0, 180.0, 0.9)] for _ in range(4)]
+    # Frame 3: the second box is a different man than the track had (it was handed over).
+    boxes[3][1] = (400.0, 220.0, 430.0, 300.0, 0.9)
+    tracks = [
+        Track(0, (0, 0), matched=[(f, 0) for f in range(4)]),
+        Track(1, (3, 0), matched=[(f, 1) for f in range(4)]),
+    ]
+    frame = np.zeros((400, 600, 3), np.uint8)
+    img = draw_frame(frame, boxes, tracks, ["offense", "defense"], 3, 30.0, {1: [3]})
+    # The offense box's left edge is thick and in track 0's color; the jump circle is red at the new feet.
+    assert tuple(int(v) for v in img[140, 100]) == track_color(0)
+    ring = img[300 - 26, 415]
+    assert tuple(int(v) for v in ring) == (0, 0, 255)
+    # The trail from where track 1 had been to where it jumped is drawn between them.
+    assert img[238:243, 363:368].any()

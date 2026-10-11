@@ -802,6 +802,15 @@ blockers and the back's path runs right, as READ POWER right should. The model w
 sandbox, so the detector, the tracker and the route reader have still only run on drawn clips. The answer key for routes is free: the coach's corrected play call, expanded by `buildDiagram`
 into a route per letter, against the same call as Assist tagged it.
 
+**Seeing the tracker's mistakes (`video-service/eval/trackdebug.py`).** Tracking on real film still hands a
+receiver's track to another man after the snap, and the numbers alone don't say to whom. `python -m eval.tracks
+clips/ --out tracks --seconds 8 --tiles 2 --debug debug/` also writes, per clip, a picture each second
+(`debug/<clip>_trk_<n>s.jpg`) and a contact sheet (`<clip>_trk_sheet.jpg`): every kept person in his track's own color
+and number (thick = offense, thin = defense, dashed grey = nobody follows him), 1.5 s of trail behind each, and a red
+ring where a track moved faster than 14 yd/s (a hand-off to another man). The printed report lists those and any offensive
+track lost early. Send the sheet with the report to see whether the swaps are to defenders, the bench or a pile-up, and fix
+that cause. Tested on drawn clips only (`test_tracks.py`); not yet looked at on real film.
+
 ## Video-to-card via a hosted vision model (`/api/parse-video`)
 
 A second, serverless-friendly path to the same goal as `video-service/` above, and the one

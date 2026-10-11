@@ -111,3 +111,15 @@ python -m eval.prep recordings/ --out clips/ --top 84 --bottom 56
 Crops off the tag bar and the controls and names the clips `play_01.mp4`, `play_02.mp4`, ... in the order of
 the recordings' file names, so name them in play order. Keep the tag bar visible in a few recordings and
 write down what it says (PLAY #, OFF FORM, OFF STR, OFF PLAY, PLAY DIR): that is the answer key.
+
+## Seeing the tracker's mistakes
+
+    python -m eval.tracks clips/ --out tracks --seconds 8 --tiles 2 --debug debug/
+
+Besides the track files, this writes `debug/<clip>_trk_<n>s.jpg` (a picture each second after the snap) and
+`debug/<clip>_trk_sheet.jpg` (all of them on one sheet). Each person the tracker kept is boxed in his own track's
+color with his number: thick box = offense, thin = defense, dashed grey = nobody is following him. The line behind a
+box is where that track has been; a big red ring is a frame where a track moved faster than 14 yards a second, which
+means it was handed to another man. The report printed after each clip lists those jumps and any offensive track
+lost early. Look at the sheet to see who the track jumped to.
+

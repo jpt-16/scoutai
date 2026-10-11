@@ -166,6 +166,7 @@ class Track:
     id: int
     start: tuple[float, float]
     points: list[tuple[int, float, float]] = field(default_factory=list)  # frame, x, y (yards)
+    matched: list[tuple[int, int]] = field(default_factory=list)  # frame, index of the person in that frame (for pictures)
     missed: int = 0
     color: tuple[float, float, float] | None = None  # his jersey, as it has looked so far
 
@@ -200,7 +201,7 @@ def follow(
 ) -> list[Track]:
     """Pairs people across frames, cheapest first (distance plus how different the jersey looks).
     `per_frame[0]` is the snap frame; `colors[f][j]` is person j's torso color in frame f."""
-    tracks = [Track(i, p, [(0, p[0], p[1])], color=colors[0][i] if colors else None) for i, p in enumerate(seen_at_snap)]
+    tracks = [Track(i, p, [(0, p[0], p[1])], matched=[(0, i)], color=colors[0][i] if colors else None) for i, p in enumerate(seen_at_snap)]
     for f, people in enumerate(per_frame[1:], start=1):
         free = set(range(len(people)))
         pairs = sorted(
@@ -221,6 +222,7 @@ def follow(
             if ti in taken or j not in free or dist > MAX_STEP_YARDS * (1 + min(t.missed, MISSED_GROWTH_CAP)):
                 continue
             t.points.append((f, people[j][0], people[j][1]))
+            t.matched.append((f, j))
             t.missed = 0
             if colors:
                 new = colors[f][j]
@@ -282,6 +284,7 @@ def track_play(
     calibration: dict,
     team_of: "callable",
     fps: float,
+    debug: dict | None = None,
 ) -> dict:
     """The tracks for one play. `boxes[i]` are the people found in frame `i`; frame `calibration['frame']` is the snap."""
     snap = calibration["frame"]
@@ -303,6 +306,8 @@ def track_play(
         colors.append(col)
     tracks = follow(per_frame[0], per_frame, colors)
     labels = team_of(frames_bgr[snap], kept_boxes[0], per_frame[0])
+    if debug is not None:  # what a picture of the tracking needs
+        debug.update(frames=frames_bgr[snap:], boxes=kept_boxes, tracks=tracks, labels=labels, fps=fps)
     return {
         "fps": fps,
         "tracks": [
@@ -335,7 +340,7 @@ def team_by_jersey(frame: np.ndarray, boxes: list[Box], spots: list[tuple[float,
     return out
 
 
-def track_clip(clip: Path, detector, seconds: float = 6.0, tiles: int = 2) -> dict:
+def track_clip(clip: Path, detector, seconds: float = 6.0, tiles: int = 2, debug: dict | None = None) -> dict:
     """Follows everyone through one clip, from the calibration file beside it."""
     calibration = json.loads(clip.with_suffix(".json").read_text())
     cap = cv2.VideoCapture(str(clip))
@@ -350,7 +355,7 @@ def track_clip(clip: Path, detector, seconds: float = 6.0, tiles: int = 2) -> di
     # Frame 0 of the list is the snap frame the calibration was made on.
     calibration = {**calibration, "frame": 0}
     boxes = [detector.people(f, tiles) for f in frames]
-    return track_play(frames, boxes, calibration, team_by_jersey, fps)
+    return track_play(frames, boxes, calibration, team_by_jersey, fps, debug)
 
 
 def main() -> None:
@@ -359,6 +364,7 @@ def main() -> None:
     ap.add_argument("--out", type=Path, default=Path("tracks"))
     ap.add_argument("--seconds", type=float, default=6.0, help="how long after the snap to follow")
     ap.add_argument("--tiles", type=int, default=2)
+    ap.add_argument("--debug", type=Path, default=None, help="also write pictures of the tracking here (see eval.trackdebug)")
     args = ap.parse_args()
 
     from .presnap import Detector
@@ -368,10 +374,16 @@ def main() -> None:
     for clip in sorted(p for p in args.clips.iterdir() if p.suffix.lower() in {".mp4", ".mov", ".m4v"}):
         if not clip.with_suffix(".json").exists():
             continue
-        result = track_clip(clip, detector, args.seconds, args.tiles)
+        debug: dict | None = {} if args.debug else None
+        result = track_clip(clip, detector, args.seconds, args.tiles, debug)
         (args.out / f"{clip.stem}.json").write_text(json.dumps(result))
         n_off = sum(t["team"] == "offense" for t in result["tracks"])
         print(f"{clip.name}: {len(result['tracks'])} people followed, {n_off} offense")
+        if debug is not None:
+            from .trackdebug import write_pictures
+
+            for line in write_pictures(debug, args.debug, clip.stem):
+                print("  " + line)
 
 
 if __name__ == "__main__":
