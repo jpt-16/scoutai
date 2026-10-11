@@ -1,20 +1,17 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  AlertTriangle,
   Check,
   ChevronDown,
   ClipboardCheck,
   ClipboardList,
   Clock,
-  Download,
   Layers,
   Lock,
   Play,
   Printer,
-  BookOpen,
   Smartphone,
   Sparkles,
   Upload,
@@ -23,29 +20,17 @@ import {
 } from "lucide-react";
 import { AccountMenu } from "@/components/AccountMenu";
 import { BrandMark } from "@/components/BrandMark";
-import { AppGate } from "@/components/AppGate";
-import { UploadDropzone } from "@/components/UploadDropzone";
 import { FilmToCardVisual } from "@/components/landing/FilmToCardVisual";
 import { HeroDevice } from "@/components/landing/HeroDevice";
 import { PracticeShowcase } from "@/components/landing/PracticeShowcase";
 import { Reveal, SectionHeading, TryCta } from "@/components/landing/primitives";
 import { TransformShowcase } from "@/components/landing/TransformShowcase";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
 } from "@/components/ui/dialog";
 import { MOCK_HUDL_CSV, DEMO_FILE_NAME } from "@/lib/demoScript";
-import { parseHudlCsvText, type HudlField, type HudlParseResult, type UnsupportedFileKind } from "@/lib/hudlParser";
-import { importFilms } from "@/lib/importFilms";
-import { PLAYBOOK_TEMPLATE_CSV, PLAYBOOK_TEMPLATE_NAME } from "@/lib/playbookTemplate";
-import { loadScript, parseScriptFile, saveScript, storeScript } from "@/lib/scriptStore";
-import { useRemoteApplied } from "@/lib/useRemoteApplied";
+import { parseHudlCsvText } from "@/lib/hudlParser";
+import { parseScriptFile, saveScript, storeScript } from "@/lib/scriptStore";
 import { computeTendencies } from "@/lib/tendencies";
 
 // Smash (X hitch, F corner — F is the slot in Deuces Gun, H stays in the
@@ -70,40 +55,6 @@ const PREVIEW_CARD = {
 const DEMO_CARDS = parseHudlCsvText(MOCK_HUDL_CSV).cards;
 const HERO_CARDS = [PREVIEW_CARD, ...DEMO_CARDS];
 const HERO_TENDENCIES = computeTendencies(HERO_CARDS);
-
-const FIELD_LABELS: Record<HudlField, string> = {
-  playNumber: "Play #",
-  down: "Down",
-  distance: "Distance",
-  yardLine: "Yard line",
-  hash: "Hash",
-  formation: "Formation",
-  playCall: "Play call",
-  playType: "Play type",
-  defFront: "Def front",
-  result: "Result",
-  coverage: "Coverage",
-  offStrength: "Off strength",
-  playDir: "Play direction",
-  odk: "ODK",
-};
-
-const UNSUPPORTED_LABELS: Record<UnsupportedFileKind, string> = {
-  numbers: "Apple Numbers file",
-  excel: "Excel workbook",
-  binary: "not a text file",
-};
-
-const REPORT_FIELDS: HudlField[] = [
-  "playNumber",
-  "down",
-  "distance",
-  "hash",
-  "yardLine",
-  "formation",
-  "playCall",
-  "defFront",
-];
 
 const PROBLEM_POINTS = [
   "Hours redrawing the same formations every week",
@@ -165,18 +116,6 @@ const ABOUT_POINTS: { icon: typeof Upload; title: string; detail: string }[] = [
 const FAQS: { q: string; a: string }[] = [
   // Getting started
   {
-    q: "How do I get my breakdown out of Hudl?",
-    a: "Open the opponent's film, find the data grid under the video, click the ⋯ menu at the right end of its toolbar, and choose Export Data to Excel. Drop that file straight in — .xlsx and .csv both work. The video needs breakdown data tagged on it, and your account needs coach or admin access to export.",
-  },
-  {
-    q: "What can I upload?",
-    a: "A Hudl export as .csv or .xlsx, or rows copied from Excel or Google Sheets and pasted in. Drop several files at once to put a whole season in one script. An old .xls needs to be re-saved as .xlsx or CSV first. Title lines above the header are skipped, and common column names are matched, so a hand-typed sheet usually reads without changes.",
-  },
-  {
-    q: "Can I add our own playbook?",
-    a: "Yes. Hudl doesn't hold your own plays, so Study your playbook takes a sheet of them (a formation and a play call per row, with strength and direction if you like) and opens them as cards in the same viewer. They're kept apart from the week's scout script, and there's a template to start from.",
-  },
-  {
     q: "Do I need an account?",
     a: "ScoutCard AI is in a private pilot with coaching staffs: sign in with the email your staff was invited with. The 5-play demo is open to anyone, so you can swipe through cards, switch between Scout O and Scout D, and print before you sign in.",
   },
@@ -225,16 +164,16 @@ const FAQS: { q: string; a: string }[] = [
   },
   {
     q: "Does it work on an iPad?",
-    a: "Yes — add it to your Home Screen from Safari and it keeps working offline after the first load, including the script and playbook you already imported.",
+    a: "Yes — add it to your Home Screen from Safari and it keeps working offline after the first load, including the script you already opened.",
   },
   // Privacy
   {
     q: "Is my data uploaded anywhere?",
-    a: "Your breakdown and playbook are read in your browser and kept on your device, so the app works with no signal. When you're signed in, your script, playbook and practice playsheet are also saved to private cloud storage for your team. Beyond that, only the AI features send anything: the few plays it can't place (as text), a play call you ask the AI to draw, and a pre-snap clip if you read the secondary from film.",
+    a: "Your script is read in your browser and kept on your device, so the app works with no signal. When you're signed in, your script and practice playsheet are also saved to private cloud storage for your team. Beyond that, only the AI features send anything: the few plays it can't place (as text), a play call you ask the AI to draw, and a pre-snap clip if you read the secondary from film.",
   },
   {
     q: "Can the other coaches on my staff see my script?",
-    a: "Yes, if they're on the same team in the app. Everyone on a team shares one script, playbook and playsheet, so a coach who signs in on a new iPad, or a second coach, sees the same thing. If two coaches change the same one, the app asks which version to keep instead of overwriting either. Someone who isn't on your team sees nothing.",
+    a: "Yes, if they're on the same team in the app. Everyone on a team shares one script and playsheet, so a coach who signs in on a new iPad, or a second coach, sees the same thing. If two coaches change the same one, the app asks which version to keep instead of overwriting either. Someone who isn't on your team sees nothing.",
   },
   {
     q: "Do I have to upload game film?",
@@ -256,7 +195,6 @@ export default function UploadPage() {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [report, setReport] = useState<{ fileName: string; result: HudlParseResult } | null>(null);
 
   const gameInput = useRef<HTMLInputElement>(null);
 
@@ -277,57 +215,6 @@ export default function UploadPage() {
     } finally {
       setBusy(false);
     }
-  };
-
-  // The staff's own playbook: same readers, its own storage slot, studied at /script?playbook=1.
-  const [savedPlaybook, setSavedPlaybook] = useState<number | null>(null);
-  useEffect(() => setSavedPlaybook(loadScript("playbook")?.cards.length ?? null), []);
-  useRemoteApplied(["playbook"], () => setSavedPlaybook(loadScript("playbook")?.cards.length ?? null));
-
-  const handlePlaybookFiles = async (files: File[]) => {
-    setBusy(true);
-    setError(null);
-    try {
-      const imported = await importFilms(files);
-      if (imported.cards.length > 0) {
-        storeScript(
-          { fileName: "", films: imported.films, savedAt: "", cards: imported.cards, warnings: imported.warnings },
-          "playbook",
-        );
-        router.push("/script?playbook=1&loaded=1");
-        return;
-      }
-      const [first] = imported.failed;
-      setReport({
-        fileName: files.length > 1 ? `${first.name} (and ${files.length - 1} more)` : first.name,
-        result: first.result,
-      });
-    } catch {
-      setError("Couldn't read those files. Save the sheet as .xlsx or CSV and try again.");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const handlePlaybookPaste = (text: string) => {
-    const result = parseHudlCsvText(text);
-    if (result.cards.length > 0) {
-      saveScript("Pasted playbook", result, "playbook");
-      router.push("/script?playbook=1&loaded=1");
-      return;
-    }
-    setReport({ fileName: "Pasted playbook", result });
-  };
-
-  const downloadPlaybookTemplate = () => {
-    const url = URL.createObjectURL(new Blob([PLAYBOOK_TEMPLATE_CSV], { type: "text/csv" }));
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = PLAYBOOK_TEMPLATE_NAME;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 10_000);
   };
 
   const handleDemo = () => {
@@ -398,86 +285,6 @@ export default function UploadPage() {
           </div>
         </section>
 
-        {/* Our own playbook: the staff's plays aren't in Hudl, so they upload them to study. */}
-        <section id="playbook" className={`${SECTION} bg-card/30`}>
-          <div className="mx-auto max-w-6xl">
-            <Reveal>
-              <SectionHeading
-                eyebrow="YOUR OWN PLAYS"
-                title={
-                  <>
-                    Study <span className="text-primary">your playbook</span>
-                  </>
-                }
-              >
-                Your own plays aren&apos;t in Hudl, so put them here. Upload a sheet of your plays and flip through
-                them on the iPad, kept apart from this week&apos;s scout script.
-              </SectionHeading>
-            </Reveal>
-            <div className="mt-12 grid items-start gap-8 lg:grid-cols-2 lg:gap-10">
-              <Reveal>
-                <div className="flex flex-col gap-5 rounded-3xl border bg-card p-7">
-                  <span className="flex size-12 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lg shadow-primary/30">
-                    <BookOpen className="size-6" aria-hidden="true" />
-                  </span>
-                  <p className="font-display text-2xl font-extrabold uppercase">What goes in the sheet</p>
-                  <ul className="flex flex-col gap-3 text-[15px] leading-relaxed text-muted-foreground">
-                    <li className="flex gap-3">
-                      <Check className="mt-1 size-4 shrink-0 text-primary" aria-hidden="true" />
-                      <span>
-                        One row per play: the <strong className="text-foreground">formation</strong> and the{" "}
-                        <strong className="text-foreground">play call</strong>, like &ldquo;TRIPS · QUICK SLANT&rdquo;.
-                      </span>
-                    </li>
-                    <li className="flex gap-3">
-                      <Check className="mt-1 size-4 shrink-0 text-primary" aria-hidden="true" />
-                      <span>Optional: strength (L / R) and play direction (L / R). No down, distance or yard line needed.</span>
-                    </li>
-                    <li className="flex gap-3">
-                      <Check className="mt-1 size-4 shrink-0 text-primary" aria-hidden="true" />
-                      <span>
-                        Same columns as a Hudl export, so the cards draw exactly like the scout cards. Your own
-                        names for formations are read too.
-                      </span>
-                    </li>
-                  </ul>
-                  <div className="flex flex-wrap gap-3">
-                    <Button size="lg" variant="outline" onClick={downloadPlaybookTemplate}>
-                      <Download aria-hidden="true" />
-                      Get the template
-                    </Button>
-                    {savedPlaybook !== null && (
-                      <Button size="lg" onClick={() => router.push("/script?playbook=1")}>
-                        <BookOpen aria-hidden="true" />
-                        Open your playbook · {savedPlaybook} {savedPlaybook === 1 ? "play" : "plays"}
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              </Reveal>
-              <Reveal delay={120}>
-                <AppGate variant="section">
-                  <div className="flex flex-col gap-3">
-                    <UploadDropzone
-                      onFiles={handlePlaybookFiles}
-                      onPasteText={handlePlaybookPaste}
-                      busy={busy}
-                      error={error}
-                      title="Drop your playbook .csv or .xlsx here"
-                      hint={
-                        savedPlaybook !== null
-                          ? "A new upload replaces your saved playbook. Add more plays later from the playbook itself."
-                          : "One row per play: formation and play call."
-                      }
-                      noun="playbook"
-                    />
-                  </div>
-                </AppGate>
-              </Reveal>
-            </div>
-          </div>
-        </section>
-
         {/* Game film: open what the film analyzer wrote */}
         <section id="upload" className={`${SECTION} bg-card/30`}>
           <div className="mx-auto max-w-6xl">
@@ -486,12 +293,12 @@ export default function UploadPage() {
                 eyebrow="START HERE"
                 title={
                   <>
-                    Upload the film. <span className="text-primary">Get the scout cards.</span>
+                    Read the film. <span className="text-primary">Get the scout cards.</span>
                   </>
                 }
               >
-                The film is the source, not someone else&apos;s tags. Upload a play&apos;s clip, or a whole game, and the
-                cards are drawn from what the players did. You drag them into shape.
+                The film is the source, not someone else&apos;s tags. The film analyzer reads a game and writes a game file;
+                open it here and the cards are drawn from what the players did. You drag them into shape.
               </SectionHeading>
             </Reveal>
             <Reveal delay={100} className="mt-14">
@@ -825,77 +632,6 @@ export default function UploadPage() {
           </div>
         </div>
       </footer>
-
-      <Dialog open={report != null} onOpenChange={(open) => !open && setReport(null)}>
-        <DialogContent className="sm:max-w-xl">
-          {report && (
-            <>
-              <DialogHeader>
-                <DialogTitle className="font-display text-3xl font-bold">
-                  {report.result.unsupportedFile ? "Save this as a CSV first" : "No plays found"}
-                </DialogTitle>
-                <DialogDescription className="text-base">
-                  {report.result.unsupportedFile
-                    ? `${report.fileName} · ${UNSUPPORTED_LABELS[report.result.unsupportedFile.kind]}`
-                    : `${report.fileName} · ${report.result.rowCount} rows read`}
-                </DialogDescription>
-              </DialogHeader>
-
-              {report.result.unsupportedFile ? (
-                <p className="rounded-lg border bg-card p-4 text-base leading-relaxed">
-                  {report.result.unsupportedFile.message}
-                </p>
-              ) : (
-                <>
-                  <div className="flex flex-col gap-2">
-                    <p className="text-xs font-bold tracking-[0.12em] text-muted-foreground">
-                      COLUMNS MATCHED
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                      {REPORT_FIELDS.map((field) => {
-                        const column = report.result.columns[field];
-                        return (
-                          <Badge
-                            key={field}
-                            variant={column ? "secondary" : "outline"}
-                            className="h-8 gap-1.5 px-2.5 text-sm"
-                          >
-                            {column ? (
-                              <Check className="text-primary" aria-hidden="true" />
-                            ) : (
-                              <X className="text-muted-foreground" aria-hidden="true" />
-                            )}
-                            {FIELD_LABELS[field]}
-                            {column && <span className="text-muted-foreground">← {column}</span>}
-                            {!column && <span className="sr-only">(not found)</span>}
-                          </Badge>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {report.result.warnings.length > 0 && (
-                    <ul className="flex flex-col gap-1.5 rounded-lg border bg-card p-3 text-sm">
-                      {report.result.warnings.map((w) => (
-                        <li key={w} className="flex gap-2">
-                          <AlertTriangle className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden="true" />
-                          {w}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </>
-              )}
-
-              <DialogFooter>
-                <Button size="lg" onClick={() => setReport(null)}>
-                  Try another file
-                </Button>
-              </DialogFooter>
-            </>
-          )}
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

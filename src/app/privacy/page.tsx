@@ -12,8 +12,8 @@ export default function PrivacyPage() {
     <LegalLayout title="Privacy Policy" lastUpdated="October 9, 2026">
       <p>
         This policy explains what ScoutCard AI does and doesn&apos;t do with your data. The short
-        version: your Hudl breakdown, your playbook, your playsheet and your edits are read in your
-        browser and kept on your device. When you&apos;re signed in, your script, playbook and
+        version: your script, your playsheet and your edits are read in your
+        browser and kept on your device. When you&apos;re signed in, your script and
         playsheet are also saved to private storage for your coaching team, so every coach on the
         team sees the same thing. The AI features send the little that&apos;s described below.
         Nothing else leaves your device.
@@ -21,19 +21,18 @@ export default function PrivacyPage() {
 
       <LegalSection title="What's saved, and where">
         <p>
-          Uploading a Hudl breakdown (a CSV, an Excel file or pasted rows), uploading your own
-          playbook, building a practice playsheet, generating scout cards, editing plays, drawing on
+          Opening a game file, building a practice playsheet, generating scout cards, editing plays, drawing on
           cards and printing all happen in your browser. Those files are parsed on your device and
           are not uploaded to us or to anyone else.
         </p>
         <p>
           The results are saved in your browser&apos;s local storage on your device: your scout
-          script, your playbook, your practice playsheet, your sunlight-mode setting, and a note that
+          script, your practice playsheet, your sunlight-mode setting, and a note that
           your sign-in was verified. That&apos;s what lets the app work on a field with no signal.
         </p>
         <p>
           <strong className="text-foreground">Saved for your team.</strong> While you&apos;re signed in,
-          your scout script, playbook and practice playsheet (the plays, your edits, notes and
+          your scout script and practice playsheet (the plays, your edits, notes and
           drawings in them) are also saved to private cloud storage, kept apart for your team.
           Every coach on your team can read and change that shared copy, which is how a second coach,
           or a new iPad, sees the same thing. A coach who isn&apos;t on a team has a copy of their
@@ -62,8 +61,8 @@ export default function PrivacyPage() {
         </p>
         <ul className="ml-5 list-disc space-y-2">
           <li>
-            <strong className="text-foreground">Import review.</strong> After you import a breakdown
-            or a playbook, the plays the app couldn&apos;t place on its own (a formation name or
+            <strong className="text-foreground">Import review.</strong> After you open a script,
+            the plays the app couldn&apos;t place on its own (a formation name or
             front it doesn&apos;t know, or a call that isn&apos;t clearly a run or a pass) are sent as
             text: the formation, play call, front and play type for those plays. The rest of your
             file is not sent.
@@ -137,7 +136,7 @@ export default function PrivacyPage() {
           </li>
           <li>
             <strong className="text-foreground">Vercel</strong> — hosts the app and stores your
-            team&apos;s shared script, playbook and playsheet, uploaded clips and usage counters in
+            team&apos;s shared script and playsheet, uploaded clips and usage counters in
             private cloud storage.
           </li>
         </ul>
@@ -158,7 +157,7 @@ export default function PrivacyPage() {
           team&apos;s shared copy stays until it&apos;s replaced or you ask us to delete it. You can
           stop using the service whenever you like. To cancel a paid subscription, use the billing
           portal in the app (powered by Stripe). To request deletion of your account, your
-          team&apos;s shared script, playbook and playsheet, or uploaded clips, contact us below.
+          team&apos;s shared script and playsheet, or uploaded clips, contact us below.
         </p>
       </LegalSection>
 

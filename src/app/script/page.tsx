@@ -8,7 +8,6 @@ import {
   ChevronRight,
   ClipboardCheck,
   ClipboardList,
-  FilePlus2,
   Grid2x2,
   Move,
   RotateCcw,
@@ -51,7 +50,6 @@ import {
   type HudlPlayCard,
   type InkStroke,
 } from "@/lib/hudlParser";
-import { importFilms } from "@/lib/importFilms";
 import {
   isRepCard,
   loadPlan,
@@ -147,9 +145,7 @@ function ScriptApp({ demoMode = false }: { demoMode?: boolean }) {
   const router = useRouter();
   // undefined while reading localStorage, null when nothing is loaded.
   const [script, setScript] = useState<StoredScript | null | undefined>(undefined);
-  // /script?playbook=1 studies the staff's own playbook (its own storage slot), not the scout script.
-  const [slot, setSlot] = useState<ScriptSlot>("script");
-  const isPlaybook = slot === "playbook";
+  const slot: ScriptSlot = "script";
   const [view, setView] = useState<View>("field");
   const [modeChoice, setMode] = useState<Mode>("all");
   const [unitChoice, setUnit] = useState<ScoutUnit>("offense");
@@ -193,19 +189,16 @@ function ScriptApp({ demoMode = false }: { demoMode?: boolean }) {
     warnings: [] as string[],
     trigger: 0,
   });
-  const addFilmInput = useRef<HTMLInputElement>(null);
   const reviewPending = useRef(false);
   const scriptRef = useRef<StoredScript | null | undefined>(undefined);
   scriptRef.current = script;
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const which: ScriptSlot = params.get("playbook") === "1" ? "playbook" : "script";
-    setSlot(which);
-    setScript(loadScript(which));
+    setScript(loadScript(slot));
     // A fresh import: let the AI read what the rules couldn't place (below).
     if (params.get("loaded") === "1") reviewPending.current = true;
-    const dayId = which === "script" ? params.get("practice") : null;
+    const dayId = params.get("practice");
     if (!dayId) return;
     const plan = loadPlan();
     const day = plan.days.find((d) => d.id === dayId);
@@ -216,7 +209,7 @@ function ScriptApp({ demoMode = false }: { demoMode?: boolean }) {
   }, []);
 
   // The staff's copy just landed on this device (another coach saved, or a first sign-in).
-  useRemoteApplied(["script", "playbook", "practice"], (applied) => {
+  useRemoteApplied(["script", "practice"], (applied) => {
     if (applied === "practice") {
       const dayId = new URLSearchParams(window.location.search).get("practice");
       const plan = loadPlan();
@@ -515,33 +508,6 @@ function ScriptApp({ demoMode = false }: { demoMode?: boolean }) {
     }
   }, [script, reviewImport]);
 
-  const addFilms = async (files: File[]) => {
-    if (!script || files.length === 0) return;
-    const imported = await importFilms(files);
-    const heading = imported.cards.length
-      ? `Added ${imported.cards.length} ${imported.cards.length === 1 ? "play" : "plays"}`
-      : "No plays added";
-    if (imported.cards.length) {
-      const next = storeScript(
-        {
-          ...script,
-          films: [...script.films, ...imported.films],
-          cards: [...script.cards, ...imported.cards],
-          warnings: [...script.warnings, ...imported.warnings],
-        },
-        slot,
-      );
-      setScript(next);
-      reviewPending.current = true;
-    }
-    setNotice((n) => ({
-      heading,
-      detail: files.map((f) => f.name).join(", "),
-      warnings: imported.warnings,
-      trigger: n.trigger + 1,
-    }));
-  };
-
   const loadDemo = () => {
     setScript(saveScript(DEMO_FILE_NAME, parseHudlCsvText(MOCK_HUDL_CSV)));
     setIndex(0);
@@ -587,24 +553,20 @@ function ScriptApp({ demoMode = false }: { demoMode?: boolean }) {
         <BrandMark />
         <div className="flex flex-col gap-2">
           <h1 className="font-display text-4xl font-bold">
-            {isPlaybook ? "No playbook uploaded yet" : "No scout script loaded"}
+            No scout script loaded
           </h1>
           <p className="text-lg text-muted-foreground">
-            {isPlaybook
-              ? "Upload your own plays, a spreadsheet or pasted rows, and study them here."
-              : "Upload this week's Hudl breakdown, or try the 5-play demo."}
+            Open a game file from the film analyzer, or try the 5-play demo.
           </p>
         </div>
         <div className="flex flex-wrap justify-center gap-3">
-          <Button size="xl" onClick={() => router.push(isPlaybook ? "/#playbook" : "/")}>
+          <Button size="xl" onClick={() => router.push("/#upload")}>
             <Upload aria-hidden="true" />
-            {isPlaybook ? "Upload your playbook" : "Upload a Hudl CSV"}
+            Open a game file
           </Button>
-          {!isPlaybook && (
-            <Button size="xl" variant="outline" onClick={loadDemo}>
-              Load demo script
-            </Button>
-          )}
+          <Button size="xl" variant="outline" onClick={loadDemo}>
+            Load demo script
+          </Button>
           <Button size="xl" variant="outline" onClick={() => setGenerating(true)}>
             <Sparkles aria-hidden="true" />
             Draw a play with AI
@@ -624,7 +586,7 @@ function ScriptApp({ demoMode = false }: { demoMode?: boolean }) {
       <header className="no-print flex h-16 shrink-0 items-center gap-4 border-b px-4 sm:px-6">
         <Button asChild variant="outline" size="icon" className="border">
           <Link
-            href={practice ? `/practice?day=${practice.day.id}` : isPlaybook ? "/#playbook" : "/"}
+            href={practice ? `/practice?day=${practice.day.id}` : "/"}
             aria-label={practice ? "Back to the playsheet" : "Back to upload"}
           >
             <ChevronLeft className="size-5" />
@@ -633,7 +595,7 @@ function ScriptApp({ demoMode = false }: { demoMode?: boolean }) {
         <div className="flex min-w-0 flex-1 flex-col">
           <span className="flex items-center gap-2">
             <span className="text-xs font-bold tracking-[0.14em] text-primary">
-              {practice ? `PRACTICE · ${practice.day.name.toUpperCase()}` : isPlaybook ? "OUR PLAYBOOK" : "SCOUT SCRIPT"}
+              {practice ? `PRACTICE · ${practice.day.name.toUpperCase()}` : "SCOUT SCRIPT"}
             </span>
             <SyncBadge className="h-6" />
           </span>
@@ -1003,18 +965,11 @@ function ScriptApp({ demoMode = false }: { demoMode?: boolean }) {
           )}
           {!practice && !demoMode && (
             <>
-              {!isPlaybook && (
-                <Button asChild size="lg" variant="outline">
-                  <Link href="/practice">
-                    <ClipboardList aria-hidden="true" />
-                    Playsheet
-                  </Link>
-                </Button>
-              )}
-              <Button size="lg" variant="outline" onClick={() => addFilmInput.current?.click()}>
-                <FilePlus2 aria-hidden="true" />
-                <span className="hidden xl:inline">{isPlaybook ? "Add plays" : "Add film"}</span>
-                <span className="xl:hidden">{isPlaybook ? "Plays" : "Film"}</span>
+              <Button asChild size="lg" variant="outline">
+                <Link href="/practice">
+                  <ClipboardList aria-hidden="true" />
+                  Playsheet
+                </Link>
               </Button>
               <Button size="lg" variant="outline" onClick={() => setGenerating(true)}>
                 <Sparkles aria-hidden="true" />
@@ -1031,18 +986,6 @@ function ScriptApp({ demoMode = false }: { demoMode?: boolean }) {
             <Pencil aria-hidden="true" />
             Edit play
           </Button>
-          <input
-            ref={addFilmInput}
-            type="file"
-            accept=".csv,.xlsx,text/csv"
-            multiple
-            className="sr-only"
-            aria-label="Add Hudl breakdown files"
-            onChange={(e) => {
-              void addFilms(Array.from(e.target.files ?? []));
-              e.target.value = "";
-            }}
-          />
         </div>
       </div>
 
@@ -1174,7 +1117,7 @@ function ScriptApp({ demoMode = false }: { demoMode?: boolean }) {
                     card={current}
                     mode={cardMode}
                     unit={unit}
-                    tendencies={editable && !isPlaybook ? tendencies : undefined}
+                    tendencies={editable ? tendencies : undefined}
                     contrast={sunlight ? "high" : "normal"}
                     onMoveDefender={
                       adjusting && unit === "defense"

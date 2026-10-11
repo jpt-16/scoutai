@@ -15,7 +15,7 @@ import { isClerkConfigured } from "@/lib/clerkConfig";
 export const metadata: Metadata = {
   title: "ScoutCard AI",
   description:
-    "Turn your weekly Hudl breakdown CSV into vector scout team cards for the iPad or print.",
+    "Turn game film into vector scout team cards for the iPad or print.",
   manifest: "/manifest.json",
   applicationName: "ScoutCard AI",
   appleWebApp: {
@@ -45,7 +45,7 @@ export default function RootLayout({
     <body className="antialiased">
       {children}
       <ServiceWorkerRegister />
-      {/* Saves the script, playbook and playsheet to the staff while a coach is signed in. */}
+      {/* Saves the script and playsheet to the staff while a coach is signed in. */}
       <CloudSync />
     </body>
   );

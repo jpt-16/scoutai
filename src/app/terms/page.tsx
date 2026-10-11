@@ -3,7 +3,7 @@ import { LegalLayout, LegalSection } from "@/components/LegalLayout";
 
 export const metadata: Metadata = {
   title: "Terms of Use — ScoutCard AI",
-  description: "The terms for using ScoutCard AI's scout cards, playbook, practice playsheet and AI features.",
+  description: "The terms for using ScoutCard AI's scout cards, practice playsheet and AI features.",
 };
 
 export default function TermsPage() {
@@ -16,10 +16,9 @@ export default function TermsPage() {
 
       <LegalSection title="What the service is">
         <p>
-          ScoutCard AI turns a Hudl breakdown (a CSV, an Excel file or pasted rows) into scout team
-          cards for high school football coaching staffs. It also lets a staff load its own playbook
-          to study and build a practice playsheet. Reading your files, drawing cards, editing,
-          printing and exporting happen in your browser. Your script, playbook and playsheet are
+          ScoutCard AI turns game film, read by a film analyzer, into scout team
+          cards for high school football coaching staffs. It also lets a staff build a practice playsheet. Reading your files, drawing cards, editing,
+          printing and exporting happen in your browser. Your script and playsheet are
           kept on your device and, when you&apos;re signed in, saved to private storage shared by
           everyone on your coaching team. Some features use AI: reviewing plays the
           app couldn&apos;t place, drawing a play from a typed call, and reading
@@ -32,7 +31,7 @@ export default function TermsPage() {
           ScoutCard AI is currently in a private pilot with coaching staffs. Using the app requires
           an account, and access is by invitation. You&apos;re responsible for what happens under
           your account, including the coaches you invite to your team, and for keeping your sign-in
-          secure. Everyone on a team can see and change the team&apos;s shared script, playbook and
+          secure. Everyone on a team can see and change the team&apos;s shared script and
           playsheet, so only add coaches you want to share them with. We may change, limit or end the pilot, or any feature in it, at any time. The
           five-play demo is open without an account.
         </p>
@@ -40,7 +39,7 @@ export default function TermsPage() {
 
       <LegalSection title="Content you upload">
         <p>
-          You&apos;re responsible for the breakdowns, playbooks, plays and film you upload. By
+          You&apos;re responsible for the plays and film you upload. By
           uploading content, you represent that you have the right to use and share it through this
           service (including storing it for, and showing it to, your team), including any consent
           your school, league or conference requires, particularly given that game film of high school athletes may include images of minors. We may remove

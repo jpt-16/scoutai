@@ -1,10 +1,12 @@
 # ScoutCard AI
 
-Web app for high school football staffs: upload the weekly **Hudl breakdown CSV** and get
-vector-drawn **scout team cards**, which you can flip through on an iPad at practice or print
-2 or 4 to a page. A CSV (the playbook, a breakdown added on `/script`) is parsed in the browser and never uploaded; only the AI features and the staff's shared
-copy (see "Saved for the staff") send anything to a server. On production the app itself is behind sign-in (see "Access" below); preview
-deploys and a local checkout are open.
+Web app for high school football staffs: **game film in, vector-drawn scout team cards out**, which you can
+flip through on an iPad at practice or print 2 or 4 to a page. Cards come from a game file the film analyzer
+(`video-service/`) writes, or from the 5-play demo. The app no longer takes a Hudl CSV from a coach (the
+upload box, the playbook upload and **Add film** are gone); the CSV parser stays inside as the engine that
+turns a row into a card, and a script is parsed and kept in the browser, never uploaded. Only the AI features
+and the staff's shared copy (see "Saved for the staff") send anything to a server. On production the app itself
+is behind sign-in (see "Access" below); preview deploys and a local checkout are open.
 
 ## Stack
 
@@ -38,7 +40,7 @@ src/
   app/
     layout.tsx             Fonts, metadata (manifest, apple web app), SW registration
     globals.css            Theme tokens (dark field palette) + print rules
-    page.tsx               Upload landing: dropzone, demo button, parse-report dialog
+    page.tsx               Landing: open a game file, demo button
     script/page.tsx        iPad reader: Scout O/D + All/7v7/Team toggles, filters, swiper, Print Grid;
                            practice mode (?practice=<day>&period=<n>) runs a day's playsheet
     practice/page.tsx      Practice playsheet editor: days → periods (7v7/Team, our O or our D) → calls
@@ -47,7 +49,6 @@ src/
     PrintGrid.tsx          Letter-size sheets, 2-up portrait / 4-up landscape, window.print()
     ExportModal.tsx        CoachPad / iPad / letter export: one card per page, a PDF or a ZIP of PNGs
     FilterBar.tsx          Down / formation toggle pills
-    UploadDropzone.tsx     Drag-and-drop + file picker (multiple films, .csv/.xlsx) + paste-to-import
     landing/               Landing-page-only visuals (see "Landing page" below)
     EditPlayDialog.tsx     Edit a play (formation, strength, play, direction, hash, front, coverage, note)
     ImportNotice.tsx       Non-blocking "Loaded / Added N plays" notice with file notes
@@ -56,7 +57,6 @@ src/
   lib/
     hudlParser.ts          CSV → HudlPlayCard[] (column mapping + normalization + classifiers)
     formations.ts          Formations, fronts, run schemes, route tree → buildDiagram()
-    importFilms.ts         Parses several CSVs (one per film) into one script
     importReview.ts        AI review of an import: rows the rules couldn't place → card hints
     demoScript.ts          MOCK_HUDL_CSV: 5-play sample used by the "Demo Script" button
     scriptStore.ts         Persists the loaded script in localStorage (offline on the field)
@@ -380,34 +380,16 @@ To add a formation: add the key to `FormationKey` in `hudlParser.ts`, add a keyw
 only Q/F/H/X/Y/Z) and a label to `FORMATION_LABELS`. Then run `npm test`; the label and
 defender-overlap tests cover new combinations.
 
-## Importing a Hudl CSV
+## The Hudl CSV reader (internal)
 
-1. In Hudl, open the opponent game or playlist you broke down and export the
-   **breakdown data as CSV** (the menu is usually Export → Breakdown / Data → CSV; the
-   exact wording varies by Hudl version).
-2. Open ScoutCard AI, drop the `.csv` on the upload box (or tap **Choose CSV file**).
-3. If at least one play parses, the app opens the cards directly. Any notes about the file
-   (skipped title lines, fixed quotes, skipped rows) sit behind a dismissible notice. The
-   blocking dialog only appears when no plays could be read. It lists which Hudl columns
-   matched.
-4. On the field: swipe or use **PREVIOUS CARD / NEXT CARD** (arrow keys on a keyboard).
-   Filter by down or formation. Switch to **Print Grid** for 2 or 4 cards per page and
-   **Print / Save PDF**.
-
-No Hudl file handy? Use **Load demo script · 5 plays**.
-
-**Excel and pasted breakdowns:** the upload box also takes a real `.xlsx` workbook — `src/lib/
-hudlParser.ts`'s `parseExcelFile` reads the first sheet with `exceljs` (dynamically imported, so
-CSV-only users never load it) and hands it to `Papa.unparse` → `parseHudlCsvText`, so it's the
-exact same column-mapping/classifier pipeline as a CSV, not a second parser to keep in sync. A
-`.csv`-named file that's actually an Excel workbook (a common Hudl-export mixup) is now
-auto-detected by its zip signature and parsed correctly instead of just explaining how to
-re-export it. **Paste breakdown** takes clipboard text — a breakdown copied straight out of
-Excel or Google Sheets pastes as tab-separated text, which `parseHudlCsvText` already reads
-(PapaParse auto-detects the delimiter), so no separate paste-parsing logic exists either.
+No screen takes a CSV any more, but the reader above is still how a row becomes a card: the demo script
+(`MOCK_HUDL_CSV`), the film analyzer's `game.json` cards, the practice playsheet and the review scorecard all go
+through `parseHudlCsvText` / `deriveCard`. On the field: swipe or use **PREVIOUS CARD / NEXT CARD** (arrow keys
+on a keyboard), filter by down or formation, and switch to **Print Grid** for 2 or 4 cards per page and
+**Print / Save PDF**. No game file handy? Use **Load demo script · 5 plays**.
 
 **AI review of an import** (`src/lib/importReview.ts`, `/api/review-import`): after a fresh import
-(`/script?loaded=1`) or **Add film**, the plays the rules couldn't place (a formation name or front
+(`/script?loaded=1`, after a game file is opened), the plays the rules couldn't place (a formation name or front
 the classifiers don't know, or a play call that reads as neither run nor pass) are sent once, text
 only, to Gemini, which maps them onto the app's own shapes (formation key + side, front key,
 run/pass). The answers go in `card.aiHints`, which `deriveCard` uses **only where the rules came
@@ -427,10 +409,6 @@ row ("ps1 slant, ps2 flat, back protect", `parseRouteList`), because a route enu
 nested in each result made the schema "too big to serve" and every review failed. If Gemini still
 refuses the schema, the chunk is asked again as plain JSON and checked by `validateReview`. A
 failure shows Gemini's own reason in the notice; a chunk that failed isn't marked reviewed.
-
-**Several films:** drop or pick several CSVs at once, or use **Add film** on the script page.
-Each play keeps its film (`card.source`), ids never collide across films, and a **Film**
-filter appears once there's more than one.
 
 **Editing:** **Edit play** opens `EditPlayDialog`, with a live card preview and quick-pick
 buttons. It can **Duplicate** or **Delete** the play. Edits go through `updateCard`, which
@@ -459,22 +437,11 @@ stored in SVG viewBox coordinates in `card.drawings.offense` / `.defense`, so Sc
 Scout D each have their own layer. They print and survive reloads. Swiping and Adjust X's are
 off while drawing. `ScoutCard`'s `ink` prop enables the overlay.
 
-## Our own playbook (`#playbook`, `/script?playbook=1`)
+## Our own playbook (removed)
 
-The staff's own plays aren't kept in Hudl, so they upload them to study. The landing page's
-**Study your playbook** section takes a CSV / `.xlsx` or pasted rows (`UploadDropzone` with its own
-title and no demo button) in the same columns as a Hudl export, so it goes through the exact same
-parser, classifiers and AI review (the staff's own formation names get mapped like any unknown tag).
-Only a formation and a play call are needed, with optional strength and direction; no down,
-distance or yard line. **Get the template** downloads a starter sheet (`playbookTemplate.ts`).
-It lives in its **own storage slot** (`scriptStore.ts`'s `ScriptSlot`: `playbook` →
-`scoutcard:playbook:v1`; the default `script` slot is still the week's scout script and everything
-else reads it), so studying never touches the scout script. `/script?playbook=1` is the same reader
-with the slot switched: the header says OUR PLAYBOOK, Scout O / D, filters, Print Grid and Edit play
-work, **Add plays** appends more rows, and the tendency badges, Playsheet link and demo are off (usage
-percentages mean nothing for your own book). A new upload on the landing page replaces the saved
-playbook; the section shows **Open your playbook · N plays** when one is saved. Anything that saves
-from the reader must pass `slot` (the AI-review callback depends on it).
+The staff's-own-plays upload (the landing page's **Study your playbook**, `/script?playbook=1`, the playsheet's
+**Add from your playbook** picker) is gone with the CSV upload it depended on. The `playbook` storage and sync slot
+(`scriptStore.ts`'s `ScriptSlot`, `syncMeta.ts`) is still defined and nothing writes it.
 
 ## Practice playsheet (`/practice`, `src/lib/practicePlan.ts`)
 
@@ -492,12 +459,6 @@ Each period says which side is ours, and the scout team is the converse:
   `left hash`, and `vs 3-4 C1` to call a look. A bare leading number with no punctuation stays
   in the call ("24 DIVE"). Every call becomes a Scout D card (`periodRepCards`): our call is the
   formation and play call, drawn against a look from the opponent's film.
-  - **Add from your playbook** (`PlaybookPicker.tsx`): instead of pasting, pick plays from the saved
-    playbook (`/#playbook`, its own storage slot). Each pick becomes a line (`playbookCallLine`:
-    formation, strength side if the name has none, then the call) appended to the period's text, so
-    the text stays the source of truth and the look matching below applies as usual. A 7v7 period
-    lists passes first (`inPeriod`), with "Show runs too". A formation name the classifier doesn't
-    know but the playbook import placed keeps that shape (`formationAliases`).
   - **A script with a personnel column** (Number | Personnel | Formation | Play: "1 Boston Pro rt Duo
     rt"): the personnel package ("Boston", "Miami") is kept apart from the call (`PlaysheetRep.personnel`,
     read from a header row naming Personnel, or a lone unknown word ahead of a known formation), header
@@ -528,7 +489,7 @@ current period.
 
 ## Saved for the staff (`/api/sync`, `src/lib/cloudSync.ts`)
 
-Signed in, the **scout script, the playbook and the practice playsheet** (the three `SyncSlot`s in
+Signed in, the **scout script and the practice playsheet** (the live `SyncSlot`s in
 `syncMeta.ts`, the same localStorage keys as always) are also saved to a private Vercel Blob per team
 (`syncStore.ts`: `sync/<sha256 of the team id>/<slot>`, the team being the Clerk organization, or
 `user-<id>` for a coach without one: the same `teamId` `requireEntitlement()` returns). Every coach on
@@ -594,9 +555,7 @@ checking it), **Undo** un-checks, **Unchecked only** filters the list, and **Sco
   (`EXPORT_TARGETS`). Each card is drawn off screen at the target's own pixel size, fitted
   without cropping (`fitCard`), captured with `html-to-image` (fonts embedded once) and packed
   with `jsPDF` or JSZip, all dynamically imported, all in the browser. Sunlight mode is on by
-  default there. Old Excel `.xls` isn't read (the only browser reader, SheetJS, is either an old
-  npm build with open security advisories or a CDN build this environment can't install); the
-  upload box says to save it as `.xlsx` or CSV.
+  default there.
 
 ## Offline / iPad install
 
@@ -650,8 +609,7 @@ pipeline in `video-service/` (formation, tracker, route reader), run on a Mac fo
 (`parseScriptFile`) plus the 5-play demo. The hosted **Gemini film uploader is gone** (the
 single-clip card, the one-click game zip import and `/api/parse-video`, `/api/parse-video-batch`,
 removed on the staff's call): film no longer goes to Gemini to draw cards. Still in the repo, on
-purpose: the CSV parser and everything built on it (the playbook upload, which takes the staff's
-*own* plays; review mode's tags; practice playsheets; `/script`'s **Add film**), the secondary read
+purpose: the CSV parser and everything built on it (review mode's tags, practice playsheets), the secondary read
 from a pre-snap clip (`/api/read-secondary`, `/api/blob-upload`), and the libraries the tracker's
 output goes through (`videoImport.ts`, `coordinateMapper.ts`, `batchMatcher.ts`). The rest of the
 page's copy (hero, showcase, FAQ) still describes a Hudl breakdown and needs rewriting for the
@@ -899,7 +857,7 @@ subscribed staff: `src/components/AppGate.tsx` wraps `/script`, `/practice` and 
 upload / AI film sections, and shows a sign-in or "private pilot" screen otherwise. The landing
 page itself and its live demo cards stay public, and so does the **5-play demo script**: "Try the
 5-play demo" on the locked screens loads it, and `/script` shows it in `demoMode` (swipe, Scout
-O/D, print and draw work; Add film, AI card, the playsheet and Edit play are hidden), so nothing
+O/D, print and draw work; AI card, the playsheet and Edit play are hidden), so nothing
 new can come in without access. The gate only applies where Clerk is configured
 and the testing bypass is off (production); preview deploys (`NEXT_PUBLIC_SKIP_AI_GATE`) and a
 local checkout without Clerk keys are open. Once an iPad is verified it's trusted offline for 14
@@ -975,7 +933,7 @@ there's still no separate database for this either.
 
 ## Landing page (`src/app/page.tsx`)
 
-Sections, in order: hero, `#upload`, `#playbook` (upload your own plays, see "Our own playbook"),
+Sections, in order: hero, `#upload`,
 `#ai` ("How
 the AI helps": your tags win, AI fills the gaps, checked then marked; it describes the import review
 and text cards above, so keep it true to them), `#showcase`, problem/solution, on-the-field,
@@ -1001,7 +959,7 @@ and text cards above, so keep it true to them), `#showcase`, problem/solution, o
   `globals.css` and all switch off under `prefers-reduced-motion`. Reveal content is hidden only
   once `layout.tsx`'s inline script has added `html.js`, so it never stays invisible without JS.
 - The FAQ (`FAQS`, grouped: getting started, how it reads your plays, working with the cards,
-  printing and the field, privacy) describes what the app does today: the playbook, route names, the
+  printing and the field, privacy) describes what the app does today: route names, the
   AI's limits, the secondary, the playsheet, access. When a feature changes, update the answer.
 - Don't add testimonials, usage numbers, or customer logos that aren't real.
 
@@ -1009,8 +967,8 @@ and text cards above, so keep it true to them), `#showcase`, problem/solution, o
 
 Both pages (`src/app/privacy/page.tsx`, `src/app/terms/page.tsx`, shell in `LegalLayout.tsx`)
 describe what the product does today, so **update them whenever data handling changes**: what stays in
-`localStorage` (script, playbook, playsheet, sunlight, the 14-day access cache), what's also saved for the
-team (script, playbook, playsheet in private Blob, shared by everyone on the team, kept until replaced or
+`localStorage` (script, playsheet, sunlight, the 14-day access cache), what's also saved for the
+team (script, playsheet in private Blob, shared by everyone on the team, kept until replaced or
 deleted on request), what each AI feature
 sends to Gemini (import review rows as text, typed AI-card calls, the secondary-read clip), that
 uploaded clips sit in private Blob storage with no deletion schedule, the usage counters, the
