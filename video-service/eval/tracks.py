@@ -35,7 +35,7 @@ from geometry import CalibrationPoints, build_homography, transform_point
 
 from . import field as fieldmod
 from .officials import looks_like_official
-from .people import EDGE_YARDS, FIELD_WIDTH, SHORT_EDGE_YARDS, feet_locator, on_the_field
+from .people import EDGE_YARDS, FIELD_WIDTH, FULL_BOX_RATIO, SHORT_EDGE_YARDS, SIDELINE_ZONE_YARDS, feet_locator, on_the_field
 from .teams import split_teams
 
 Box = tuple[float, float, float, float, float]  # x1, y1, x2, y2, score
@@ -284,6 +284,10 @@ def people_on_the_field(
         # A man cut off by the people in front of him is placed by his head alone: only believe that well
         # inside the field (not the bench's heads along the near sideline).
         margin = SHORT_EDGE_YARDS if getattr(locate, "short", lambda _b: False)(located) else EDGE_YARDS
+        # Near a sideline, a box that doesn't show a whole man is the bench (hidden by the row in front), not a player.
+        ratio = getattr(locate, "height_ratio", lambda _b: 1.0)(located)
+        if min(fx, FIELD_WIDTH - fx) < SIDELINE_ZONE_YARDS and ratio < FULL_BOX_RATIO:
+            continue
         if margin <= fx <= FIELD_WIDTH - margin and on_the_field(fx, fy, ball[1], MAX_DEPTH):
             found.append((b, fx, fy))
     kept: list[tuple[Box, float, float]] = []

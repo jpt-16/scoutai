@@ -306,3 +306,13 @@ def test_a_trail_is_drawn_where_the_man_went_on_the_field_not_where_the_camera_p
     # Compensated: no line (all the points are the same spot). Uncompensated: a line across 100 px.
     assert raw[178:182, 120:200].any()
     assert not flat[178:182, 120:195].any()
+
+
+def test_near_a_sideline_only_a_box_showing_a_whole_man_counts():
+    from eval.people import FULL_BOX_RATIO, feet_locator
+
+    locate = feet_locator(np.diag([0.1, 0.1, 1.0]))  # 10 pixels a yard: a standing man is 20 px tall
+    assert locate.height_ratio((100.0, 100.0, 108.0, 120.0, 0.9)) >= FULL_BOX_RATIO  # a whole man
+    bench = (100.0, 100.0, 108.0, 114.0, 0.9)  # chest-high over the row in front: 0.7 of a man
+    assert not locate.short(bench)  # not "short" enough for the head rule...
+    assert locate.height_ratio(bench) < FULL_BOX_RATIO  # ...but not a whole man either

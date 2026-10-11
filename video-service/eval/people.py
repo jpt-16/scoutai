@@ -29,6 +29,12 @@ SHORT_BOX_RATIO = 0.45
 # spot is a guess. Real players are never that far in: this is how far inside a sideline such a box has to
 # land to count, which keeps the bench's heads (standing behind each other along the near sideline) off the field.
 SHORT_EDGE_YARDS = 8.0
+# Near a sideline the bench stands in rows, each man hidden to the chest or waist by the row in front, so his
+# box is a half to three-quarters of a standing man's: too tall to be "short", but its bottom is no foot.
+# A player there (a receiver running the sideline) is in front of the bench and shows in full, so within this many
+# yards of a sideline only a box at least this fraction of a standing man's height counts.
+SIDELINE_ZONE_YARDS = 10.0
+FULL_BOX_RATIO = 0.8
 
 Box = tuple[float, float, float, float, float]
 
@@ -48,6 +54,11 @@ def feet_locator(matrix: np.ndarray) -> Callable[[Box], tuple[float, float]]:
         cx = (box[0] + box[2]) / 2
         return (box[3] - box[1]) / (PLAYER_YARDS * pixels_per_yard(cx, box[3])) < SHORT_BOX_RATIO
 
+    def height_ratio(box: Box) -> float:
+        """The box's height as a fraction of a standing man's at that spot (about 1 when he shows in full)."""
+        cx = (box[0] + box[2]) / 2
+        return (box[3] - box[1]) / (PLAYER_YARDS * pixels_per_yard(cx, box[3]))
+
     def feet_on_field(box: Box) -> tuple[float, float]:
         cx = (box[0] + box[2]) / 2
         fx, fy = transform_point(matrix, cx, box[3])
@@ -59,6 +70,7 @@ def feet_locator(matrix: np.ndarray) -> Callable[[Box], tuple[float, float]]:
         return fx, fy
 
     feet_on_field.short = is_short  # type: ignore[attr-defined]
+    feet_on_field.height_ratio = height_ratio  # type: ignore[attr-defined]
     return feet_on_field
 
 
