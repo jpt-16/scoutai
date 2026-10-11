@@ -63,6 +63,28 @@ export function saveScript(fileName: string, result: HudlParseResult, slot: Scri
   );
 }
 
+/**
+ * A script saved as a file (`game.json` from scripts/tracks-to-cards.ts): the same shape the
+ * reader stores, checked before it is trusted. Null if the text isn't one.
+ */
+export function parseScriptFile(text: string): StoredScript | null {
+  try {
+    const script = JSON.parse(text) as Partial<StoredScript>;
+    if (!Array.isArray(script.cards) || script.cards.length === 0) return null;
+    if (!script.cards.every((c) => c && typeof c === "object" && typeof c.id === "string")) return null;
+    const films = script.films?.length ? script.films : [script.fileName || DEFAULT_TITLE.script];
+    return {
+      fileName: scriptTitle(films),
+      films,
+      savedAt: "",
+      cards: script.cards.map((c) => deriveCard({ ...c, source: c.source || films[0] })),
+      warnings: Array.isArray(script.warnings) ? script.warnings : [],
+    };
+  } catch {
+    return null;
+  }
+}
+
 export function loadScript(slot: ScriptSlot = "script"): StoredScript | null {
   try {
     const raw = window.localStorage.getItem(STORAGE_KEYS[slot]);

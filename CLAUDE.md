@@ -710,8 +710,20 @@ writes `tracks/<clip>.json` and `scripts/read-routes.ts` (run with `npx jiti`) n
 player's route with `readRoute`. `test_tracks.py` runs the whole chain on a drawn clip with a panning,
 zooming camera (median error about 0.15 yd, routes named right, and a control with the camera motion ignored
 that fails as it should); real grass has less texture, motion blur and rolling shutter, so expect to tune on
-real clips. Still to do: map each track to his letter (the app's `matchDetectedLetters` against the
-pre-snap spots) and draw the Scout O card from it. The answer key for routes is free: the coach's corrected play call, expanded by `buildDiagram`
+real clips. **Tracks → cards** (`src/lib/trackedPlay.ts`, `scripts/tracks-to-cards.ts`): `detectionFromTracks` turns a
+tracks file into the same `DetectedPlay` (in yards) the film AI makes: linemen (on the line, inside the box)
+are dropped, the man nearest the ball behind the center is `Q` with no route, and every other offensive
+player gets `readRoute`'s name as his `routeType`, so `applyDetectionToCard` / `buildCardFromDetection` draw
+it exactly like a film card (`matchDetectedLetters` puts each man on the letter nearest where he stood, the
+spots are kept in `offenseSpots`, arrows are draggable, `source: "video"`). A read that is `unknown` or under
+`SURE_CONFIDENCE` (0.25 margin) is **marked on the card's notes** ("Check routes: H (curl or hitch)") instead
+of drawn confidently wrong. `npx jiti scripts/tracks-to-cards.ts tracks/ --sheet hudl.csv --out game.json` runs a whole
+game: files are lined up with the sheet's rows by `planBatch` (the number in the file name), the sheet stays
+ground truth for down / formation / call, and the script lists the plays to check. Without a sheet each play
+is its own card, its formation from `--formations ours.csv` (`eval.presnap`). `game.json` is a normal stored
+script: the landing page's upload box opens it (`allowGameFile`, `parseScriptFile`). **Not run on real film
+yet**; the per-clip calibration (four field spots, the ball) is still done by hand in `eval.calibrate`,
+which is the step to automate before a coach can drop a whole game in. The answer key for routes is free: the coach's corrected play call, expanded by `buildDiagram`
 into a route per letter, against the same call as Assist tagged it.
 
 ## Video-to-card via a hosted vision model (`/api/parse-video`)

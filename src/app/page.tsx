@@ -49,7 +49,7 @@ import { parseHudlCsvText, type HudlField, type HudlParseResult, type Unsupporte
 import { isFilmImportEnabled } from "@/lib/featureFlags";
 import { importFilms } from "@/lib/importFilms";
 import { PLAYBOOK_TEMPLATE_CSV, PLAYBOOK_TEMPLATE_NAME } from "@/lib/playbookTemplate";
-import { loadScript, saveScript, storeScript } from "@/lib/scriptStore";
+import { loadScript, parseScriptFile, saveScript, storeScript } from "@/lib/scriptStore";
 import { useRemoteApplied } from "@/lib/useRemoteApplied";
 import { computeTendencies } from "@/lib/tendencies";
 
@@ -282,6 +282,13 @@ export default function UploadPage() {
     setBusy(true);
     setError(null);
     try {
+      // A tracked game (scripts/tracks-to-cards.ts) is already a finished script.
+      const game = files.length === 1 && /\.json$/i.test(files[0].name) ? parseScriptFile(await files[0].text()) : null;
+      if (game) {
+        storeScript(game);
+        router.push("/script?loaded=1");
+        return;
+      }
       const imported = await importFilms(files);
       if (imported.cards.length > 0) {
         // At least one usable play: go straight to the cards. Notes about the
@@ -470,6 +477,7 @@ export default function UploadPage() {
                 <div className="flex flex-col gap-4">
                   <UploadDropzone
                     onFiles={handleFiles}
+                    allowGameFile
                     onDemo={handleDemo}
                     onPasteText={handlePasteText}
                     busy={busy}

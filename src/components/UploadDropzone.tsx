@@ -19,10 +19,12 @@ interface UploadDropzoneProps {
   hint?: string;
   /** What the files are called, for the file picker's accessible name and the paste hint. */
   noun?: string;
+  /** Also take a tracked game's `game.json` (scripts/tracks-to-cards.ts) as the one file. */
+  allowGameFile?: boolean;
 }
 
-function isBreakdownFile(file: File): boolean {
-  return /\.(csv|xlsx)$/i.test(file.name) || file.type === "text/csv";
+function isBreakdownFile(file: File, allowGameFile: boolean): boolean {
+  return /\.(csv|xlsx)$/i.test(file.name) || file.type === "text/csv" || (allowGameFile && /\.json$/i.test(file.name));
 }
 
 export function UploadDropzone({
@@ -34,6 +36,7 @@ export function UploadDropzone({
   title = "Drop your Hudl .csv or .xlsx exports here",
   hint = "One file per film. Add as many games as you want in one script.",
   noun = "breakdown",
+  allowGameFile = false,
 }: UploadDropzoneProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
@@ -43,8 +46,8 @@ export function UploadDropzone({
   const accept = (list: FileList | null | undefined) => {
     const files = Array.from(list ?? []);
     if (files.length === 0) return;
-    const usable = files.filter(isBreakdownFile);
-    const skipped = files.filter((f) => !isBreakdownFile(f)).map((f) => `"${f.name}"`);
+    const usable = files.filter((f) => isBreakdownFile(f, allowGameFile));
+    const skipped = files.filter((f) => !isBreakdownFile(f, allowGameFile)).map((f) => `"${f.name}"`);
     if (usable.length === 0) {
       // Old Excel (.xls, 97-2003) isn't readable in the browser without a library with open security issues.
       const oldExcel = files.some((f) => /\.xls$/i.test(f.name));
@@ -106,7 +109,7 @@ export function UploadDropzone({
           <input
             ref={inputRef}
             type="file"
-            accept=".csv,.xlsx,text/csv"
+            accept={allowGameFile ? ".csv,.xlsx,.json,text/csv" : ".csv,.xlsx,text/csv"}
             multiple
             className="sr-only"
             aria-label={`${noun} files`}
