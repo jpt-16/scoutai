@@ -809,7 +809,19 @@ clips/ --out tracks --seconds 8 --tiles 2 --debug debug/` also writes, per clip,
 and number (thick = offense, thin = defense, dashed grey = nobody follows him), 1.5 s of trail behind each, and a red
 ring where a track moved faster than 14 yd/s (a hand-off to another man). The printed report lists those and any offensive
 track lost early. Send the sheet with the report to see whether the swaps are to defenders, the bench or a pile-up, and fix
-that cause. Tested on drawn clips only (`test_tracks.py`); not yet looked at on real film.
+that cause. Trails are drawn with the camera's own motion taken out (`to_snap`), so a trail is where he went on the field.
+**First real pictures (plays 5 and 6):** the boxes land on the right men and the formation read is right, but (1) tracks slid
+along the near sideline from one standing bench player to the next (the bench's heads, cut off by the men in front, look like
+short boxes that land on the field, and a loose matching radius let a lost track grab the nearest of them), and in play 6 a
+receiver's track ended on a referee by the bench; (2) the near-sideline receiver's whole fade, and the far-sideline
+receiver's, were followed cleanly, so routes can be read when the tracker holds; (3) the Hudl recording freezes on its last
+frame, so the clip's tail is a still picture. Now: a short box counts only 8 yd inside a sideline (`SHORT_EDGE_YARDS`), a
+track may only be `MAX_STEP_YARDS` (0.5) plus `MISSED_GROWTH_YARDS` (0.12) a missed frame from where its velocity puts him
+(`Track.predicted(ahead)`), the frozen tail is cut (`unfrozen`), and `trackedPlay.ts` cuts a track only at a move over 24 yd/s
+(a real sprint reads ~15 over a short window; sliding onto the bench reads 60+). **Not yet re-run on real film.** The route reader
+is unchanged: on the clean sprint it still reads wheel (fade next) at low confidence, and smoothing the jittery 30 fps path
+before reading changed the answer in odd ways (it made a straight sprint read as a comeback because of the frozen tail),
+so it was left alone until there are more real tracks to tune on.
 
 ## Video-to-card via a hosted vision model (`/api/parse-video`)
 

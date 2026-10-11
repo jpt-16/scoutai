@@ -25,6 +25,10 @@ EDGE_YARDS = 3.0
 # therefore sits on the field when he is really off it.
 PLAYER_YARDS = 2.0
 SHORT_BOX_RATIO = 0.45
+# A short box (a man cut off by the people in front of him) has only his head to place him by, so his
+# spot is a guess. Real players are never that far in: this is how far inside a sideline such a box has to
+# land to count, which keeps the bench's heads (standing behind each other along the near sideline) off the field.
+SHORT_EDGE_YARDS = 8.0
 
 Box = tuple[float, float, float, float, float]
 
@@ -40,16 +44,21 @@ def feet_locator(matrix: np.ndarray) -> Callable[[Box], tuple[float, float]]:
         bx, by = transform_point(inverse, fx, fy + 1.0)
         return float(np.hypot(bx - px, by - py))
 
+    def is_short(box: Box) -> bool:
+        cx = (box[0] + box[2]) / 2
+        return (box[3] - box[1]) / (PLAYER_YARDS * pixels_per_yard(cx, box[3])) < SHORT_BOX_RATIO
+
     def feet_on_field(box: Box) -> tuple[float, float]:
         cx = (box[0] + box[2]) / 2
         fx, fy = transform_point(matrix, cx, box[3])
-        if (box[3] - box[1]) / (PLAYER_YARDS * pixels_per_yard(cx, box[3])) < SHORT_BOX_RATIO:
+        if is_short(box):
             foot_y = box[1]
             for _ in range(25):
                 foot_y = box[1] + PLAYER_YARDS * pixels_per_yard(cx, min(foot_y, 4000.0))
             fx, fy = transform_point(matrix, cx, min(foot_y, 4000.0))
         return fx, fy
 
+    feet_on_field.short = is_short  # type: ignore[attr-defined]
     return feet_on_field
 
 

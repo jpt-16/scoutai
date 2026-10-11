@@ -35,17 +35,22 @@ from geometry import CalibrationPoints, build_homography, transform_point
 
 from . import field as fieldmod
 from .officials import looks_like_official
-from .people import feet_locator, on_the_field
+from .people import EDGE_YARDS, FIELD_WIDTH, SHORT_EDGE_YARDS, feet_locator, on_the_field
 from .teams import split_teams
 
 Box = tuple[float, float, float, float, float]  # x1, y1, x2, y2, score
 
-# A person moves at most this far (yards) between two frames and is still the same person (a sprint is
-# about a third of a yard a frame; the rest is detection jitter).
-MAX_STEP_YARDS = 1.2
-# A man the detector misses for a few frames may have moved further, but not without limit: a track that
-# is allowed to jump anywhere grabs the nearest of the bench standing still.
-MISSED_GROWTH_CAP = 3
+# A person is at most this far (yards) from where his track says he is, from one frame to the next (a
+# sprint is about a third of a yard a frame; the rest is detection jitter). On real film a looser limit let
+# a track slide along the near sideline from one standing bench player to the next, so it is kept close
+# to what a person can really do.
+MAX_STEP_YARDS = 0.5
+# A man the detector misses for some frames may be further from where he was last seen, by about what a
+# runner covers in a frame, but not more: a track allowed to jump anywhere grabs the nearest of the bench.
+MISSED_GROWTH_YARDS = 0.12
+# Frames of a recording that stop changing (the Hudl player froze at the end of the clip) carry no play.
+FROZEN_FRAME_DIFF = 0.05
+FROZEN_FRAMES = 8
 # People further than this from the ball (yards) are the crowd.
 MAX_DEPTH = 25.0
 # Two detections this close together (yards) are one person seen twice.
@@ -174,12 +179,14 @@ class Track:
     def last(self) -> tuple[float, float]:
         return self.points[-1][1], self.points[-1][2]
 
-    def predicted(self) -> tuple[float, float]:
-        """Where he'd be if he kept going the way he was (a person doesn't turn on a dime)."""
+    def predicted(self, ahead: int = 1) -> tuple[float, float]:
+        """Where he'd be `ahead` frames after he was last seen if he kept going the way he was (a person
+        doesn't turn on a dime). A man missed for a few frames has gone on that many frames further."""
         if len(self.points) < 2:
             return self.last
-        (_, x0, y0), (_, x1, y1) = self.points[-2], self.points[-1]
-        return x1 + (x1 - x0), y1 + (y1 - y0)
+        (f0, x0, y0), (f1, x1, y1) = self.points[-2], self.points[-1]
+        gap = max(1, f1 - f0)
+        return x1 + (x1 - x0) / gap * ahead, y1 + (y1 - y0) / gap * ahead
 
 
 # When two people cross, nearness can't tell them apart but their jerseys can: a candidate costs his
@@ -206,9 +213,9 @@ def follow(
         free = set(range(len(people)))
         pairs = sorted(
             (
-                np.hypot(people[j][0] - t.predicted()[0], people[j][1] - t.predicted()[1])
+                np.hypot(people[j][0] - t.predicted(t.missed + 1)[0], people[j][1] - t.predicted(t.missed + 1)[1])
                 + COLOR_YARDS_PER_UNIT * _color_gap(t.color, colors[f][j] if colors else None),
-                np.hypot(people[j][0] - t.predicted()[0], people[j][1] - t.predicted()[1]),
+                np.hypot(people[j][0] - t.predicted(t.missed + 1)[0], people[j][1] - t.predicted(t.missed + 1)[1]),
                 ti,
                 j,
             )
@@ -219,7 +226,7 @@ def follow(
         taken: set[int] = set()
         for _, dist, ti, j in pairs:
             t = tracks[ti]
-            if ti in taken or j not in free or dist > MAX_STEP_YARDS * (1 + min(t.missed, MISSED_GROWTH_CAP)):
+            if ti in taken or j not in free or dist > MAX_STEP_YARDS + MISSED_GROWTH_YARDS * t.missed:
                 continue
             t.points.append((f, people[j][0], people[j][1]))
             t.matched.append((f, j))
@@ -263,8 +270,12 @@ def people_on_the_field(
             continue
         cx = (b[0] + b[2]) / 2
         top, bottom = cv2.perspectiveTransform(np.float32([[[cx, b[1]], [cx, b[3]]]]), to_snap)[0]
-        fx, fy = locate((float(bottom[0]), float(top[1]), float(bottom[0]), float(bottom[1]), b[4]))
-        if on_the_field(fx, fy, ball[1], MAX_DEPTH):
+        located = (float(bottom[0]), float(top[1]), float(bottom[0]), float(bottom[1]), b[4])
+        fx, fy = locate(located)
+        # A man cut off by the people in front of him is placed by his head alone: only believe that well
+        # inside the field (not the bench's heads along the near sideline).
+        margin = SHORT_EDGE_YARDS if getattr(locate, "short", lambda _b: False)(located) else EDGE_YARDS
+        if margin <= fx <= FIELD_WIDTH - margin and on_the_field(fx, fy, ball[1], MAX_DEPTH):
             found.append((b, fx, fy))
     kept: list[tuple[Box, float, float]] = []
     for item in sorted(found, key=lambda p: -p[0][4]):
@@ -307,7 +318,7 @@ def track_play(
     tracks = follow(per_frame[0], per_frame, colors)
     labels = team_of(frames_bgr[snap], kept_boxes[0], per_frame[0])
     if debug is not None:  # what a picture of the tracking needs
-        debug.update(frames=frames_bgr[snap:], boxes=kept_boxes, tracks=tracks, labels=labels, fps=fps)
+        debug.update(frames=frames_bgr[snap:], boxes=kept_boxes, tracks=tracks, labels=labels, fps=fps, to_snap=to_snap)
     return {
         "fps": fps,
         "tracks": [
@@ -340,6 +351,19 @@ def team_by_jersey(frame: np.ndarray, boxes: list[Box], spots: list[tuple[float,
     return out
 
 
+def unfrozen(frames: list[np.ndarray]) -> list[np.ndarray]:
+    """The frames up to where the recording stopped changing (a Hudl clip freezes on its last frame): tracking a
+    still picture adds nothing, and its men would look like they stood still."""
+    still = 0
+    for i in range(1, len(frames)):
+        a = cv2.cvtColor(frames[i - 1], cv2.COLOR_BGR2GRAY)
+        b = cv2.cvtColor(frames[i], cv2.COLOR_BGR2GRAY)
+        still = still + 1 if float(np.mean(cv2.absdiff(a, b))) < FROZEN_FRAME_DIFF else 0
+        if still >= FROZEN_FRAMES:
+            return frames[: i - FROZEN_FRAMES + 1]
+    return frames
+
+
 def track_clip(clip: Path, detector, seconds: float = 6.0, tiles: int = 2, debug: dict | None = None) -> dict:
     """Follows everyone through one clip, from the calibration file beside it."""
     calibration = json.loads(clip.with_suffix(".json").read_text())
@@ -352,6 +376,7 @@ def track_clip(clip: Path, detector, seconds: float = 6.0, tiles: int = 2, debug
         if not ok:
             break
         frames.append(frame)
+    frames = unfrozen(frames)
     # Frame 0 of the list is the snap frame the calibration was made on.
     calibration = {**calibration, "frame": 0}
     boxes = [detector.people(f, tiles) for f in frames]

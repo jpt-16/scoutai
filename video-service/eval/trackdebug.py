@@ -17,8 +17,9 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-# Faster than a high-school player runs (yards a second); a track that moves this fast changed men.
-JUMP_YARDS_PER_SECOND = 14.0
+# Far faster than a high-school player runs (yards a second, with room for detection noise on top of a
+# sprint); a track that moves this fast changed men. The same limit `trackedPlay.ts` cuts a track at.
+JUMP_YARDS_PER_SECOND = 24.0
 JUMP_WINDOW_SECONDS = 0.3
 TRAIL_SECONDS = 1.5
 SHEET_WIDTH = 2400
@@ -63,7 +64,17 @@ def _dashed_box(img, box, color) -> None:
             cv2.line(img, a, b, color, 1)
 
 
-def draw_frame(frame, boxes, tracks, labels, frame_index: int, fps: float, jumps_by_track: dict[int, list[int]]):
+def _in_frame(point: tuple[int, int], past: int, now: int, to_snap) -> tuple[int, int]:
+    """A foot seen in frame `past`, as it would be drawn in frame `now` once the camera's own motion is taken
+    out (both frames held to the snap frame), so a trail shows where the man went on the field."""
+    if to_snap is None or past == now:
+        return point
+    snap_point = cv2.perspectiveTransform(np.float32([[list(point)]]), to_snap[past])
+    back = cv2.perspectiveTransform(snap_point, np.linalg.inv(to_snap[now]))[0, 0]
+    return int(back[0]), int(back[1])
+
+
+def draw_frame(frame, boxes, tracks, labels, frame_index: int, fps: float, jumps_by_track: dict[int, list[int]], to_snap=None):
     img = frame.copy()
     by_person: dict[int, int] = {}
     for t in tracks:
@@ -74,7 +85,7 @@ def draw_frame(frame, boxes, tracks, labels, frame_index: int, fps: float, jumps
     for t in tracks:
         color = track_color(t.id)
         recent = [(f, j) for f, j in t.matched if trail_from <= f <= frame_index]
-        pts = [_foot(boxes[f][j]) for f, j in recent if f < len(boxes) and j < len(boxes[f])]
+        pts = [_in_frame(_foot(boxes[f][j]), f, frame_index, to_snap) for f, j in recent if f < len(boxes) and j < len(boxes[f])]
         for a, b in zip(pts, pts[1:]):
             cv2.line(img, a, b, color, 2)
     for j, box in enumerate(boxes[frame_index]):
@@ -98,6 +109,7 @@ def write_pictures(debug: dict, out_dir: Path, stem: str, every_seconds: float =
     """Writes the pictures and returns the printable report (which tracks jumped, and when)."""
     out_dir.mkdir(parents=True, exist_ok=True)
     frames, boxes, tracks, labels, fps = debug["frames"], debug["boxes"], debug["tracks"], debug["labels"], debug["fps"]
+    to_snap = debug.get("to_snap")
     jumps = {t.id: find_jumps(t.points, fps) for t in tracks}
     jump_frames = {i: [f for f, _ in js] for i, js in jumps.items()}
     report: list[str] = []
@@ -115,7 +127,7 @@ def write_pictures(debug: dict, out_dir: Path, stem: str, every_seconds: float =
     for f in range(0, len(frames), step):
         if f >= len(boxes):
             break
-        img = draw_frame(frames[f], boxes, tracks, labels, f, fps, jump_frames)
+        img = draw_frame(frames[f], boxes, tracks, labels, f, fps, jump_frames, to_snap)
         cv2.imwrite(str(out_dir / f"{stem}_trk_{f / fps:.0f}s.jpg"), img)
         shots.append(img)
     if shots:

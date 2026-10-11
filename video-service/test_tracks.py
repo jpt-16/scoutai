@@ -259,3 +259,50 @@ def test_the_picture_draws_each_box_in_its_tracks_color_and_rings_a_jump():
     assert tuple(int(v) for v in ring) == (0, 0, 255)
     # The trail from where track 1 had been to where it jumped is drawn between them.
     assert img[238:243, 363:368].any()
+
+
+def test_a_lost_track_does_not_jump_to_a_man_standing_far_away():
+    # One runner, missed for a while; a bench player stands still eight yards off. The track must not grab him.
+    runner = [(0.3 * i, 0.0) for i in range(5)]
+    snap = [(0.0, 0.0), (0.0, 8.0)]
+    frames = [[(0.0, 0.0), (0.0, 8.0)]] + [[(x, y), (0.0, 8.0)] for x, y in runner[1:]] + [[(0.0, 8.0)]] * 8
+    tracks = follow(snap, frames)
+    assert max(y for _f, _x, y in tracks[0].points) < 1.0
+    # He is found again where he would be, after the gap.
+    later = [[(0.0, 8.0)]] * 3 + [[(0.3 * k, 0.0), (0.0, 8.0)] for k in range(5, 7)]
+    again = follow(snap, [[(0.0, 0.0), (0.0, 8.0)]] + [[(x, y), (0.0, 8.0)] for x, y in runner[1:]] + later)
+    assert again[0].points[-1][1] == pytest.approx(0.3 * 6, abs=0.01)
+
+
+def test_a_box_cut_off_by_the_people_in_front_is_called_short_and_a_standing_man_is_not():
+    from eval.people import feet_locator
+
+    locate = feet_locator(np.diag([0.1, 0.1, 1.0]))  # 10 pixels a yard
+    assert locate.short((100.0, 100.0, 108.0, 108.0, 0.9))  # 0.8 yards tall: a head and shoulders over the bench
+    assert not locate.short((100.0, 100.0, 108.0, 120.0, 0.9))  # two yards tall: a man standing there
+
+
+def test_a_recording_that_freezes_is_cut_where_it_stops_changing():
+    from eval.tracks import unfrozen
+
+    rng = np.random.default_rng(3)
+    moving = [rng.integers(0, 255, (40, 60, 3), dtype=np.uint8) for _ in range(12)]
+    frozen = [moving[-1].copy() for _ in range(20)]
+    assert len(unfrozen(moving + frozen)) == 12
+    assert len(unfrozen(moving)) == 12
+
+
+def test_a_trail_is_drawn_where_the_man_went_on_the_field_not_where_the_camera_pointed():
+    from eval.tracks import Track
+    from eval.trackdebug import draw_frame
+
+    # He stands still on the field while the camera pans 100 px: his raw boxes move, his trail must not.
+    boxes = [[(100.0 + 20.0 * f, 100.0, 130.0 + 20.0 * f, 180.0, 0.9)] for f in range(6)]
+    to_snap = [np.array([[1, 0, -20.0 * f], [0, 1, 0], [0, 0, 1]]) for f in range(6)]  # frame pixel -> snap pixel
+    track = Track(0, (0, 0), matched=[(f, 0) for f in range(6)])
+    frame = np.zeros((400, 600, 3), np.uint8)
+    flat = draw_frame(frame, boxes, [track], ["offense"], 5, 4.0, {}, to_snap)
+    raw = draw_frame(frame, boxes, [track], ["offense"], 5, 4.0, {}, None)
+    # Compensated: no line (all the points are the same spot). Uncompensated: a line across 100 px.
+    assert raw[178:182, 120:200].any()
+    assert not flat[178:182, 120:195].any()

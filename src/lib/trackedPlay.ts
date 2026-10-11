@@ -41,10 +41,11 @@ export interface TrackedPlayFile {
 }
 
 /** A lineman: on the line and inside the box. Skill players are everyone else on offense. */
-const ON_LINE_MIN_Y = -0.8;
+const ON_LINE_MIN_Y = -1.4;
 const BOX_HALF_WIDTH_YARDS = 3.5;
-/** A man on the line who ran this far (or more) was a receiver, not a lineman. */
-const LINEMAN_MAX_TRAVEL_YARDS = 7;
+/** A man on the line who got this far from his spot (or further) in the first seconds was a receiver, not a lineman. */
+const LINEMAN_MAX_TRAVEL_YARDS = 6;
+const LINEMAN_WINDOW_SECONDS = 4;
 /** The quarterback is the man nearest the ball behind the center. */
 const QB_MAX_ACROSS_YARDS = 2.5;
 /** He stands at least this far behind the line's depth (a guard a yard off the ball does not). */
@@ -57,12 +58,16 @@ const MOVED_YARDS = 1.5;
 /** Take the snap a little before the third man's move shows. */
 const SNAP_LEAD_SECONDS = 0.35;
 
-/** Faster than any high-school player runs (yards a second): a bigger jump is the tracker changing men. */
-const MAX_YARDS_PER_SECOND = 14;
+/**
+ * Far faster than any high-school player runs, with room for detection noise on top of a sprint (a real
+ * sprint reads up to ~15 yd/s over a short window; the tracker sliding onto the bench reads over 60): a
+ * bigger jump is the tracker changing men.
+ */
+const MAX_YARDS_PER_SECOND = 24;
 /** Compare points at least this far apart in time, so a frame of jitter doesn't look like a jump. */
 const JUMP_WINDOW_SECONDS = 0.3;
 /** Two tracks starting this close are one man followed twice. */
-const SAME_MAN_YARDS = 1.2;
+const SAME_MAN_YARDS = 2;
 /** The shortest route in the tree runs about this far; less than that hasn't shown which route it is. */
 const MIN_ROUTE_YARDS = 5;
 
@@ -161,7 +166,10 @@ function lineCutoff(offense: TrackedPlayer[]): number {
 
 /** A lineman: on the line, inside the box, and he never ran off like a receiver. */
 function isLineman(t: TrackedPlayer, cutoff: number): boolean {
-  return t.start[1] >= cutoff && Math.abs(t.start[0]) <= BOX_HALF_WIDTH_YARDS && pathLength(t.points) < LINEMAN_MAX_TRAVEL_YARDS;
+  if (t.start[1] < cutoff || Math.abs(t.start[0]) > BOX_HALF_WIDTH_YARDS) return false;
+  // Tracker jitter adds yards to a path that goes nowhere, so how far he got from his spot is measured, over the first seconds.
+  const early = t.points.filter(([s]) => s <= t.points[0][0] + LINEMAN_WINDOW_SECONDS);
+  return Math.max(...early.map(([, x, y]) => Math.hypot(x - t.start[0], y - t.start[1]))) < LINEMAN_MAX_TRAVEL_YARDS;
 }
 
 /**
@@ -186,13 +194,18 @@ export function detectionFromTracks(
   file: TrackedPlayFile,
   opts: { formation?: string; playName?: string } = {},
 ): { detection: DetectedPlay; reads: RawRead[] } {
-  const followed = dropSameMan(fromTheSnap(file).tracks.filter((t) => t.team === "offense" && t.points.length >= 2));
+  const followed = fromTheSnap(file).tracks.filter((t) => t.team === "offense" && t.points.length >= 2);
   const qb = pickQuarterback(followed);
   const cutoff = lineCutoff(followed);
-  // Everyone but the quarterback is read only up to where his track jumped to another man.
-  const offense = followed
-    .map((t) => (t === qb ? t : { ...t, points: trimAtJump(t.points) }))
+  // Everyone but the quarterback is read only up to where his track jumped to another man. Linemen stand a
+  // yard apart, so the one-man-twice check is made among the skill players only.
+  const trimmed = followed
+    .map((t) => (qb && t.id === qb.id ? t : { ...t, points: trimAtJump(t.points) }))
     .filter((t) => t.points.length >= 2);
+  const offense = [
+    ...trimmed.filter((t) => (qb && t.id === qb.id) || isLineman(t, cutoff)),
+    ...dropSameMan(trimmed.filter((t) => !(qb && t.id === qb.id) && !isLineman(t, cutoff))),
+  ];
   const players: DetectedPlayer[] = [];
   const reads: RawRead[] = [];
 
