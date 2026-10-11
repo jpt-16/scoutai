@@ -29,8 +29,8 @@ STACKED_X = 1.5
 LINEMEN = 5
 # Finding the line: the offensive line is a given, so it is found as the row of men nearest the
 # ball's middle, wherever that row happens to sit (the ball spot can be a yard off): men within
-# LINE_HALF_WIDTH yards sideways and between these depths, in a row at most ROW_TOLERANCE deep.
-LINE_HALF_WIDTH = 7.0
+# LINE_REACH_X yards sideways of each other and between these depths, in a row at most ROW_TOLERANCE deep.
+LINE_REACH_X = 4.5
 LINE_DEPTHS = (-2.5, 1.5)
 ROW_TOLERANCE = 0.7
 MIN_PLAYERS = 7
@@ -62,18 +62,24 @@ def classify(offense: list[Spot]) -> Formation:
 
 
 def find_line(offense: list[Spot]) -> list[Spot]:
-    """The offensive linemen: the biggest row of men (up to five, the ones nearest the middle) that
-    stand side by side within a yard of the ball's spot. Returns [] if there isn't a row of three."""
-    near = [p for p in offense if abs(p.x) <= LINE_HALF_WIDTH and LINE_DEPTHS[0] <= p.y <= LINE_DEPTHS[1]]
-    best: tuple[int, float, list[Spot]] | None = None
-    for y0 in {p.y for p in near}:
-        row = [p for p in near if abs(p.y - y0) <= ROW_TOLERANCE]
-        key = (min(len(row), LINEMEN), -abs(y0))
-        if best is None or key > (best[0], best[1]):
-            best = (key[0], key[1], row)
-    if best is None or len(best[2]) < 3:
-        return []
-    return sorted(best[2], key=lambda p: abs(p.x))[:LINEMEN]
+    """The offensive linemen: the biggest cluster of men (up to five) standing side by side in a row, found
+    anywhere across the formation, so the ball can be marked a few yards off the middle without losing the
+    line. A cluster is men within LINE_REACH_X yards sideways of an anchor man and within a row's depth of
+    him. The row is looked for at a tight depth first, and if that finds fewer than three (the field
+    mapping spreads a line's depth by a yard or so), again at a looser one. The cluster nearest the ball
+    wins a tie. Returns [] if there isn't a row of three."""
+    near = [p for p in offense if LINE_DEPTHS[0] <= p.y <= LINE_DEPTHS[1]]
+    for tolerance in (ROW_TOLERANCE, 2 * ROW_TOLERANCE):
+        best: tuple[int, float, list[Spot]] | None = None
+        for anchor in near:
+            row = [p for p in near if abs(p.y - anchor.y) <= tolerance and abs(p.x - anchor.x) <= LINE_REACH_X]
+            key = (min(len(row), LINEMEN), -(abs(anchor.x) + abs(anchor.y)))
+            if best is None or key > (best[0], best[1]):
+                best = (key[0], key[1], row)
+        if best is not None and len(best[2]) >= 3:
+            middle = sorted(p.x for p in best[2])[len(best[2]) // 2]
+            return sorted(best[2], key=lambda p: abs(p.x - middle))[:LINEMEN]
+    return []
 
 
 def _classify(offense: list[Spot]) -> Formation:
@@ -86,7 +92,10 @@ def _classify(offense: list[Spot]) -> Formation:
     # Measure everything from the line, not from the ball spot, which can be a yard off: the line's
     # own depth is where "on the line" and "in the backfield" are counted from.
     depth = sorted(p.y for p in line)[len(line) // 2]
-    shifted = {id(p): Spot(p.x, p.y - depth) for p in offense}
+    # The same for the middle: the ball spot can be a few yards off sideways, and which side a receiver
+    # is on is counted from the middle of the line, not from where the ball was marked.
+    middle = sorted(p.x for p in line)[len(line) // 2]
+    shifted = {id(p): Spot(p.x - middle, p.y - depth) for p in offense}
     line = [shifted[id(p)] for p in line]
     offense = [shifted[id(p)] for p in offense]
     edge_left = min(p.x for p in line)
@@ -172,7 +181,7 @@ def staff_name(
             return f"pro{side}" if (wide_left == 1 and wide_right == 1) else f"twins{side}"
         return ""
     if not backs and len(skill) >= 5:
-        return "empty gun"
+        return f"empty gun{side}"
     if len(backs) == 1 and not attached and len(wide) == 4:
         if wide_left == wide_right == 2:
             return "deuces gun"

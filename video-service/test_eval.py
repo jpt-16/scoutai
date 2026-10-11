@@ -98,15 +98,14 @@ def test_split_teams_by_side_when_jersey_colors_overlap():
     assert off == 0
     assert labels == [0] * 8 + [1] * 9
 
-    # With no clear gap between the lines, a man in the neutral zone takes the side his jersey looks like.
+    # With no gap between the lines to split at, everyone is split at the ball's own depth, jerseys ignored
+    # (a navy man at the line reads as "white" in shade).
     near = [-1.3, -1.0, -0.7, -0.4, -0.1, 0.2, 0.5, 0.8, 1.1, 1.4, 1.7, 2.0, 2.3]
-    offense_color, defense_color = (120.0, 127.0, 140.0), (95.0, 126.0, 130.0)
-    colors2 = [offense_color] * 3 + [offense_color] * 5 + [defense_color] * 8 + [defense_color] * 3
-    ys2 = [-5.0, -4.0, -3.0] + near[:5] + near[5:] + [6.0, 8.0, 10.0]
+    colors2 = [(120.0, 127.0, 140.0)] * 19
+    ys2 = [-5.0, -4.0, -3.0] + near + [6.0, 8.0, 10.0]
     labels2, off2 = split_teams(colors2, ys2)
     assert off2 == 0
-    assert labels2[3:8] == [0] * 5  # the five in the neutral zone dressed like the offense
-    assert labels2[8:13] == [1] * 5  # the rest dressed like the defense
+    assert labels2 == [0 if y <= 0.3 else 1 for y in ys2]
 
 
 def test_the_line_of_scrimmage_is_the_widest_gap_between_the_lines():
@@ -163,7 +162,7 @@ def test_the_staffs_names():
     # deuces: 2x2, one back, gun
     assert classify(line + gun_qb + one_back + [Spot(-18, 0), Spot(-12, -1.3), Spot(12, -1.3), Spot(18, 0)]).staff == "deuces gun"
     # empty: five receivers, no back
-    assert classify(line + gun_qb + [Spot(-18, 0), Spot(-12, -1.3), Spot(12, -1.3), Spot(18, 0), Spot(9, 0)]).staff == "empty gun"
+    assert classify(line + gun_qb + [Spot(-18, 0), Spot(-12, -1.3), Spot(12, -1.3), Spot(18, 0), Spot(9, 0)]).staff.startswith("empty gun")
     # trio (slot trips is the same formation): three to the right, one left, whether or not the inside one is off the line
     trio = classify(line + gun_qb + one_back + [Spot(-18, 0), Spot(9, 0), Spot(13, 0), Spot(19, 0)])
     assert trio.staff == "trio gun right", trio

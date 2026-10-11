@@ -50,22 +50,26 @@ def pick_offense(labels: list[int], downfield: list[float]) -> int:
 SURE_OFFENSE_Y = -1.0
 SURE_DEFENSE_Y = 1.5
 MIN_SURE = 3
+# With no gap to split at, the offense is everyone at or behind this depth (yards past the ball).
+NEUTRAL_Y = 0.3
 
 
 # The line of scrimmage is the biggest empty stretch between the two lines of linemen, looked for
 # only among men near the ball, and it has to be at least this wide (yards) to count.
-LOS_SEARCH = (-1.5, 2.5)
+LOS_SEARCH = (-3.0, 3.0)
 MIN_LOS_GAP = 0.5
 
 
-LINE_REACH = 1.6
-MIN_PER_LINE = 3
+LINE_REACH = 2.0
+# At least this many men within reach behind the boundary (the offense's line and receivers on it) and
+# ahead of it (a defense may stand up, so only two of them need to be near the ball).
+MIN_BEHIND, MIN_AHEAD = 3, 2
 
 
 def line_boundary(downfield: list[float]) -> float | None:
     """Where the offense ends and the defense starts, in yards past the ball: the middle of the
-    widest gap between neighbours among the men standing near the line, provided it has a line of
-    men (at least three within `LINE_REACH` yards) on both sides of it. Otherwise None."""
+    widest gap between neighbours among the men standing near the line, provided it has men within
+    `LINE_REACH` yards on both sides of it (`MIN_BEHIND`, `MIN_AHEAD`). Otherwise None."""
     near = sorted(y for y in downfield if LOS_SEARCH[0] <= y <= LOS_SEARCH[1])
     best: tuple[float, float] | None = None
     for a, b in zip(near, near[1:]):
@@ -74,7 +78,7 @@ def line_boundary(downfield: list[float]) -> float | None:
             continue
         behind = sum(1 for y in downfield if middle - LINE_REACH <= y <= middle)
         ahead = sum(1 for y in downfield if middle <= y <= middle + LINE_REACH)
-        if behind >= MIN_PER_LINE and ahead >= MIN_PER_LINE and (best is None or width > best[0]):
+        if behind >= MIN_BEHIND and ahead >= MIN_AHEAD and (best is None or width > best[0]):
             best = (width, middle)
     return best[1] if best else None
 
@@ -98,17 +102,7 @@ def split_teams(colors: list[Color], downfield: list[float]) -> tuple[list[int],
     if len(sure_off) < MIN_SURE or len(sure_def) < MIN_SURE:
         labels = two_means(colors)
         return labels, (pick_offense(labels, downfield) if labels else 0)
-
-    def median(idx: list[int]) -> Color:
-        return tuple(sorted(colors[i][c] for i in idx)[len(idx) // 2] for c in range(3))  # type: ignore[return-value]
-
-    centers = {0: median(sure_off), 1: median(sure_def)}
-    labels = []
-    for i, y in enumerate(downfield):
-        if y <= SURE_OFFENSE_Y:
-            labels.append(0)
-        elif y >= SURE_DEFENSE_Y:
-            labels.append(1)
-        else:
-            labels.append(0 if _dist2(colors[i], centers[0]) <= _dist2(colors[i], centers[1]) else 1)
-    return labels, 0
+    # No clear line of scrimmage to split at (a defense that stands up, a pile of linemen the detector saw
+    # only part of): split at the ball's own depth. Jersey color is no help here, a navy man at the line
+    # reads as "white" in shade, so it is not used.
+    return [0 if y <= NEUTRAL_Y else 1 for y in downfield], 0
