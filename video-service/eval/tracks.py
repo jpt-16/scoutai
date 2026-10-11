@@ -337,7 +337,7 @@ def track_play(
     tracks = follow(per_frame[0], per_frame, colors)
     labels = team_of(frames_bgr[snap], kept_boxes[0], per_frame[0])
     if debug is not None:  # what a picture of the tracking needs
-        debug.update(frames=frames_bgr[snap:], boxes=kept_boxes, tracks=tracks, labels=labels, fps=fps, to_snap=to_snap)
+        debug.update(frames=frames_bgr[snap:], boxes=kept_boxes, tracks=tracks, labels=labels, fps=fps, to_snap=to_snap, per_frame=per_frame, colors=colors)
     return {
         "fps": fps,
         "tracks": [
@@ -441,6 +441,7 @@ def main() -> None:
     ap.add_argument("--seconds", type=float, default=6.0, help="how long after the snap to follow")
     ap.add_argument("--tiles", type=int, default=2)
     ap.add_argument("--debug", type=Path, default=None, help="also write pictures of the tracking here (see eval.trackdebug)")
+    ap.add_argument("--detections", type=Path, default=None, help="also write everyone the detector found in every frame here, so the tracking can be tuned without the film")
     args = ap.parse_args()
 
     from .presnap import Detector
@@ -450,16 +451,20 @@ def main() -> None:
     for clip in sorted(p for p in args.clips.iterdir() if p.suffix.lower() in {".mp4", ".mov", ".m4v"}):
         if not clip.with_suffix(".json").exists():
             continue
-        debug: dict | None = {} if args.debug else None
+        debug: dict | None = {} if (args.debug or args.detections) else None
         result = track_clip(clip, detector, args.seconds, args.tiles, debug)
         (args.out / f"{clip.stem}.json").write_text(json.dumps(result))
         n_off = sum(t["team"] == "offense" for t in result["tracks"])
         print(f"{clip.name}: {len(result['tracks'])} people followed, {n_off} offense")
-        if debug is not None:
+        if debug is not None and args.debug:
             from .trackdebug import write_pictures
 
             for line in write_pictures(debug, args.debug, clip.stem):
                 print("  " + line)
+        if debug is not None and args.detections:
+            from .trackdebug import write_detections
+
+            print("  " + write_detections(debug, args.detections, clip.stem))
 
 
 if __name__ == "__main__":

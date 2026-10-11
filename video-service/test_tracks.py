@@ -353,3 +353,20 @@ def test_a_tail_where_the_detector_sees_the_same_people_is_a_frozen_picture():
     # Faint boxes (the crowd) flicker in and out of a frozen picture: still frozen.
     flicker = [[man(55.0 + 40 * j) for j in range(8)] + ([man(500.0 + k)] if k % 2 else []) for k in range(12)]
     assert frozen_from(moving + flicker) == 11  # the first flicker frame itself differs from the last moving one
+
+
+def test_the_detections_file_holds_every_person_in_every_frame(tmp_path):
+    import json
+
+    from eval.trackdebug import write_detections
+
+    frames, boxes, calibration, _r, _t, _n = simulate(tmp_path)
+    debug: dict = {}
+    track_play(frames, boxes, calibration, jersey_team, FPS, debug)
+    line = write_detections(debug, tmp_path / "det", "play_01")
+    data = json.loads((tmp_path / "det" / "play_01_detections.json").read_text())
+    assert data["fps"] == FPS and len(data["frames"]) == len(frames)
+    first = data["frames"][0][0]
+    assert set(first) == {"x", "y", "color", "score", "box"}
+    assert len(data["frames"][0]) == len(boxes[0])
+    assert "detections:" in line and len(data["tracks"]) == len(boxes[0])

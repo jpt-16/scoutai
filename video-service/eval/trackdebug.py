@@ -147,3 +147,33 @@ def write_pictures(debug: dict, out_dir: Path, stem: str, every_seconds: float =
         cv2.imwrite(str(out_dir / f"{stem}_trk_sheet.jpg"), np.vstack(rows), [cv2.IMWRITE_JPEG_QUALITY, 85])
     report.append(f"pictures: {out_dir}/{stem}_trk_sheet.jpg (all of them) and one per second")
     return report
+
+
+def write_detections(debug: dict, out_dir: Path, stem: str) -> str:
+    """Everyone the detector found in every frame (after the officials, bench and sideline were filtered out), as text:
+    where each stood in yards from the ball in the offense's own view, his jersey color, how sure the detector was,
+    and his box in the picture. No film in it. With this the tracking rules can be tried again and again off the Mac."""
+    import json
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    frames = []
+    for f, (people, colors, boxes) in enumerate(zip(debug["per_frame"], debug["colors"], debug["boxes"])):
+        frames.append(
+            [
+                {
+                    "x": round(float(x), 2),
+                    "y": round(float(y), 2),
+                    "color": [round(float(c), 0) for c in color],
+                    "score": round(float(box[4]), 2),
+                    "box": [round(float(v), 0) for v in box[:4]],
+                }
+                for (x, y), color, box in zip(people, colors, boxes)
+            ]
+        )
+    # The tracker's own answer too, so a new rule can be compared with it.
+    answer = [
+        {"id": t.id, "team": debug["labels"][t.id], "matched": [[f, j] for f, j in t.matched]} for t in debug["tracks"]
+    ]
+    path = out_dir / f"{stem}_detections.json"
+    path.write_text(json.dumps({"fps": debug["fps"], "frames": frames, "tracks": answer}))
+    return f"detections: {path} ({sum(len(f) for f in frames)} people over {len(frames)} frames)"

@@ -135,3 +135,11 @@ Try a bigger model and a lower confidence, and compare those percentages:
 (`r18vd` is the default and the smallest; `r50vd` and `r101vd` are larger and slower, the first run of each downloads
 the weights.) More tiles (3) look at the picture in more pieces, so small far players are bigger to the model.
 
+## Saving what the detector found (so the tracking can be tuned without the film)
+
+    python -m eval.tracks clips/ --out tracks --seconds 8 --tiles 3 --detections detections/
+
+writes `detections/<clip>_detections.json`: every person kept in every frame (yards from the ball in the offense's view,
+jersey color, detector confidence, box), plus the tracker's own answer. It holds no film, only numbers, so it can be sent and
+the tracking rules tried again and again elsewhere. Combine it with `MODEL_CHECKPOINT=PekingU/rtdetr_v2_r50vd` for the better detector.
+
