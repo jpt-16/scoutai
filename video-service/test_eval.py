@@ -164,11 +164,11 @@ def test_the_staffs_names():
     assert classify(line + gun_qb + one_back + [Spot(-18, 0), Spot(-12, -1.3), Spot(12, -1.3), Spot(18, 0)]).staff == "deuces gun"
     # empty: five receivers, no back
     assert classify(line + gun_qb + [Spot(-18, 0), Spot(-12, -1.3), Spot(12, -1.3), Spot(18, 0), Spot(9, 0)]).staff == "empty gun"
-    # trio: three to the right on the line, one left; slot trips: the inside one in the slot
+    # trio (slot trips is the same formation): three to the right, one left, whether or not the inside one is off the line
     trio = classify(line + gun_qb + one_back + [Spot(-18, 0), Spot(9, 0), Spot(13, 0), Spot(19, 0)])
     assert trio.staff == "trio gun right", trio
     slot = classify(line + gun_qb + one_back + [Spot(-18, 0), Spot(9, -1.4), Spot(13, 0), Spot(19, 0)])
-    assert slot.staff == "slot trips gun right", slot
+    assert slot.staff == "trio gun right", slot
     # aces: three wide, a tight end, a back; aces off: the tight end off the line
     aces = classify(line + gun_qb + one_back + [Spot(7, 0), Spot(-18, 0), Spot(-12, -1.3), Spot(18, 0)])
     assert aces.staff.startswith("aces gun"), aces
@@ -185,4 +185,4 @@ def test_pro_and_twins_and_bunch():
     assert twins.staff.startswith("twins"), twins
     # bunch: Y on the line in the middle, Z to his left and F to his right, both off the line behind him
     bunch = classify(line + [Spot(0, -5)] + [Spot(8, 0), Spot(6.5, -1.5), Spot(9.5, -1.5), Spot(-18, 0), Spot(-12, -1.2)])
-    assert bunch.staff.startswith("bunch gun"), bunch
+    assert bunch.staff.startswith("bunch gun"), bunch  # the QB is in the gun, so it says so

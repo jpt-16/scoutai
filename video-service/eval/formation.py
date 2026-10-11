@@ -146,16 +146,16 @@ BUNCH_YARDS = 3.0
 def staff_name(
     *, wide: list[Spot], attached: list[Spot], backs: list[Spot], under_center: bool, strength: str | None
 ) -> str:
-    """Names the shape in the staff's own words, with where the QB stands ("gun" or "under center"),
-    and the strength side where it matters. "" when the shape is none of the staff's names.
+    """Names the shape in the staff's own words. "gun" (shotgun) is said when the QB is in it; under
+    center is the default and is not written. The strength side is added where it matters. "" when the
+    shape is none of the staff's names.
 
-    DUCES 2x2, one back. TRIO / SLOT TRIPS three receivers to one side, one to the other, one back
-    (SLOT TRIPS when the inside of the three is off the line, in the slot). EMPTY five receivers and no
-    back. ACES three wide receivers, a tight end and one back (ACES OFF with the tight end off the line).
-    PRO under center, two backs, a tight end and a receiver each side; TWINS the same people with both
-    receivers on one side and the tight end the other way. BUNCH three receivers within three yards of
-    each other, one on the line and two off it."""
-    qb = "under center" if under_center else "gun"
+    DUCES 2x2, one back. TRIO (also called SLOT TRIPS, the same formation) three receivers to one side,
+    one to the other, one back. EMPTY five receivers and no back. ACES three wide receivers, a tight end
+    and one back (ACES OFF with the tight end off the line). PRO under center, two backs, a tight end
+    and a receiver each side; TWINS the same people with both receivers on one side and the tight end the
+    other way. BUNCH three receivers within three yards of each other, one on the line and two off it."""
+    gun = "" if under_center else " gun"
     side = {"left": " left", "right": " right"}.get(strength or "", "")
     skill = wide + attached
     wide_left = sum(1 for p in wide if p.x < 0)
@@ -165,7 +165,7 @@ def staff_name(
     for a in skill:
         near = [p for p in skill if (p.x - a.x) ** 2 + (p.y - a.y) ** 2 <= BUNCH_YARDS**2]
         if len(near) >= 3 and sum(1 for p in near if p.y >= ON_LINE_MIN_Y) == 1:
-            return f"bunch {qb}{side}"
+            return f"bunch{gun}{side}"
 
     if under_center:
         if len(backs) >= 2 and len(attached) == 1 and len(wide) == 2:
@@ -177,9 +177,7 @@ def staff_name(
         if wide_left == wide_right == 2:
             return "deuces gun"
         if max(wide_left, wide_right) == 3:
-            trips = [p for p in wide if (p.x < 0) == (wide_left > wide_right)]
-            inside = min(trips, key=lambda p: abs(p.x))
-            return f"{'slot trips' if inside.y < ON_LINE_MIN_Y else 'trio'} gun{side}"
+            return f"trio gun{side}"
     if len(backs) == 1 and len(attached) == 1 and len(wide) == 3:
         return f"{'aces off' if attached[0].y < ON_LINE_MIN_Y else 'aces'} gun{side}"
     return ""

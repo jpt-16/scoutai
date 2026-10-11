@@ -770,13 +770,12 @@ sideline) and by box height: a box much shorter than a standing man at that spot
 hidden behind the people in front of him, and his feet are taken from his head instead (`feet_on_field`); (f) one
 man seen twice counts once (`drop_duplicates`); (g) the formation line says when it was made from other than 11
 men. **The staff's own formation names** (`formation.py`'s `staff_name`, printed and written as `STAFF FORM`, e.g.
-"deuces gun", "trio gun left"): DUCES 2x2 with one back; TRIO three receivers to one side (SLOT TRIPS when the
-inside one is off the line); EMPTY five receivers and no back (also reached by motion out of Trio or Deuces);
+"deuces gun", "trio gun left"): DUCES 2x2 with one back; TRIO (SLOT TRIPS is the same formation) three receivers to one side; EMPTY five receivers and no back (also reached by motion out of Trio or Deuces);
 ACES three wide receivers, a tight end and one back (ACES OFF with the tight end off the line); PRO under center,
 two backs one behind the other, a tight end and a receiver each side; TWINS the same people with both receivers on
 one side; BUNCH three receivers within three yards, one on the line and two off it. The line is found as a row
-(`find_line`) and everything is measured from it, so a ball spot a yard off doesn't matter. Hudl's BACKFIELD
-codes (GNF, GUN) aren't mapped yet. Helmet color was measured and does not separate teams at this camera distance. The model weights (Hugging Face) can't be reached from the cloud
+(`find_line`) and everything is measured from it, so a ball spot a yard off doesn't matter. "gun" means shotgun and is only said when the QB is in it (under center is the default and
+unwritten). Hudl's BACKFIELD code GNF isn't mapped yet. Helmet color was measured and does not separate teams at this camera distance. The model weights (Hugging Face) can't be reached from the cloud
 sandbox, so the detector, the tracker and the route reader have still only run on drawn clips. The answer key for routes is free: the coach's corrected play call, expanded by `buildDiagram`
 into a route per letter, against the same call as Assist tagged it.
 
