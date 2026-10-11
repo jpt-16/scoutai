@@ -287,9 +287,14 @@ def test_a_recording_that_freezes_is_cut_where_it_stops_changing():
 
     rng = np.random.default_rng(3)
     moving = [rng.integers(0, 255, (40, 60, 3), dtype=np.uint8) for _ in range(12)]
-    frozen = [moving[-1].copy() for _ in range(20)]
+    last = moving[-1]
+    # A frozen picture still has a little compression noise.
+    frozen = [np.clip(last.astype(int) + rng.integers(-1, 2, last.shape), 0, 255).astype(np.uint8) for _ in range(20)]
     assert len(unfrozen(moving + frozen)) == 12
     assert len(unfrozen(moving)) == 12
+    # A pause in the middle (before the snap) is not cut: only stillness that lasts to the end is.
+    pause = [moving[3].copy() for _ in range(10)]
+    assert len(unfrozen(moving[:4] + pause + moving[4:])) == 26
 
 
 def test_a_trail_is_drawn_where_the_man_went_on_the_field_not_where_the_camera_pointed():
@@ -316,3 +321,20 @@ def test_near_a_sideline_only_a_box_showing_a_whole_man_counts():
     bench = (100.0, 100.0, 108.0, 114.0, 0.9)  # chest-high over the row in front: 0.7 of a man
     assert not locate.short(bench)  # not "short" enough for the head rule...
     assert locate.height_ratio(bench) < FULL_BOX_RATIO  # ...but not a whole man either
+
+
+def test_a_lost_track_is_not_picked_up_by_a_man_in_the_other_teams_jersey():
+    white, navy = (85.0, 0.0, 0.0), (25.0, 5.0, -15.0)
+    # He is lost for ten frames; a navy man stands three yards away the whole time and is the nearest after the gap.
+    snap = [(0.0, 0.0), (6.0, 6.0)]
+    colors0 = [white, navy]
+    per_frame = [[(0.0, 0.0), (6.0, 6.0)]] + [[(6.0, 6.0), (3.0, 0.5)] for _ in range(10)] + [[(0.4, 0.2), (3.0, 0.5)]]
+    colors = [colors0] + [[navy, navy] for _ in range(10)] + [[white, navy]]
+    tracks = follow(snap, per_frame, colors)
+    # The navy man at (3.0, 0.5) was never taken; the track came back only for the man in white.
+    assert all(abs(x - 3.0) > 0.01 for _f, x, _y in tracks[0].points)
+    assert tracks[0].points[-1][1] == pytest.approx(0.4, abs=0.01)
+    # A man in shade (a little darker) is still him.
+    shade = (65.0, 0.0, 0.0)
+    again = follow(snap, per_frame, [colors0] + [[navy, navy] for _ in range(10)] + [[shade, navy]])
+    assert again[0].points[-1][1] == pytest.approx(0.4, abs=0.01)

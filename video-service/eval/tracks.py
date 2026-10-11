@@ -54,7 +54,7 @@ MAX_RADIUS_YARDS = 6.0
 VELOCITY_FRAMES = 6
 MAX_YARDS_PER_FRAME = 0.45
 # Frames of a recording that stop changing (the Hudl player froze at the end of the clip) carry no play.
-FROZEN_FRAME_DIFF = 0.05
+FROZEN_FRAME_DIFF = 0.4
 FROZEN_FRAMES = 8
 # People further than this from the ball (yards) are the crowd.
 MAX_DEPTH = 25.0
@@ -202,6 +202,10 @@ class Track:
 # distance (yards) plus this much per unit of Lab color difference from the jersey the track has had.
 COLOR_YARDS_PER_UNIT = 0.08
 COLOR_MEMORY = 0.8  # how much of a track's remembered color survives each match
+# A man the tracker lost and found again may not be one whose jersey is this different (Lab units) from the one the
+# track remembers: white offense against a navy defense is ~50 apart, a white jersey in shade moves ~20. Only checked when picking
+# a man up after a gap, so a track that is followed frame to frame is never refused for the light changing.
+COLOR_GATE = 40.0
 
 
 def _color_gap(a: tuple[float, float, float] | None, b: tuple[float, float, float] | None) -> float:
@@ -236,6 +240,8 @@ def follow(
         for _, dist, ti, j in pairs:
             t = tracks[ti]
             if ti in taken or j not in free or dist > min(MAX_STEP_YARDS + MISSED_GROWTH_YARDS * t.missed, MAX_RADIUS_YARDS):
+                continue
+            if colors and t.missed > 0 and _color_gap(t.color, colors[f][j]) > COLOR_GATE:
                 continue
             t.points.append((f, people[j][0], people[j][1]))
             t.matched.append((f, j))
@@ -365,15 +371,17 @@ def team_by_jersey(frame: np.ndarray, boxes: list[Box], spots: list[tuple[float,
 
 
 def unfrozen(frames: list[np.ndarray]) -> list[np.ndarray]:
-    """The frames up to where the recording stopped changing (a Hudl clip freezes on its last frame): tracking a
-    still picture adds nothing, and its men would look like they stood still."""
-    still = 0
+    """The frames up to where the recording stopped changing for good (a Hudl clip freezes on its last frame): tracking a
+    still picture adds nothing. Video compression leaves a little noise in a frozen picture, so 'still' is a small
+    average difference, and only a stillness that lasts to the end of the clip counts (a pause before the snap is not cut)."""
+    last_change = 0
     for i in range(1, len(frames)):
         a = cv2.cvtColor(frames[i - 1], cv2.COLOR_BGR2GRAY)
         b = cv2.cvtColor(frames[i], cv2.COLOR_BGR2GRAY)
-        still = still + 1 if float(np.mean(cv2.absdiff(a, b))) < FROZEN_FRAME_DIFF else 0
-        if still >= FROZEN_FRAMES:
-            return frames[: i - FROZEN_FRAMES + 1]
+        if float(np.mean(cv2.absdiff(a, b))) >= FROZEN_FRAME_DIFF:
+            last_change = i
+    if len(frames) - 1 - last_change >= FROZEN_FRAMES:
+        return frames[: last_change + 1]
     return frames
 
 
