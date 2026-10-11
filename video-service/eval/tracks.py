@@ -321,7 +321,7 @@ def people_on_the_field(
 
 
 MOVING_YARDS = 0.9
-MOVING_WINDOW_FRAMES = 6
+MOVING_OFFSETS = (6, 12, 18)  # frames before and after: a man starting from a stance barely moves the first 0.2 s
 
 
 def drop_standing_weak(per_frame, kept_boxes, colors, weak):
@@ -337,7 +337,7 @@ def drop_standing_weak(per_frame, kept_boxes, colors, weak):
                 continue
             x, y = per_frame[f][j]
             moved = False
-            for g in (f - MOVING_WINDOW_FRAMES, f + MOVING_WINDOW_FRAMES):
+            for g in [f + sign * k for k in MOVING_OFFSETS for sign in (-1, 1)]:
                 if not 0 <= g < n or not per_frame[g]:
                     continue
                 nearest = min(np.hypot(x - a, y - b) for a, b in per_frame[g])
