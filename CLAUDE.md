@@ -2,7 +2,7 @@
 
 Web app for high school football staffs: upload the weekly **Hudl breakdown CSV** and get
 vector-drawn **scout team cards**, which you can flip through on an iPad at practice or print
-2 or 4 to a page. The CSV is parsed in the browser and never uploaded; only the AI features and the staff's shared
+2 or 4 to a page. A CSV (the playbook, a breakdown added on `/script`) is parsed in the browser and never uploaded; only the AI features and the staff's shared
 copy (see "Saved for the staff") send anything to a server. On production the app itself is behind sign-in (see "Access" below); preview
 deploys and a local checkout are open.
 
@@ -156,8 +156,13 @@ Free-text tags are classified by keyword (`classifyFormation`, `classifyFront`,
     - `counter` (COUNTER, TREY, GT): the guard and tackle both pull.
     - `iso` / lead: the center and guards climb to the backers and the fullback leads.
     - `draw` and `sneak`.
+    - `hammer`: drawn like power until the staff defines it (placeholder name).
+    - `toss` / `jet` (`TOSS`, `PITCH`; `JET`, `FLY`): outside-zone line blocking. The toss back runs flat to the
+      sideline. The jet is carried by the **motion receiver** (the backside receiver nearest the ball), across behind the line.
 
-    Receivers stalk-block, and the ball carrier's path is orange.
+    **Receivers block the corner** (T-bar labeled `C`, job "Stalk the corner"); on a **toss** the play side's
+    inside receiver **push-cracks the safety** instead (up, then down and inside, labeled `S`, job "Crack: push to
+    the safety"), the rest stalk the corner. The ball carrier's path is orange.
   - **Route tree** (`ROUTE_TREE`): 0 slide, 1 speed out, 2 slant, 3 10-yd out, 4 curl,
     5 comeback, 6 shallow, 7 corner, 8 post, 9 fade. Numbers in a play call are tree calls
     (`routeCall`):
@@ -636,18 +641,22 @@ set to `gemini-3.6-flash`, which overrides the code default until it's removed i
 Film calls send the clip at `FILM_FPS` (8) frames a second, not Gemini's default 1, so a release
 or break isn't lost between frames: about 10-25k input tokens for a 5-12 second clip.
 
-## AI film import is hidden (`NEXT_PUBLIC_FILM_IMPORT`)
+## Film is the source (`NEXT_PUBLIC_FILM_IMPORT`)
 
-A Hudl Assist breakdown is already tagged from the film by people, so the CSV draws the cards and
-the film AI below isn't needed for them. `src/lib/featureFlags.ts`'s `isFilmImportEnabled()` is
-**off by default**: the landing page drops its "AI game film" section, the single-clip uploader and
-the one-click game import, the "use your game film" link and the film copy in the steps, features
-and FAQ, and `/api/parse-video` and `/api/parse-video-batch` return 404 before any auth, rate limit
-or Gemini call, so nothing is billed. The code stays so it can come back: set
-`NEXT_PUBLIC_FILM_IMPORT=true` (it's inlined at build, so the page and the routes agree) and
-redeploy. **Still on:** the AI text work (import review, text-to-card) and the **Secondary**
-read from a pre-snap clip (`/api/read-secondary`, `/api/blob-upload`), the one thing the CSV
-can't tell you (safety depth, press vs. off). The sections below describe the film import as built.
+The product is moving from "upload Hudl Assist's CSV" to "upload the film and get the scout cards",
+because Assist's tags are often wrong and it can't read routes. The landing page's **`#upload`
+section (START HERE) is now the film uploader**: the single-clip card, the one-click game import and
+a button to open a game file the film analyzer wrote (`parseScriptFile`, `game.json`). The Hudl
+CSV / Excel / paste dropzone and the Hudl export guide are **gone from the landing page**.
+`src/lib/featureFlags.ts`'s `isFilmImportEnabled()` is **on by default**; set
+`NEXT_PUBLIC_FILM_IMPORT=false` (inlined at build) to switch the film routes
+(`/api/parse-video`, `/api/parse-video-batch`) off again. Still in the repo, on purpose: the CSV
+parser and everything built on it (the playbook upload, which takes the staff's *own* plays; review
+mode's tags; batch import's sheet as ground truth; practice playsheets; `/script`'s **Add film**).
+The rest of the page's copy (hero, showcase, FAQ) still describes a Hudl breakdown and needs
+rewriting for the film-first story. The Gemini film path below is the web version; the real
+analyzer is the Python pipeline in `video-service/` (formation, tracker, route reader), run on a
+Mac for now, which writes the same `game.json`.
 
 **Parked idea: measure the Secondary from a pre-snap frame, no GPU and no server.** Instead of
 Gemini guessing safety depth by eye, the coach pauses the clip on the pre-snap frame, clicks 4 yard-line /
@@ -710,7 +719,7 @@ writes `tracks/<clip>.json` and `scripts/read-routes.ts` (run with `npx jiti`) n
 player's route with `readRoute`. `test_tracks.py` runs the whole chain on a drawn clip with a panning,
 zooming camera (median error about 0.15 yd, routes named right, and a control with the camera motion ignored
 that fails as it should); real grass has less texture, motion blur and rolling shutter, so expect to tune on
-real clips. **Tracks → cards** (`src/lib/trackedPlay.ts`, `scripts/tracks-to-cards.ts`): `detectionFromTracks` turns a
+real clips. **Tracks → cards** (`src/lib/trackedPlay.ts`, `scripts/tracks-to-cards.ts`; guards against the tracker's mistakes: `dropSameMan` keeps one track where two ids start on the same spot, `trimAtJump` cuts a track at a move faster than 14 yd/s, where it was handed to another man, a path under 5 yards is `unknown` not a guessed route, and the QB is the man directly behind the center, found against the line's own depth so a center a yard off the ball isn't taken for him; a man on the line who ran 7+ yards was a receiver): `detectionFromTracks` turns a
 tracks file into the same `DetectedPlay` (in yards) the film AI makes: linemen (on the line, inside the box)
 are dropped, the man nearest the ball behind the center is `Q` with no route, and every other offensive
 player gets `readRoute`'s name as his `routeType`, so `applyDetectionToCard` / `buildCardFromDetection` draw

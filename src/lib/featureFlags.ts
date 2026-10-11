@@ -17,14 +17,14 @@ export function isAiGateDisabled(): boolean {
 }
 
 /**
- * The AI film-to-card features: the single-clip uploader, the one-click game
+ * The film-to-card features: the single-clip uploader, the one-click game
  * import (a Hudl zip of clips), and their routes (`/api/parse-video`,
- * `/api/parse-video-batch`). Off by default: a Hudl Assist breakdown is already
- * tagged from the film, so the sheet draws the cards and the film AI is hidden.
- * Set `NEXT_PUBLIC_FILM_IMPORT=true` (inlined at build, so the page and the
- * routes agree) to bring them back. The secondary read from a pre-snap clip
- * (`/api/read-secondary`) is separate and stays on.
+ * `/api/parse-video-batch`). On by default: the film is the source of the scout
+ * cards, replacing Hudl Assist's tags. Set `NEXT_PUBLIC_FILM_IMPORT=false`
+ * (inlined at build, so the page and the routes agree) to switch them off. The
+ * secondary read from a pre-snap clip (`/api/read-secondary`) is separate and
+ * stays on.
  */
 export function isFilmImportEnabled(): boolean {
-  return process.env.NEXT_PUBLIC_FILM_IMPORT === "true";
+  return process.env.NEXT_PUBLIC_FILM_IMPORT !== "false";
 }

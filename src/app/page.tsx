@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
@@ -10,7 +10,6 @@ import {
   ClipboardList,
   Clock,
   Download,
-  Film,
   Layers,
   Lock,
   Play,
@@ -30,7 +29,6 @@ import { BatchUploader } from "@/components/BatchUploader";
 import { VideoUploadCard } from "@/components/VideoUploadCard";
 import { FilmToCardVisual } from "@/components/landing/FilmToCardVisual";
 import { HeroDevice } from "@/components/landing/HeroDevice";
-import { HudlExportGuide } from "@/components/landing/HudlExportGuide";
 import { PracticeShowcase } from "@/components/landing/PracticeShowcase";
 import { Reveal, SectionHeading, TryCta } from "@/components/landing/primitives";
 import { TransformShowcase } from "@/components/landing/TransformShowcase";
@@ -278,38 +276,22 @@ export default function UploadPage() {
   const [error, setError] = useState<string | null>(null);
   const [report, setReport] = useState<{ fileName: string; result: HudlParseResult } | null>(null);
 
-  const handleFiles = async (files: File[]) => {
+  const gameInput = useRef<HTMLInputElement>(null);
+
+  // A tracked game (scripts/tracks-to-cards.ts, or the film analyzer) is already a finished script.
+  const handleGameFile = async (file: File) => {
     setBusy(true);
     setError(null);
     try {
-      // A tracked game (scripts/tracks-to-cards.ts) is already a finished script.
-      const game = files.length === 1 && /\.json$/i.test(files[0].name) ? parseScriptFile(await files[0].text()) : null;
-      if (game) {
-        storeScript(game);
-        router.push("/script?loaded=1");
+      const game = /\.json$/i.test(file.name) ? parseScriptFile(await file.text()) : null;
+      if (!game) {
+        setError("That isn't a game file from the film analyzer.");
         return;
       }
-      const imported = await importFilms(files);
-      if (imported.cards.length > 0) {
-        // At least one usable play: go straight to the cards. Notes about the
-        // files (including any film that failed) show there, not in a blocking dialog.
-        storeScript({
-          fileName: "",
-          films: imported.films,
-          savedAt: "",
-          cards: imported.cards,
-          warnings: imported.warnings,
-        });
-        router.push("/script?loaded=1");
-        return;
-      }
-      const [first] = imported.failed;
-      setReport({
-        fileName: files.length > 1 ? `${first.name} (and ${files.length - 1} more)` : first.name,
-        result: first.result,
-      });
+      storeScript(game);
+      router.push("/script?loaded=1");
     } catch {
-      setError("Couldn't read those files. Try exporting them from Hudl again.");
+      setError("Couldn't read that file.");
     } finally {
       setBusy(false);
     }
@@ -371,28 +353,6 @@ export default function UploadPage() {
     router.push("/script");
   };
 
-  const handlePasteText = (text: string) => {
-    setBusy(true);
-    setError(null);
-    try {
-      const result = parseHudlCsvText(text);
-      if (result.cards.length > 0) {
-        storeScript({
-          fileName: "",
-          films: ["Pasted breakdown"],
-          savedAt: "",
-          cards: result.cards.map((c) => ({ ...c, source: c.source || "Pasted breakdown" })),
-          warnings: result.warnings,
-        });
-        router.push("/script?loaded=1");
-        return;
-      }
-      setReport({ fileName: "Pasted breakdown", result });
-    } finally {
-      setBusy(false);
-    }
-  };
-
   return (
     <div id="top" className="flex min-h-dvh flex-col overflow-x-clip">
       <header className="sticky top-0 z-40 border-b border-white/[0.06] bg-background/80 backdrop-blur-xl">
@@ -452,62 +412,6 @@ export default function UploadPage() {
 
             <div className="animate-in fade-in zoom-in-95 mx-auto w-full max-w-[680px] duration-1000 lg:max-w-none">
               <HeroDevice cards={HERO_CARDS} tendencies={HERO_TENDENCIES} />
-            </div>
-          </div>
-        </section>
-
-        {/* Functional upload — the actual product entry point */}
-        <section id="upload" className={`${SECTION} bg-card/30`}>
-          <div className="mx-auto max-w-6xl">
-            <Reveal>
-              <SectionHeading eyebrow="START HERE" title="Drop in this week's breakdown">
-                Export from Hudl, drop the file, and your script is ready.
-              </SectionHeading>
-            </Reveal>
-            <div className="mt-12 grid items-start gap-8 lg:grid-cols-2 lg:gap-10">
-              <Reveal className="lg:order-2 lg:sticky lg:top-24">
-                <AppGate
-                  variant="section"
-                  lockedActions={
-                    <Button size="xl" variant="outline" onClick={handleDemo}>
-                      Try the 5-play demo
-                    </Button>
-                  }
-                >
-                <div className="flex flex-col gap-4">
-                  <UploadDropzone
-                    onFiles={handleFiles}
-                    allowGameFile
-                    onDemo={handleDemo}
-                    onPasteText={handlePasteText}
-                    busy={busy}
-                    error={error}
-                  />
-                  {FILM && (
-                    <p className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <Film className="size-4 shrink-0 text-primary" aria-hidden="true" />
-                      No breakdown handy?{" "}
-                      <a href="#ai-film" className="font-semibold text-primary underline-offset-4 hover:underline">
-                        Use your game film instead
-                      </a>
-                    </p>
-                  )}
-                  <div className="mt-2 flex flex-col gap-3 rounded-2xl border bg-background/50 p-5">
-                    <p className="text-xs font-bold tracking-[0.16em] text-muted-foreground">WORKS WITH</p>
-                    <div className="flex flex-wrap gap-2">
-                      {[".csv", ".xlsx", "Pasted rows", "Several films at once"].map((f) => (
-                        <span key={f} className="rounded-lg border bg-card px-3 py-1.5 font-mono text-[13px] font-semibold">
-                          {f}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-                </AppGate>
-              </Reveal>
-              <Reveal delay={120} className="lg:order-1">
-                <HudlExportGuide />
-              </Reveal>
             </div>
           </div>
         </section>
@@ -592,20 +496,20 @@ export default function UploadPage() {
           </div>
         </section>
 
-        {/* AI game-film analysis (hidden unless NEXT_PUBLIC_FILM_IMPORT=true) */}
-        {FILM && (
-        <section id="ai-film" className={SECTION}>
+        {/* Game film analysis: the product's entry point (NEXT_PUBLIC_FILM_IMPORT=false turns it off) */}
+        <section id="upload" className={`${SECTION} bg-card/30`}>
           <div className="mx-auto max-w-6xl">
             <Reveal>
               <SectionHeading
-                eyebrow="NEW · AI GAME FILM"
+                eyebrow="START HERE"
                 title={
                   <>
-                    No breakdown? <span className="text-primary">Use the film.</span>
+                    Upload the film. <span className="text-primary">Get the scout cards.</span>
                   </>
                 }
               >
-                Upload one play&apos;s clip. AI drafts the card — you drag it into shape.
+                The film is the source, not someone else&apos;s tags. Upload a play&apos;s clip, or a whole game, and the
+                cards are drawn from what the players did. You drag them into shape.
               </SectionHeading>
             </Reveal>
             <Reveal delay={100} className="mt-14">
@@ -615,16 +519,48 @@ export default function UploadPage() {
               delay={150}
               className="mx-auto mt-14 grid max-w-5xl items-start gap-4 lg:grid-cols-2 lg:[&>*:only-child]:col-span-2 lg:[&>*:only-child]:mx-auto lg:[&>*:only-child]:w-full lg:[&>*:only-child]:max-w-xl"
             >
-              <AppGate variant="section">
+              <AppGate
+                variant="section"
+                lockedActions={
+                  <Button size="xl" variant="outline" onClick={handleDemo}>
+                    Try the 5-play demo
+                  </Button>
+                }
+              >
                 <VideoUploadCard hideHeader />
               </AppGate>
               <AppGate variant="section">
                 <BatchUploader />
               </AppGate>
             </Reveal>
+            <Reveal delay={200} className="mx-auto mt-8 flex max-w-5xl flex-wrap items-center justify-between gap-4 rounded-2xl border bg-background/50 p-5">
+              <p className="text-sm text-muted-foreground">
+                Already ran a game through the film analyzer? Open the game file it wrote.
+              </p>
+              <div className="flex flex-wrap items-center gap-3">
+                <Button variant="outline" size="lg" disabled={busy} onClick={() => gameInput.current?.click()}>
+                  Open a game file (.json)
+                </Button>
+                <Button variant="ghost" size="lg" onClick={handleDemo}>
+                  Try the 5-play demo
+                </Button>
+                <input
+                  ref={gameInput}
+                  type="file"
+                  accept=".json,application/json"
+                  className="sr-only"
+                  aria-label="Open a game file"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    e.target.value = "";
+                    if (file) void handleGameFile(file);
+                  }}
+                />
+              </div>
+              {error && <p className="w-full text-sm text-destructive" role="alert">{error}</p>}
+            </Reveal>
           </div>
         </section>
-        )}
 
         {/* How the AI is used on the cards */}
         <section id="ai" className={SECTION}>

@@ -346,7 +346,17 @@ function buildDefense(
 /** How a play is drawn: run blocking, a pass with routes, or a run/pass mix. */
 export type PlayKind = "run" | "pass" | "rpo" | "pa" | "none";
 
-export type RunScheme = "zone" | "outside-zone" | "power" | "counter" | "iso" | "draw" | "sneak";
+export type RunScheme =
+  | "zone"
+  | "outside-zone"
+  | "power"
+  | "hammer"
+  | "counter"
+  | "iso"
+  | "draw"
+  | "sneak"
+  | "toss"
+  | "jet";
 
 export type RouteKind =
   // The route tree, 0-9.
@@ -568,10 +578,13 @@ export function runScheme(card: Pick<HudlPlayCard, "playCall" | "concept">): Run
   const w = words(card.playCall);
   if (/ SNEAK /.test(w)) return "sneak";
   if (/ (COUNTER|TREY|GT|CTR) /.test(w)) return "counter";
+  if (/ HAMMER /.test(w)) return "hammer";
   if (/ (POWER|PWR|G) /.test(w)) return "power";
   if (/ DRAW /.test(w)) return "draw";
   if (/ (ISO|LEAD|BELLY|DIVE|WEDGE) /.test(w)) return "iso";
-  if (/ (OZ|OUTSIDE|STRETCH|WIDE|SWEEP|TOSS|PITCH|JET|OPTION|SPEED|REVERSE) /.test(w)) {
+  if (/ (TOSS|PITCH) /.test(w)) return "toss";
+  if (/ (JET|FLY) /.test(w)) return "jet";
+  if (/ (OZ|OUTSIDE|STRETCH|WIDE|SWEEP|OPTION|SPEED|REVERSE) /.test(w)) {
     return "outside-zone";
   }
   if (card.concept === "power") return "power";
@@ -906,7 +919,7 @@ export function routeSlots(
 }
 
 /** Jobs that aren't a route to name in a title. */
-const NOT_A_ROUTE = /^(Pass pro|Stalk|Route|WING · Route|Crack|—|Block|Hand off|Ball carrier|Mesh:|Read:|Run fake)/i;
+const NOT_A_ROUTE = /^(Pass pro|Stalk|Route|WING · Route|Crack|Push crack|—|Block|Hand off|Ball carrier|Mesh:|Read:|Run fake)/i;
 
 /** See `Diagram.routeSummary`. */
 function summarizeRoutes(
@@ -1366,15 +1379,18 @@ function buildBlocking(
         blocks.push([p.at, [x + d * 16, 124]]);
         break;
       case "outside-zone":
+      case "toss":
+      case "jet":
         blocks.push([p.at, [x + d * 26, 132]]);
         break;
       case "power":
+      case "hammer":
       case "counter":
         if (r(p) >= 0)
           blocks.push([p.at, [x - d * 16, 126]]); // frontside down blocks
         else if (p === backsideGuard)
           pulls.push(
-            scheme === "power"
+            scheme !== "counter"
               ? [p.at, [x, lane1], at(44, lane1), at(56, 124)] // wraps up through the hole
               : [p.at, [x, lane1], at(80, lane1), at(96, 138)], // counter: kicks out the end, wide
           );
@@ -1399,13 +1415,21 @@ function buildBlocking(
   // Backs who don't carry the ball lead-block.
   for (const b of backs) {
     if (b === carrier) continue;
-    if (scheme === "power")
+    if (scheme === "power" || scheme === "hammer")
       blocks.push([b.at, at(80, 136)]); // kick out
     else if (scheme === "iso" || scheme === "draw")
       blocks.push([b.at, at(10, 112)]); // lead up the hole
     else if (scheme !== "sneak" && scheme !== "counter") blocks.push([b.at, at(34, 122)]);
   }
   return { blocks, pulls };
+}
+
+/** The jet man's path: across the formation behind the line, then upfield outside the tackle. */
+function jetPath(c: Pt, d: number): Pt[] {
+  const from = (c[0] - 250) * d;
+  const lane = 168;
+  const stops: [number, number][] = [[0, lane], [70, lane - 6], [130, 118]];
+  return [c, ...(from < -2 ? [[c[0], lane] as Pt] : []), ...stops.filter(([dx]) => dx > from + 4).map(([dx, y]) => [250 + d * dx, y] as Pt)];
 }
 
 function carrierPath(scheme: RunScheme, c: Pt, d: number): Pt[] {
@@ -1416,7 +1440,13 @@ function carrierPath(scheme: RunScheme, c: Pt, d: number): Pt[] {
     case "outside-zone":
       return [c, at(80, c[1] + 4), at(150, 170), at(172, 100)];
     case "power":
+    case "hammer":
       return [c, at(40, 172), at(56, 96)];
+    case "toss":
+      // The pitch: flat to the sideline behind the line, then up the edge.
+      return [c, at(60, c[1]), at(120, c[1] - 4), at(160, 100)];
+    case "jet":
+      return jetPath(c, d);
     case "counter":
       // Counter step away, cut behind the QB, then follow the pullers outside the tackle's wrap.
       return [c, [c[0] - d * 14, c[1] + 6], [250 + d * 10, c[1] + 20], at(50, 180), at(70, 96)];
@@ -1479,7 +1509,15 @@ export function buildDiagram(
   let carrier: Pt[] | null = null;
   let scheme: RunScheme | null = null;
   const jobs: Jobs = {};
-  const ballCarrier = card.concept === "qb-run" ? qb : backs[backs.length - 1];
+  const runSchemeOf = kind === "run" ? runScheme(card) : null;
+  // A jet sweep is carried by the receiver in motion: the backside receiver nearest the ball.
+  const jetMan =
+    runSchemeOf === "jet"
+      ? [...skill]
+          .filter((p) => p.role === "WR")
+          .sort((a, b) => Number((a.x - 250) * d > 0) - Number((b.x - 250) * d > 0) || Math.abs(a.x - 250) - Math.abs(b.x - 250))[0]
+      : undefined;
+  const ballCarrier = jetMan ?? (card.concept === "qb-run" ? qb : backs[backs.length - 1]);
 
   const frontFallback = unit === "defense" && card.frontKey === "unknown";
   const aligned =
@@ -1512,11 +1550,23 @@ export function buildDiagram(
     blocks.push(...blocking.blocks);
     pulls.push(...blocking.pulls);
     carrier = ballCarrier ? carrierPath(scheme, ballCarrier.at, d) : null;
-    // Receivers stalk-block the perimeter instead of running routes.
+    // Receivers block the perimeter instead of running routes: the corner, except on a toss, where
+    // the play side's inside receiver push-cracks the safety (the one receiver there, if only one).
+    const tossSide = scheme === "toss" ? skill.filter((p) => p.role === "WR" && (p.x - 250) * d > 0) : [];
+    const cracker = tossSide.sort((a, b) => Math.abs(a.x - 250) - Math.abs(b.x - 250))[0];
     for (const p of skill) {
-      if (p.role === "WR") {
-        blocks.push([p.at, [p.x, 124]]);
-        jobs[p.label] = "Stalk";
+      if (p === jetMan) {
+        jobs[p.label] = "Ball carrier (jet motion)";
+      } else if (p.role === "WR") {
+        const o = p.x >= 250 ? 1 : -1;
+        if (p === cracker) {
+          // Up the field, then down and inside onto the safety.
+          targetBlocks.push({ path: [p.at, [p.x, yd(4)], [p.x - o * 4 * YARD_X, yd(8)]], target: "S" });
+          jobs[p.label] = "Crack: push to the safety";
+        } else {
+          targetBlocks.push({ path: [p.at, [p.x, yd(3)]], target: "C" });
+          jobs[p.label] = "Stalk the corner";
+        }
       } else {
         jobs[p.label] = RUN_LINE_JOBS[scheme].PST;
       }
@@ -1525,7 +1575,7 @@ export function buildDiagram(
       jobs[b.label] =
         b === ballCarrier
           ? "Ball carrier"
-          : scheme === "power"
+          : scheme === "power" || scheme === "hammer"
             ? "Kick out the end"
             : scheme === "iso" || scheme === "draw"
               ? "Lead up the hole"
@@ -1533,7 +1583,7 @@ export function buildDiagram(
                 ? "Fake"
                 : "Lead / arc";
     }
-    jobs.Q = ballCarrier === qb ? "Ball carrier" : "Hand off";
+    jobs.Q = ballCarrier === qb ? "Ball carrier" : scheme === "toss" ? "Pitch" : scheme === "jet" ? "Hand off / fake" : "Hand off";
   } else if (kind !== "none") {
     const passing = buildRoutes(card.playCall, skill, backs, d);
     routes = passing.routes;
@@ -1757,6 +1807,15 @@ const RUN_LINE_JOBS: Record<RunScheme, Record<LineKey, string>> = {
     BSG: "Pull, wrap to LB",
     BST: "Hinge",
   },
+  hammer: {
+    PST: "Down",
+    PSG: "Down / double",
+    C: "Back block",
+    BSG: "Pull, wrap to LB",
+    BST: "Hinge",
+  },
+  toss: { PST: "Reach", PSG: "Reach", C: "Reach", BSG: "Overtake", BST: "Cut off" },
+  jet: { PST: "Reach", PSG: "Reach", C: "Reach", BSG: "Overtake", BST: "Cut off" },
   counter: {
     PST: "Down",
     PSG: "Down",

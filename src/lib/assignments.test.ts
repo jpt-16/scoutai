@@ -10,7 +10,7 @@ import { parseHudlCsvText } from "./hudlParser";
 const FORMATIONS = ["spread", "trips", "i-form", "double-eagle", "pro", "split-pro"] as const;
 const CALLS = [
   // Runs
-  "IZ", "G ISO", "POWER", "COUNTER", "DRAW", "QB SNEAK", "OUTSIDE ZONE", "SWEEP", "DIVE",
+  "IZ", "G ISO", "POWER", "HAMMER", "COUNTER", "TREY", "DRAW", "QB SNEAK", "OUTSIDE ZONE", "SWEEP", "DIVE", "TOSS", "JET",
   // Passes: route words, combinations, tree numbers, concepts, back tags, screens
   "QUICK SLANT", "CURL", "POST", "FLAT", "SHALLOW", "GO", "4 VERTS", "81", "837", "2960", "FADE OUT OUT FADE",
   "MESH", "MESH RAIL", "FLOOD", "SMASH", "DAGGER", "CROSS", "RAIL", "WHEEL", "BUBBLE", "SCREEN",

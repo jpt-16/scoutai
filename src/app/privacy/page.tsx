@@ -77,17 +77,23 @@ export default function PrivacyPage() {
             opponent&apos;s secondary from a pre-snap clip, the clip you choose is uploaded, as
             described next.
           </li>
+          <li>
+            <strong className="text-foreground">Game film to scout cards.</strong> If you upload a
+            play&apos;s clip, or a game&apos;s clips, to have the cards drawn from the film, each
+            clip is uploaded, as described next, and sent to Gemini to read where the players lined
+            up and the routes they ran, along with the play call and formation from any sheet you
+            added alongside.
+          </li>
         </ul>
         <p>
           If an AI feature can&apos;t be reached, the app keeps working and draws cards exactly as
-          your file reads. AI game-film import, which draws routes from a game clip, is currently
-          switched off.
+          your file reads. Film uploads need the AI, so they wait until it is reachable.
         </p>
       </LegalSection>
 
       <LegalSection title="Film clips you upload">
         <p>
-          A clip you upload for the secondary read is stored in a private cloud file (Vercel Blob),
+          A clip you upload (for the secondary read or to draw cards from) is stored in a private cloud file (Vercel Blob),
           which is not publicly accessible, and sent to Google&apos;s Gemini API to read where the
           defensive backs line up. We don&apos;t currently run an automatic deletion schedule for
           uploaded clips; they remain in private storage tied to your account. To have a clip

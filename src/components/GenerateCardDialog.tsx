@@ -13,7 +13,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { SAFETY_DEPTH_PRESETS } from "@/lib/defensiveAligner";
-import { isFilmImportEnabled } from "@/lib/featureFlags";
 import type { HudlPlayCard } from "@/lib/hudlParser";
 import { cn } from "@/lib/utils";
 
@@ -158,7 +157,7 @@ export function GenerateCardDialog({
               {error.account && (
                 <>
                   {" "}
-                  <Link href={isFilmImportEnabled() ? "/#ai-film" : "/#upload"} className="font-semibold text-primary underline underline-offset-2">
+                  <Link href="/#upload" className="font-semibold text-primary underline underline-offset-2">
                     Sign in or subscribe
                   </Link>
                 </>

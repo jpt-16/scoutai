@@ -42,9 +42,13 @@ export interface TrackedPlayFile {
 
 /** A lineman: on the line and inside the box. Skill players are everyone else on offense. */
 const ON_LINE_MIN_Y = -0.8;
-const BOX_HALF_WIDTH_YARDS = 4.5;
+const BOX_HALF_WIDTH_YARDS = 3.5;
+/** A man on the line who ran this far (or more) was a receiver, not a lineman. */
+const LINEMAN_MAX_TRAVEL_YARDS = 7;
 /** The quarterback is the man nearest the ball behind the center. */
 const QB_MAX_ACROSS_YARDS = 2.5;
+/** He stands at least this far behind the line's depth (a guard a yard off the ball does not). */
+const QB_BEHIND_LINE_YARDS = 0.8;
 /** A read this unsure (margin over the runner-up) is flagged for a coach. */
 export const SURE_CONFIDENCE = 0.25;
 /** The snap is when this many offensive men have all started to move: a man or two in motion before it do not count. */
@@ -53,7 +57,52 @@ const MOVED_YARDS = 1.5;
 /** Take the snap a little before the third man's move shows. */
 const SNAP_LEAD_SECONDS = 0.35;
 
+/** Faster than any high-school player runs (yards a second): a bigger jump is the tracker changing men. */
+const MAX_YARDS_PER_SECOND = 14;
+/** Compare points at least this far apart in time, so a frame of jitter doesn't look like a jump. */
+const JUMP_WINDOW_SECONDS = 0.3;
+/** Two tracks starting this close are one man followed twice. */
+const SAME_MAN_YARDS = 1.2;
+/** The shortest route in the tree runs about this far; less than that hasn't shown which route it is. */
+const MIN_ROUTE_YARDS = 5;
+
 type ReadKind = RouteKind | "block" | "unknown";
+
+/**
+ * The part of a track before the tracker jumped to another man: a move faster than anyone can
+ * run, over a short window, means the track was handed to someone else. What came after belongs
+ * to him, not to this receiver, so it is cut off rather than read as a route.
+ */
+export function trimAtJump(points: [number, number, number][]): [number, number, number][] {
+  for (let i = 1; i < points.length; i++) {
+    let j = i - 1;
+    while (j > 0 && points[i][0] - points[j][0] < JUMP_WINDOW_SECONDS) j -= 1;
+    const dt = points[i][0] - points[j][0];
+    if (dt <= 0) continue;
+    const gap = Math.hypot(points[i][1] - points[j][1], points[i][2] - points[j][2]);
+    if (gap / Math.max(dt, JUMP_WINDOW_SECONDS) > MAX_YARDS_PER_SECOND) return points.slice(0, i);
+  }
+  return points;
+}
+
+/** One man followed twice (two ids that start on the same spot) counts once: the longer track. */
+function dropSameMan(tracks: TrackedPlayer[]): TrackedPlayer[] {
+  const longest = [...tracks].sort((a, b) => b.points.length - a.points.length);
+  const kept: TrackedPlayer[] = [];
+  for (const t of longest) {
+    if (kept.some((k) => Math.hypot(k.start[0] - t.start[0], k.start[1] - t.start[1]) < SAME_MAN_YARDS)) continue;
+    kept.push(t);
+  }
+  return tracks.filter((t) => kept.includes(t));
+}
+
+function pathLength(points: [number, number, number][]): number {
+  let total = 0;
+  for (let i = 1; i < points.length; i++) {
+    total += Math.hypot(points[i][1] - points[i - 1][1], points[i][2] - points[i - 1][2]);
+  }
+  return total;
+}
 
 export interface TrackedRead {
   /** The card's letter he was matched to. */
@@ -103,15 +152,28 @@ export function fromTheSnap(file: TrackedPlayFile): TrackedPlayFile {
 
 const routeName = (kind: string) => kind.replace(/-/g, " ").toUpperCase();
 
-function isLineman(t: TrackedPlayer): boolean {
-  return t.start[1] >= ON_LINE_MIN_Y && Math.abs(t.start[0]) <= BOX_HALF_WIDTH_YARDS;
+/** Where the line's front is: men this far back or deeper are not on it. */
+function lineCutoff(offense: TrackedPlayer[]): number {
+  const box = offense.filter((t) => Math.abs(t.start[0]) <= BOX_HALF_WIDTH_YARDS && t.start[1] > -1.5).map((t) => t.start[1]).sort((a, b) => a - b);
+  const lineY = box.length >= 3 ? box[Math.floor(box.length / 2)] : 0;
+  return Math.min(ON_LINE_MIN_Y, lineY - QB_BEHIND_LINE_YARDS);
 }
 
-/** The quarterback among the offense: nearest the ball, behind the line. */
+/** A lineman: on the line, inside the box, and he never ran off like a receiver. */
+function isLineman(t: TrackedPlayer, cutoff: number): boolean {
+  return t.start[1] >= cutoff && Math.abs(t.start[0]) <= BOX_HALF_WIDTH_YARDS && pathLength(t.points) < LINEMAN_MAX_TRAVEL_YARDS;
+}
+
+/**
+ * The quarterback among the offense: the man behind the line, directly behind the center. The
+ * line's depth is measured from the men in the box, since the center and guards sit a yard or so
+ * off the ball in a track and would otherwise pass for a quarterback.
+ */
 function pickQuarterback(offense: TrackedPlayer[]): TrackedPlayer | undefined {
+  const cutoff = lineCutoff(offense);
   return offense
-    .filter((t) => t.start[1] < ON_LINE_MIN_Y && Math.abs(t.start[0]) <= QB_MAX_ACROSS_YARDS)
-    .sort((a, b) => Math.hypot(a.start[0], a.start[1] + 2) - Math.hypot(b.start[0], b.start[1] + 2))[0];
+    .filter((t) => t.start[1] < cutoff && Math.abs(t.start[0]) <= QB_MAX_ACROSS_YARDS)
+    .sort((a, b) => Math.abs(a.start[0]) - Math.abs(b.start[0]) || b.start[1] - a.start[1])[0];
 }
 
 /**
@@ -124,20 +186,30 @@ export function detectionFromTracks(
   file: TrackedPlayFile,
   opts: { formation?: string; playName?: string } = {},
 ): { detection: DetectedPlay; reads: RawRead[] } {
-  const offense = fromTheSnap(file).tracks.filter((t) => t.team === "offense" && t.points.length >= 2);
-  const qb = pickQuarterback(offense);
+  const followed = dropSameMan(fromTheSnap(file).tracks.filter((t) => t.team === "offense" && t.points.length >= 2));
+  const qb = pickQuarterback(followed);
+  const cutoff = lineCutoff(followed);
+  // Everyone but the quarterback is read only up to where his track jumped to another man.
+  const offense = followed
+    .map((t) => (t === qb ? t : { ...t, points: trimAtJump(t.points) }))
+    .filter((t) => t.points.length >= 2);
   const players: DetectedPlayer[] = [];
   const reads: RawRead[] = [];
 
   for (const t of offense) {
     const start = { x: t.start[0], y: t.start[1] };
-    if (t === qb) {
+    if (qb && t.id === qb.id) {
       players.push({ label: "Q", start, waypoints: [], endpoint: start, routeType: "NONE" });
       continue;
     }
-    if (isLineman(t)) continue;
+    if (isLineman(t, cutoff)) continue;
     const path = t.points.map(([, x, y]) => ({ x, y }));
-    const read = readRoute(path, t.start[0] < 0 ? -1 : 1);
+    const raw = readRoute(path, t.start[0] < 0 ? -1 : 1);
+    // A path cut short (lost, or handed to another man) hasn't shown which route it was.
+    const read =
+      raw.kind !== "block" && pathLength(t.points) < MIN_ROUTE_YARDS
+        ? { ...raw, kind: "unknown" as const, confidence: 0 }
+        : raw;
     const player: DetectedPlayer = {
       label: "?",
       start,

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildDiagram, FIELD, routeTemplateYards, YARD_PX, YARD_X, type RouteKind } from "./formations";
 import { parseHudlCsvText } from "./hudlParser";
-import { cardFromTracks, fromTheSnap, snapTime, type TrackedPlayer, type TrackedPlayFile } from "./trackedPlay";
+import { cardFromTracks, fromTheSnap, snapTime, trimAtJump, type TrackedPlayer, type TrackedPlayFile } from "./trackedPlay";
 
 const CSV = "PLAY #,DN,DIST,OFF FORM,OFF PLAY,PLAY TYPE,OFF STR,PLAY DIR\n1,1,10,Spread,QUICK SLANT,Pass,R,R\n";
 
@@ -10,14 +10,21 @@ function walk(kind: RouteKind, start: [number, number], outside: 1 | -1): [numbe
   const shape = routeTemplateYards(kind, 1);
   const pts: [number, number, number][] = [];
   let t = 0;
+  let prev: [number, number] | null = null;
+  // Run it at a real speed (7 yards a second), so the timing is one a player could have.
+  const at = (x: number, y: number) => {
+    if (prev) t += Math.hypot(x - prev[0], y - prev[1]) / 7;
+    prev = [x, y];
+    pts.push([t, x, y]);
+  };
   for (let i = 0; i < shape.length - 1; i++) {
     for (let k = 0; k < 8; k++) {
       const f = k / 8;
-      pts.push([t++ / 10, start[0] + (shape[i][0] + (shape[i + 1][0] - shape[i][0]) * f) * outside, start[1] + shape[i][1] + (shape[i + 1][1] - shape[i][1]) * f]);
+      at(start[0] + (shape[i][0] + (shape[i + 1][0] - shape[i][0]) * f) * outside, start[1] + shape[i][1] + (shape[i + 1][1] - shape[i][1]) * f);
     }
   }
   const last = shape[shape.length - 1];
-  pts.push([t / 10, start[0] + last[0] * outside, start[1] + last[1]]);
+  at(start[0] + last[0] * outside, start[1] + last[1]);
   return pts;
 }
 
@@ -67,7 +74,7 @@ describe("cardFromTracks", () => {
     const [a] = buildDiagram({ ...row, hash: null }, "team", "offense").players.filter((p) => p.label && p.label !== "Q");
     const { file } = played({});
     const wander = file.tracks.find((t) => Math.abs(t.start[0] - (a.x - FIELD.center.x) / YARD_X) < 0.2 && Math.abs(t.start[1] - (FIELD.los - a.y) / YARD_PX) < 0.2)!;
-    wander.points = Array.from({ length: 30 }, (_, i) => [i / 10, wander.start[0] + Math.sin(i / 2) * 9, wander.start[1] + 8 - i * 0.5]);
+    wander.points = Array.from({ length: 30 }, (_, i) => [i * 0.5, wander.start[0] + Math.sin(i / 2) * 9, wander.start[1] + 8 - i * 0.5]);
     const { card, unsure } = cardFromTracks(file, row);
     expect(unsure.some((u) => u.kind === "unknown")).toBe(true);
     expect(card.notes).toContain("Check routes");
@@ -129,5 +136,27 @@ describe("snapTime and fromTheSnap", () => {
     const cut = fromTheSnap(file);
     expect(cut.tracks[0].points[0][0]).toBeGreaterThan(2.7);
     expect(Math.abs(cut.tracks[0].start[1])).toBeLessThan(1.0);
+  });
+});
+
+describe("a track the tracker handed to another man", () => {
+  it("is cut off at the jump, not read as a route", () => {
+    const cut = trimAtJump([
+      [0, 0, 0], [0.1, 0.3, 0.8], [0.2, 0.5, 1.6], [0.3, 0.8, 2.4], [0.4, 1.0, 3.2],
+      [0.5, 9.0, 12.0], [0.6, 9.2, 12.8], [0.7, 9.4, 13.6],
+    ]);
+    expect(cut).toHaveLength(5);
+    expect(trimAtJump([[0, 0, 0], [0.5, 0, 3], [1, 0, 6]])).toHaveLength(3);
+  });
+
+  it("reads a path that ended before the route showed as unclear, not as a guess", () => {
+    const row = parseHudlCsvText(CSV).cards[0];
+    const [a] = buildDiagram({ ...row, hash: null }, "team", "offense").players.filter((p) => p.label && p.label !== "Q");
+    const { file } = played({});
+    const man = file.tracks.find((t) => Math.abs(t.start[0] - (a.x - FIELD.center.x) / YARD_X) < 0.2 && Math.abs(t.start[1] - (FIELD.los - a.y) / YARD_PX) < 0.2)!;
+    // Three yards out and lost: could be a hitch, a speed out, anything.
+    man.points = Array.from({ length: 10 }, (_, i) => [i * 0.1, man.start[0] + i * 0.3, man.start[1] + i * 0.1]);
+    const { unsure } = cardFromTracks(file, row);
+    expect(unsure.some((u) => u.kind === "unknown")).toBe(true);
   });
 });
