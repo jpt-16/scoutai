@@ -352,4 +352,4 @@ def test_a_tail_where_the_detector_sees_the_same_people_is_a_frozen_picture():
     assert frozen_from(moving[:5] + still[:9] + moving[5:]) == 5 + 9 + 5
     # Faint boxes (the crowd) flicker in and out of a frozen picture: still frozen.
     flicker = [[man(55.0 + 40 * j) for j in range(8)] + ([man(500.0 + k)] if k % 2 else []) for k in range(12)]
-    assert frozen_from(moving + flicker) == 10
+    assert frozen_from(moving + flicker) == 11  # the first flicker frame itself differs from the last moving one
