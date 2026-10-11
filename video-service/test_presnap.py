@@ -83,3 +83,19 @@ def test_reads_trips_right_whichever_way_the_offense_is_going(tmp_path, directio
     assert (f.key, f.strength) == ("trips", "right"), f
     assert result["offense"] == len(TRIPS_RIGHT)
     assert (tmp_path / "debug" / "play_07.jpg").exists()
+
+
+def test_one_person_seen_twice_counts_once(tmp_path):
+    from eval.presnap import drop_duplicates
+
+    a = ((0, 0, 10, 20, 0.9), 1.0, 2.0)
+    b = ((1, 0, 11, 20, 0.6), 1.1, 2.1)  # the same man, less sure
+    c = ((50, 0, 60, 20, 0.8), 6.0, 2.0)
+    assert drop_duplicates([a, b, c]) == [a, c]
+
+
+def test_people_at_the_sidelines_are_not_players(tmp_path):
+    # A man standing a yard inside the far sideline is a sideline player, not the formation's.
+    clip, boxes = make_clip(tmp_path, 1)
+    result = read_clip(clip, StandIn(boxes), tiles=1, debug_dir=None)
+    assert result["offense"] == len(TRIPS_RIGHT)

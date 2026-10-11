@@ -38,8 +38,12 @@ CONFIDENCE = 0.4
 # or the other end of the field.
 MAX_DEPTH = 22.0
 FIELD_WIDTH = 160 / 3
-# Anyone this far past a sideline (yards) is the bench, the coaches or the officials, not a player.
-SIDE_MARGIN = 1.0
+# A player stands at least this far inside a sideline (yards). People closer to it, or past it, are the
+# bench, the coaches or the officials: on real film the far sideline is lined with a whole team, and the
+# field mapping is only good to about a yard out there.
+EDGE_YARDS = 2.0
+# Two detections this close together (yards) are one player seen twice; the surer one is kept.
+SAME_PLAYER_YARDS = 0.4
 
 
 class Detector:
@@ -100,6 +104,16 @@ def torso_color(frame_bgr: np.ndarray, box: tuple[float, float, float, float, fl
     return float(lab[0]), float(lab[1]), float(lab[2])
 
 
+def drop_duplicates(players: list) -> list:
+    """One entry per person: of any detections within `SAME_PLAYER_YARDS` of each other, the surest."""
+    kept: list = []
+    for item in sorted(players, key=lambda p: -p[0][4]):
+        _, x, y = item
+        if all((x - kx) ** 2 + (y - ky) ** 2 > SAME_PLAYER_YARDS**2 for _, kx, ky in kept):
+            kept.append(item)
+    return [p for p in players if any(p is k for k in kept)]
+
+
 def read_clip(path: Path, detector: Detector, tiles: int, debug_dir: Path | None) -> dict:
     calib = json.loads(path.with_suffix(".json").read_text())
     direction = calib["direction"]
@@ -116,10 +130,11 @@ def read_clip(path: Path, detector: Detector, tiles: int, debug_dir: Path | None
     for box in detector.people(frame, tiles):
         # Where he stands: the middle of his feet.
         fx, fy = transform_point(matrix, (box[0] + box[2]) / 2, box[3])
-        if not (-SIDE_MARGIN <= fx <= FIELD_WIDTH + SIDE_MARGIN) or abs(fy - ball[1]) > MAX_DEPTH:
+        if not (EDGE_YARDS <= fx <= FIELD_WIDTH - EDGE_YARDS) or abs(fy - ball[1]) > MAX_DEPTH:
             continue
         players.append((box, (fx - ball[0]) * direction, (fy - ball[1]) * direction))
 
+    players = drop_duplicates(players)
     labels, offense_label = split_teams([torso_color(frame, b) for b, _, _ in players], [y for _, _, y in players])
     offense = [Spot(x, y) for (b, x, y), l in zip(players, labels) if l == offense_label]
     formation = classify(offense)

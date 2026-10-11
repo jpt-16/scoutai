@@ -36,8 +36,8 @@ from .teams import two_means
 
 # People further than this (yards) from the rest of the crowd's middle are fans and sideline staff.
 CROWD_YARDS = 25.0
-# Anyone this far past a sideline (yards) is the bench, the coaches or the officials, not a player.
-SIDE_MARGIN = 1.0
+# A player stands at least this far inside a sideline (yards); see presnap.EDGE_YARDS.
+EDGE_YARDS = 2.0
 FIELD_WIDTH = 160 / 3
 MIN_PER_TEAM = 5
 # The ball is a bit past the offense's front feet.
@@ -85,7 +85,7 @@ def locate_scene(points: list[tuple[float, float]], labels: list[int]) -> Scene 
     keep = [
         i
         for i, (x, y) in enumerate(points)
-        if abs(y - center[1]) <= CROWD_YARDS and -SIDE_MARGIN <= x <= FIELD_WIDTH + SIDE_MARGIN
+        if abs(y - center[1]) <= CROWD_YARDS and EDGE_YARDS <= x <= FIELD_WIDTH - EDGE_YARDS
     ]
     ys = {k: [points[i][1] for i in keep if labels[i] == k] for k in (0, 1)}
     if min(len(ys[0]), len(ys[1])) < MIN_PER_TEAM:

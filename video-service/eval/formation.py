@@ -44,6 +44,16 @@ class Formation:
 
 
 def classify(offense: list[Spot]) -> Formation:
+    """The formation, with a note when the count isn't the 11 an offense has, since a read from
+    9 or 14 men is worth a second look (a man the detector missed, or a referee counted)."""
+    got = _classify(offense)
+    if len(offense) != 11 and got.key != "unknown":
+        note = f"{len(offense)} offensive players found, expected 11"
+        return Formation(got.key, got.strength, f"{got.notes}; {note}" if got.notes else note)
+    return got
+
+
+def _classify(offense: list[Spot]) -> Formation:
     if len(offense) < MIN_PLAYERS:
         return Formation("unknown", None, f"only {len(offense)} offensive players found")
 
