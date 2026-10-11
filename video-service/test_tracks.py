@@ -370,3 +370,21 @@ def test_the_detections_file_holds_every_person_in_every_frame(tmp_path):
     assert set(first) == {"x", "y", "color", "score", "box"}
     assert len(data["frames"][0]) == len(boxes[0])
     assert "detections:" in line and len(data["tracks"]) == len(boxes[0])
+
+
+def test_a_saved_raw_dump_replays_to_the_same_people_without_the_film(tmp_path):
+    import json
+
+    from eval.replay import replay
+    from eval.trackdebug import write_detections
+
+    frames, boxes, calibration, _r, _t, _n = simulate(tmp_path)
+    debug: dict = {}
+    track_play(frames, boxes, calibration, jersey_team, FPS, debug)
+    write_detections(debug, tmp_path / "det", "play_01")
+    dump = json.loads((tmp_path / "det" / "play_01_detections.json").read_text())
+    again = replay(dump)
+    # The same people in every frame as the live run found (positions and count), with no pixels used.
+    assert [len(f) for f in again["per_frame"]] == [len(f) for f in debug["per_frame"]]
+    for a, b in zip(again["per_frame"][0], debug["per_frame"][0]):
+        assert abs(a[0] - b[0]) < 0.05 and abs(a[1] - b[1]) < 0.05

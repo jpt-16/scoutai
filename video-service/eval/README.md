@@ -139,7 +139,7 @@ the weights.) More tiles (3) look at the picture in more pieces, so small far pl
 
     python -m eval.tracks clips/ --out tracks --seconds 8 --tiles 3 --detections detections/
 
-writes `detections/<clip>_detections.json`: every person kept in every frame (yards from the ball in the offense's view,
+writes `detections/<clip>_detections.json` (it now also holds the RAW detector boxes with each box's jersey color and referee flag, and the camera, so `python -m eval.replay <file>` can re-run the filters and the tracker without the film or the detector): every person kept in every frame (yards from the ball in the offense's view,
 jersey color, detector confidence, box), plus the tracker's own answer. It holds no film, only numbers, so it can be sent and
 the tracking rules tried again and again elsewhere. Combine it with `MODEL_CHECKPOINT=PekingU/rtdetr_v2_r50vd` for the better detector.
 

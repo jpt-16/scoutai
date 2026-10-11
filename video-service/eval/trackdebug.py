@@ -174,6 +174,39 @@ def write_detections(debug: dict, out_dir: Path, stem: str) -> str:
     answer = [
         {"id": t.id, "team": debug["labels"][t.id], "matched": [[f, j] for f, j in t.matched]} for t in debug["tracks"]
     ]
+    # The raw detector output too, with what needs the film (jersey color, is he a referee) worked out, and the camera, so the
+    # filters (officials, bench, sideline) and the tracking can all be replayed without the film (see `eval.replay`).
+    from .officials import looks_like_official
+    from .presnap import torso_color
+
+    raw = []
+    for f, (frame, boxes) in enumerate(zip(debug["frames"], debug["raw_boxes"])):
+        raw.append(
+            [
+                {
+                    "box": [round(float(v), 1) for v in b[:4]],
+                    "score": round(float(b[4]), 3),
+                    "color": [round(float(c), 0) for c in torso_color(frame, b)],
+                    "official": bool(looks_like_official(frame, b)),
+                }
+                for b in boxes
+            ]
+        )
+    to_snap = [m.tolist() for m in debug["to_snap"]]
     path = out_dir / f"{stem}_detections.json"
-    path.write_text(json.dumps({"fps": debug["fps"], "frames": frames, "tracks": answer}))
+    path.write_text(
+        json.dumps(
+            {
+                "fps": debug["fps"],
+                "frames": frames,
+                "tracks": answer,
+                "raw": raw,
+                "to_snap": to_snap,
+                "calibration": debug["calibration"],
+                "ball": [float(v) for v in debug["ball"]],
+                "direction": debug["direction"],
+            },
+            default=lambda o: o.tolist() if hasattr(o, "tolist") else float(o),
+        )
+    )
     return f"detections: {path} ({sum(len(f) for f in frames)} people over {len(frames)} frames)"

@@ -273,15 +273,18 @@ def people_on_the_field(
     locate,
     ball: tuple[float, float],
     direction: int,
+    info: list[tuple[tuple[float, float, float], bool]] | None = None,
 ) -> tuple[list[Box], list[tuple[float, float]], list[tuple[float, float, float]]]:
     """The people in one frame who are players: not the referees, not the bench or the sideline (a box too
     short for where its man stands is someone hidden behind others, and his head says where his feet are),
-    one entry each. Returns their boxes, their positions in yards from the ball in the offense's view, and their jersey colors."""
+    one entry each. Returns their boxes, their positions in yards from the ball in the offense's view, and their jersey colors.
+    `info[i]` is box i's (jersey color, is an official) when it was worked out before (a saved raw dump replayed without the film)."""
     from .presnap import torso_color
 
     found: list[tuple[Box, float, float]] = []
-    for b in boxes:
-        if looks_like_official(frame_bgr, b):
+    colors_of: dict[int, tuple[float, float, float]] = {}
+    for bi, b in enumerate(boxes):
+        if (info[bi][1] if info is not None else looks_like_official(frame_bgr, b)):
             continue
         cx = (b[0] + b[2]) / 2
         top, bottom = cv2.perspectiveTransform(np.float32([[[cx, b[1]], [cx, b[3]]]]), to_snap)[0]
@@ -296,6 +299,7 @@ def people_on_the_field(
             continue
         if margin <= fx <= FIELD_WIDTH - margin and on_the_field(fx, fy, ball[1], MAX_DEPTH):
             found.append((b, fx, fy))
+            colors_of[id(b)] = info[bi][0] if info is not None else None  # type: ignore[assignment]
     kept: list[tuple[Box, float, float]] = []
     for item in sorted(found, key=lambda p: -p[0][4]):
         if all((item[1] - k[1]) ** 2 + (item[2] - k[2]) ** 2 > SAME_PERSON_YARDS**2 for k in kept):
@@ -304,7 +308,7 @@ def people_on_the_field(
     return (
         [k[0] for k in kept],
         [((k[1] - ball[0]) * direction, (k[2] - ball[1]) * direction) for k in kept],
-        [torso_color(frame_bgr, k[0]) for k in kept],
+        [colors_of[id(k[0])] if info is not None else torso_color(frame_bgr, k[0]) for k in kept],
     )
 
 
@@ -337,7 +341,7 @@ def track_play(
     tracks = follow(per_frame[0], per_frame, colors)
     labels = team_of(frames_bgr[snap], kept_boxes[0], per_frame[0])
     if debug is not None:  # what a picture of the tracking needs
-        debug.update(frames=frames_bgr[snap:], boxes=kept_boxes, tracks=tracks, labels=labels, fps=fps, to_snap=to_snap, per_frame=per_frame, colors=colors)
+        debug.update(frames=frames_bgr[snap:], boxes=kept_boxes, tracks=tracks, labels=labels, fps=fps, to_snap=to_snap, per_frame=per_frame, colors=colors, raw_boxes=boxes[snap:], calibration=calibration, ball=ball, direction=direction)
     return {
         "fps": fps,
         "tracks": [
