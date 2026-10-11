@@ -1,6 +1,6 @@
 """Pick the pre-snap frame of a clip and mark where the field is: once per clip.
 
-    python -m eval.calibrate clips/play_01.mp4
+    python -m eval.calibrate clips/play_01.mp4 [--frame 190 --use-frame]
 
 A window shows the clip. Step to the frame just before the snap (a / d: one frame,
 w / s: ten), press Enter, then click four spots where a yard line meets a hash mark or
@@ -17,8 +17,8 @@ from each sideline, 53.33 yards wide (NFHS).
 
 from __future__ import annotations
 
+import argparse
 import json
-import sys
 from pathlib import Path
 
 import cv2
@@ -36,9 +36,12 @@ def parse_spot(text: str) -> tuple[float, float]:
 
 
 def main() -> None:
-    if len(sys.argv) != 2:
-        raise SystemExit(__doc__)
-    path = Path(sys.argv[1])
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("clip", type=Path)
+    ap.add_argument("--frame", type=int, default=0, help="frame to start on (and, with --use-frame, to use as is)")
+    ap.add_argument("--use-frame", action="store_true", help="skip the frame picker and calibrate on --frame")
+    args = ap.parse_args()
+    path = args.clip
     cap = cv2.VideoCapture(str(path))
     total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     if total <= 0:
@@ -49,9 +52,9 @@ def main() -> None:
         ok, frame = cap.read()
         return frame if ok else None
 
-    index = 0
+    index = max(0, min(total - 1, args.frame))
     title = "frame: a/d = 1, w/s = 10, Enter = this one"
-    while True:
+    while not args.use_frame:
         frame = frame_at(index)
         shown = frame.copy()
         cv2.putText(shown, f"{index}/{total - 1}", (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
@@ -61,6 +64,7 @@ def main() -> None:
             break
         index = max(0, min(total - 1, index + {ord("d"): 1, ord("a"): -1, ord("w"): 10, ord("s"): -10}.get(key, 0)))
     cv2.destroyAllWindows()
+    frame = frame_at(index)
 
     clicks: list[tuple[int, int]] = []
 
@@ -79,15 +83,27 @@ def main() -> None:
         return clicks[-1]
 
     cv2.namedWindow("click")
+    cv2.imshow("click", frame)
+    cv2.waitKey(50)
+    # Clicking a window to bring it forward would count as a click on the field, so do that now.
+    input("The picture window is open. Click on it once to bring it forward, then come back here and press Enter. ")
     source, destination = [], []
     for i in range(4):
-        pt = click_one(f"Click spot {i + 1} of 4 (a yard line meeting a hash or sideline)")
         while True:
+            pt = click_one(f"Click spot {i + 1} of 4 (a yard line meeting a hash or sideline)")
+            answer = input("  where is it? (e.g. 35 HL, or `skip` if that click was a mistake): ")
+            if answer.strip().lower() in ("skip", "redo", "s"):
+                clicks.pop()
+                print("  ok, click again")
+                continue
             try:
-                dest = parse_spot(input("  where is it? (e.g. 35 HL): "))
-                break
+                dest = parse_spot(answer)
             except ValueError as e:
                 print("  ", e)
+                clicks.pop()
+                print("  click that spot again")
+                continue
+            break
         source.append(pt)
         destination.append(dest)
     ball = click_one("Click the ball")
