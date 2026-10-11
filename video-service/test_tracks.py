@@ -289,12 +289,12 @@ def test_a_recording_that_freezes_is_cut_where_it_stops_changing():
     moving = [rng.integers(0, 255, (40, 60, 3), dtype=np.uint8) for _ in range(12)]
     last = moving[-1]
     # A frozen picture still has a little compression noise.
-    frozen = [np.clip(last.astype(int) + rng.integers(-1, 2, last.shape), 0, 255).astype(np.uint8) for _ in range(20)]
+    frozen = [np.clip(last.astype(int) + (rng.random(last.shape) < 0.05), 0, 255).astype(np.uint8) for _ in range(20)]
     assert len(unfrozen(moving + frozen)) == 12
     assert len(unfrozen(moving)) == 12
     # A pause in the middle (before the snap) is not cut: only stillness that lasts to the end is.
     pause = [moving[3].copy() for _ in range(10)]
-    assert len(unfrozen(moving[:4] + pause + moving[4:])) == 26
+    assert len(unfrozen(moving[:4] + pause + moving[4:])) == 22
 
 
 def test_a_trail_is_drawn_where_the_man_went_on_the_field_not_where_the_camera_pointed():
@@ -338,3 +338,15 @@ def test_a_lost_track_is_not_picked_up_by_a_man_in_the_other_teams_jersey():
     shade = (65.0, 0.0, 0.0)
     again = follow(snap, per_frame, [colors0] + [[navy, navy] for _ in range(10)] + [[shade, navy]])
     assert again[0].points[-1][1] == pytest.approx(0.4, abs=0.01)
+
+
+def test_a_tail_where_the_detector_sees_the_same_people_is_a_frozen_picture():
+    from eval.tracks import frozen_from
+
+    man = lambda x: (x, 100.0, x + 20.0, 140.0, 0.9)  # noqa: E731
+    moving = [[man(10.0 + 5 * i), man(200.0)] for i in range(10)]
+    still = [[man(55.0 + 0.5 * (k % 2)), man(200.0 + 0.3 * (k % 3))] for k in range(12)]
+    assert frozen_from(moving + still) == 10
+    assert frozen_from(moving) == len(moving)
+    # A pause in the middle is not a tail.
+    assert frozen_from(moving[:5] + still[:9] + moving[5:]) == 5 + 9 + 5

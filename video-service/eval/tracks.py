@@ -385,6 +385,27 @@ def unfrozen(frames: list[np.ndarray]) -> list[np.ndarray]:
     return frames
 
 
+FROZEN_BOX_PIXELS = 2.0
+
+
+def frozen_from(boxes: list[list[Box]]) -> int:
+    """The first frame of a tail in which the detector sees the same people in the same places (to within a couple of
+    pixels) to the end of the clip: a frozen picture, whatever noise compression left in its pixels. The length of
+    `boxes` if there is no such tail of at least `FROZEN_FRAMES` frames."""
+
+    def same(a: list[Box], b: list[Box]) -> bool:
+        if len(a) != len(b):
+            return False
+        ka, kb = sorted(a, key=lambda r: (r[0], r[1])), sorted(b, key=lambda r: (r[0], r[1]))
+        return all(abs(x - y) <= FROZEN_BOX_PIXELS for p, q in zip(ka, kb) for x, y in zip(p[:4], q[:4]))
+
+    last_change = 0
+    for i in range(1, len(boxes)):
+        if not same(boxes[i - 1], boxes[i]):
+            last_change = i
+    return last_change + 1 if len(boxes) - 1 - last_change >= FROZEN_FRAMES else len(boxes)
+
+
 def track_clip(clip: Path, detector, seconds: float = 6.0, tiles: int = 2, debug: dict | None = None) -> dict:
     """Follows everyone through one clip, from the calibration file beside it."""
     calibration = json.loads(clip.with_suffix(".json").read_text())
@@ -401,6 +422,8 @@ def track_clip(clip: Path, detector, seconds: float = 6.0, tiles: int = 2, debug
     # Frame 0 of the list is the snap frame the calibration was made on.
     calibration = {**calibration, "frame": 0}
     boxes = [detector.people(f, tiles) for f in frames]
+    end = frozen_from(boxes)
+    frames, boxes = frames[:end], boxes[:end]
     return track_play(frames, boxes, calibration, team_by_jersey, fps, debug)
 
 
