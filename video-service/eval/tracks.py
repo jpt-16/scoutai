@@ -53,7 +53,7 @@ SAME_PERSON_YARDS = 0.4
 # Below this much paint (summed over a half-size frame) the paint can't hold the camera still.
 MIN_PAINT = 150.0
 # A track missing for this many frames is dropped.
-MAX_MISSED = 12
+MAX_MISSED = 20
 MIN_MATCHES = 25
 
 

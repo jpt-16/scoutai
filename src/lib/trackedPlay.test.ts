@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildDiagram, FIELD, routeTemplateYards, YARD_PX, YARD_X, type RouteKind } from "./formations";
 import { parseHudlCsvText } from "./hudlParser";
-import { cardFromTracks, type TrackedPlayer, type TrackedPlayFile } from "./trackedPlay";
+import { cardFromTracks, fromTheSnap, snapTime, type TrackedPlayer, type TrackedPlayFile } from "./trackedPlay";
 
 const CSV = "PLAY #,DN,DIST,OFF FORM,OFF PLAY,PLAY TYPE,OFF STR,PLAY DIR\n1,1,10,Spread,QUICK SLANT,Pass,R,R\n";
 
@@ -93,5 +93,41 @@ describe("a tracked game as a file", () => {
     expect(parseScriptFile("{}")).toBeNull();
     expect(parseScriptFile("not json")).toBeNull();
     expect(parseScriptFile(JSON.stringify({ cards: [{ nope: 1 }] }))).toBeNull();
+  });
+});
+
+describe("snapTime and fromTheSnap", () => {
+  const still = (id: number, x: number, y: number, until: number, then: [number, number]): TrackedPlayer => ({
+    id,
+    team: "offense",
+    start: [x, y],
+    points: Array.from({ length: 60 }, (_, i) => {
+      const t = i / 10;
+      const k = Math.max(0, t - until);
+      return [t, x + then[0] * k, y + then[1] * k] as [number, number, number];
+    }),
+  });
+
+  it("finds the snap as the time the fourth man starts to move, not a man in motion", () => {
+    const file: TrackedPlayFile = {
+      tracks: [
+        still(1, -10, -1, 1.0, [0, 3]), // motion man, early, alone
+        still(2, 0, -5, 3.0, [0, 4]),
+        still(3, 10, 0, 3.0, [1, 4]),
+        still(4, 14, -1, 3.1, [0, 5]),
+      ],
+    };
+    const at = snapTime(file);
+    expect(at).toBeGreaterThan(2.7);
+    expect(at).toBeLessThan(3.2);
+  });
+
+  it("starts every route from the snap, with the pre-snap standing time cut off", () => {
+    const file: TrackedPlayFile = {
+      tracks: [still(1, 10, 0, 3.0, [0, 6]), still(2, 14, 0, 3.0, [0, 6]), still(3, -10, 0, 3.0, [0, 6]), still(4, 0, -5, 3.0, [0, 4])],
+    };
+    const cut = fromTheSnap(file);
+    expect(cut.tracks[0].points[0][0]).toBeGreaterThan(2.7);
+    expect(Math.abs(cut.tracks[0].start[1])).toBeLessThan(1.0);
   });
 });

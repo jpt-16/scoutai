@@ -47,6 +47,11 @@ const BOX_HALF_WIDTH_YARDS = 4.5;
 const QB_MAX_ACROSS_YARDS = 2.5;
 /** A read this unsure (margin over the runner-up) is flagged for a coach. */
 export const SURE_CONFIDENCE = 0.25;
+/** The snap is when this many offensive men have all started to move: a man or two in motion before it do not count. */
+const SNAP_MOVERS = 4;
+const MOVED_YARDS = 1.5;
+/** Take the snap a little before the third man's move shows. */
+const SNAP_LEAD_SECONDS = 0.35;
 
 type ReadKind = RouteKind | "block" | "unknown";
 
@@ -63,6 +68,37 @@ interface RawRead {
   kind: ReadKind;
   confidence: number;
   runnerUp?: RouteKind;
+}
+
+/**
+ * When the ball was snapped, from the tracks: the time the fourth offensive man to move more than a
+ * yard from his spot started to. A track file starts at a calibrated frame that can be seconds before the snap
+ * (the players are set, one may be in motion), and a route is read from the snap on. 0 if too few moved.
+ */
+export function snapTime(file: TrackedPlayFile): number {
+  const times = file.tracks
+    .filter((t) => t.team === "offense" && t.points.length >= 2)
+    .map((t) => {
+      const [, x0, y0] = t.points[0];
+      return t.points.find(([, x, y]) => Math.hypot(x - x0, y - y0) > MOVED_YARDS)?.[0];
+    })
+    .filter((v): v is number => v !== undefined)
+    .sort((a, b) => a - b);
+  return times.length >= SNAP_MOVERS ? Math.max(0, times[SNAP_MOVERS - 1] - SNAP_LEAD_SECONDS) : 0;
+}
+
+/** The same tracks with everything before the snap cut off: each man starts where he stood at the snap. */
+export function fromTheSnap(file: TrackedPlayFile): TrackedPlayFile {
+  const at = snapTime(file);
+  if (at <= 0) return file;
+  return {
+    ...file,
+    tracks: file.tracks.flatMap((t) => {
+      const points = t.points.filter(([s]) => s >= at);
+      if (points.length < 2) return t.team === "offense" ? [] : [];
+      return [{ ...t, start: [points[0][1], points[0][2]] as [number, number], points }];
+    }),
+  };
 }
 
 const routeName = (kind: string) => kind.replace(/-/g, " ").toUpperCase();
@@ -88,7 +124,7 @@ export function detectionFromTracks(
   file: TrackedPlayFile,
   opts: { formation?: string; playName?: string } = {},
 ): { detection: DetectedPlay; reads: RawRead[] } {
-  const offense = file.tracks.filter((t) => t.team === "offense" && t.points.length >= 2);
+  const offense = fromTheSnap(file).tracks.filter((t) => t.team === "offense" && t.points.length >= 2);
   const qb = pickQuarterback(offense);
   const players: DetectedPlayer[] = [];
   const reads: RawRead[] = [];

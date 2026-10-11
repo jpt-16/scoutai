@@ -783,7 +783,13 @@ the sideline). Now: the camera is held against the field's painted lines directl
 measured on the real clips it beats the ORB chain, 0.60 vs 0.33 paint correlation at 5 s on play 5), detections are filtered
 exactly like the formation read (`people_on_the_field`: officials, the edge margin, short boxes whose feet are hidden, duplicates),
 the radius a missed man may jump is capped (`MISSED_GROWTH_CAP`) and a track remembers his jersey color so two men who cross
-keep their own tracks (`COLOR_YARDS_PER_UNIT`). Shared geometry lives in `eval/people.py`. The model weights (Hugging Face) can't be reached from the cloud
+keep their own tracks (`COLOR_YARDS_PER_UNIT`). Shared geometry lives in `eval/people.py`. **From the snap, not from the calibrated frame** (`trackedPlay.ts`'s `snapTime` / `fromTheSnap`): a calibrated frame can be
+seconds before the ball moves (play 6's was 3 s early), so the snap is found as the time the fourth offensive man moves
+more than 1.5 yd (a man or two in motion don't count), minus 0.35 s, and every route is read from there. Run the tracker with
+`--seconds 8` so there is a full play after it. **First route read on real film:** play 5's left slot receiver reads as a HITCH
+(Hudl's tag: HITCH, pass left), at low confidence so it is flagged; the other receivers' tracks were lost mid-play (the detector
+misses blurred men; `MAX_MISSED` is now 20 frames and `--tiles 2` finds more); play 6's three receivers on the run side read as
+blockers and the back's path runs right, as READ POWER right should. The model weights (Hugging Face) can't be reached from the cloud
 sandbox, so the detector, the tracker and the route reader have still only run on drawn clips. The answer key for routes is free: the coach's corrected play call, expanded by `buildDiagram`
 into a route per letter, against the same call as Assist tagged it.
 
