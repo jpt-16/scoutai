@@ -116,6 +116,10 @@ def write_pictures(debug: dict, out_dir: Path, stem: str, every_seconds: float =
     for t in tracks:
         for f, speed in jumps[t.id]:
             report.append(f"track {t.id} ({labels[t.id]}) jumped at {f / fps:.2f}s: {speed:.0f} yd/s")
+    # How much of the play each offensive man was actually found in: the detector's recall, the limit on any route read.
+    for t in tracks:
+        if labels[t.id] == "offense":
+            report.append(f"track {t.id} (offense) found in {100 * len(t.points) / max(1, len(frames)):.0f}% of the play's frames")
     lost = [t for t in tracks if labels[t.id] == "offense" and t.points[-1][0] < len(frames) - 1 - int(0.5 * fps)]
     for t in lost:
         report.append(f"track {t.id} (offense) was lost at {t.points[-1][0] / fps:.2f}s")

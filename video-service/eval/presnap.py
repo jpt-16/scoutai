@@ -35,7 +35,7 @@ from .people import feet_locator, on_the_field
 from .teams import split_teams
 
 CHECKPOINT = os.environ.get("MODEL_CHECKPOINT", "PekingU/rtdetr_v2_r18vd")
-CONFIDENCE = 0.4
+CONFIDENCE = float(os.environ.get("DETECT_CONFIDENCE", "0.4"))  # lower finds more blurred / partly hidden men (and more false ones)
 # Players further than this from the ball (yards, either way) are the crowd, the sideline
 # or the other end of the field.
 MAX_DEPTH = 22.0

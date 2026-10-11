@@ -123,3 +123,15 @@ box is where that track has been; a big red ring is a frame where a track moved 
 means it was handed to another man. The report printed after each clip lists those jumps and any offensive track
 lost early. Look at the sheet to see who the track jumped to.
 
+## Finding more of the men (the limit on every route read)
+
+A route can only be read from frames where the man was found, and on the first real clips the smallest detector found a
+receiver in under a third of the play's frames. `--debug` now prints "track N (offense) found in X% of the play's frames".
+Try a bigger model and a lower confidence, and compare those percentages:
+
+    MODEL_CHECKPOINT=PekingU/rtdetr_v2_r50vd python -m eval.tracks clips/ --out tracks --seconds 8 --tiles 3 --debug debug/
+    MODEL_CHECKPOINT=PekingU/rtdetr_v2_r101vd DETECT_CONFIDENCE=0.3 python -m eval.tracks clips/ --out tracks --seconds 8 --tiles 3 --debug debug/
+
+(`r18vd` is the default and the smallest; `r50vd` and `r101vd` are larger and slower, the first run of each downloads
+the weights.) More tiles (3) look at the picture in more pieces, so small far players are bigger to the model.
+
