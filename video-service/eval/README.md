@@ -100,3 +100,14 @@ paint and the dot on the center, trust the rest. A clip it can't read is listed 
 (`no_lines`, `rows`, `ambiguous_rows`, `fit`, `teams_did_not_separate`, ...); calibrate that one by
 hand with `python -m eval.calibrate clips/<name>.mp4` and run `eval.game` again, which only redoes
 what is missing. A hand `.json` is never overwritten.
+
+## Screen recordings of Hudl's player
+
+```bash
+python -m eval.prep recordings/ --out clips/ --preview     # one cropped frame each: check it shows only the film
+python -m eval.prep recordings/ --out clips/ --top 84 --bottom 56
+```
+
+Crops off the tag bar and the controls and names the clips `play_01.mp4`, `play_02.mp4`, ... in the order of
+the recordings' file names, so name them in play order. Keep the tag bar visible in a few recordings and
+write down what it says (PLAY #, OFF FORM, OFF STR, OFF PLAY, PLAY DIR): that is the answer key.

@@ -746,7 +746,19 @@ presnap → tracks → `scripts/tracks-to-cards.ts`) and lists the clips that ne
 drawn fields from two camera angles and both offense directions (`test_field.py`, `test_autocalib.py`,
 `synthfield.py`); **not run on real footage**, where glare, worn paint, cropped sidelines, a zoomed
 camera and invisible hash ticks are the likely failures (they show as `needs a hand`, not a wrong answer).
-`test_tracks.py` needs OpenCV 5 (the Mac install); it fails under OpenCV 4.10. The answer key for routes is free: the coach's corrected play call, expanded by `buildDiagram`
+`test_tracks.py` needs OpenCV 5 (the Mac install); it fails under OpenCV 4.10.
+**First real footage (four screen recordings of Hudl's player, from behind the bench, 1470 x 956):** the
+auto-calibration did **not** work on them yet (0 of 4 trustworthy), which is what the first real clips are for.
+What the footage showed: (1) the recordings carry Hudl's chrome (the tag bar on top, controls along the bottom),
+so `python -m eval.prep recordings/ --out clips/ --top 84 --bottom 56` crops it off first (the tag bar is also
+the answer key for each play); (2) white jerseys, the bench and the crowd are as bright as paint, so
+`paint_mask` now only keeps bright pixels that sit in a field of grass (this took the mask from mostly people to
+mostly lines); (3) the camera is low and oblique, only a few worn yard lines show, and the camera zooms and
+pans between plays, so a clip often has too few lines for the ruler; (4) four evenly spaced lines (sideline,
+hash, hash, sideline) are indistinguishable from four yard lines, so `field_candidates` returns every reading
+(both ways round, outliers dropped) and the pick has to come from something the paint can't say (planned: the
+men on the line stand about a yard apart). The model weights (Hugging Face) can't be reached from the cloud
+sandbox, so the detector, the tracker and the route reader have still only run on drawn clips. The answer key for routes is free: the coach's corrected play call, expanded by `buildDiagram`
 into a route per letter, against the same call as Assist tagged it.
 
 ## Video-to-card via a hosted vision model (`/api/parse-video`)
