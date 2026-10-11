@@ -816,9 +816,14 @@ short boxes that land on the field, and a loose matching radius let a lost track
 receiver's track ended on a referee by the bench; (2) the near-sideline receiver's whole fade, and the far-sideline
 receiver's, were followed cleanly, so routes can be read when the tracker holds; (3) the Hudl recording freezes on its last
 frame, so the clip's tail is a still picture. Now: a short box counts only 8 yd inside a sideline (`SHORT_EDGE_YARDS`), a
-track may only be `MAX_STEP_YARDS` (0.5) plus `MISSED_GROWTH_YARDS` (0.12) a missed frame from where its velocity puts him
-(`Track.predicted(ahead)`), the frozen tail is cut (`unfrozen`), and `trackedPlay.ts` cuts a track only at a move over 24 yd/s
-(a real sprint reads ~15 over a short window; sliding onto the bench reads 60+). **Not yet re-run on real film.** The route reader
+track may only be `MAX_STEP_YARDS` (0.8) plus `MISSED_GROWTH_YARDS` (0.2) a missed frame, up to `MAX_RADIUS_YARDS` (6), from where
+its velocity puts him (`Track.predicted(ahead)`, speed read over the last 6 matches and capped at 0.45 yd a frame, a man is dropped after
+`MAX_MISSED` = 45 frames), the frozen tail is cut (`unfrozen`), and `trackedPlay.ts` cuts a track only at a move over 24 yd/s
+(a real sprint reads ~15 over a short window; sliding onto the bench reads 60+). **Second real run:** a half-yard step with a two-frame velocity was too strict (the detector's boxes jitter a yard on a far player and
+blur drops fast men for half a second), so real receivers were lost within a second (the fade receiver kept 9 frames of ~150). Replaying the
+first run's real detections (gaps and all) with standing distractors, the settings above keep ~60% of real frames on play 5 and ~75% on
+play 6, against 5% and 44% for the strict rule, and steal none; the replay only holds detections the first tracker matched, so it can't
+prove bench hops are gone. **Not yet re-run on real film with these.** The route reader
 is unchanged: on the clean sprint it still reads wheel (fade next) at low confidence, and smoothing the jittery 30 fps path
 before reading changed the answer in odd ways (it made a straight sprint read as a comeback because of the frozen tail),
 so it was left alone until there are more real tracks to tune on.

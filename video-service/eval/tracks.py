@@ -40,14 +40,19 @@ from .teams import split_teams
 
 Box = tuple[float, float, float, float, float]  # x1, y1, x2, y2, score
 
-# A person is at most this far (yards) from where his track says he is, from one frame to the next (a
-# sprint is about a third of a yard a frame; the rest is detection jitter). On real film a looser limit let
-# a track slide along the near sideline from one standing bench player to the next, so it is kept close
-# to what a person can really do.
-MAX_STEP_YARDS = 0.5
+# A person is within this many yards of where his track says he is, from one frame to the next. A sprint is
+# about a third of a yard a frame, but the detector's boxes jitter (a far player's feet move a yard when
+# his box shifts a few pixels), so this is not a tight limit: one at half a yard threw away real receivers.
+MAX_STEP_YARDS = 0.8
 # A man the detector misses for some frames may be further from where he was last seen, by about what a
-# runner covers in a frame, but not more: a track allowed to jump anywhere grabs the nearest of the bench.
-MISSED_GROWTH_YARDS = 0.12
+# runner covers in a frame and its error, up to a ceiling: a track allowed to jump anywhere grabs the
+# nearest of the bench (the first tracker allowed 4.8 yd from the first missed frame; this takes a few frames to get there).
+MISSED_GROWTH_YARDS = 0.2
+MAX_RADIUS_YARDS = 6.0
+# A man's speed is read over this many of his last matches (two frames' jitter says nothing about speed) and
+# can't be more than this many yards a frame (a sprint is about 0.35).
+VELOCITY_FRAMES = 6
+MAX_YARDS_PER_FRAME = 0.45
 # Frames of a recording that stop changing (the Hudl player froze at the end of the clip) carry no play.
 FROZEN_FRAME_DIFF = 0.05
 FROZEN_FRAMES = 8
@@ -58,7 +63,7 @@ SAME_PERSON_YARDS = 0.4
 # Below this much paint (summed over a half-size frame) the paint can't hold the camera still.
 MIN_PAINT = 150.0
 # A track missing for this many frames is dropped.
-MAX_MISSED = 20
+MAX_MISSED = 45
 MIN_MATCHES = 25
 
 
@@ -184,9 +189,13 @@ class Track:
         doesn't turn on a dime). A man missed for a few frames has gone on that many frames further."""
         if len(self.points) < 2:
             return self.last
-        (f0, x0, y0), (f1, x1, y1) = self.points[-2], self.points[-1]
+        (f0, x0, y0), (f1, x1, y1) = self.points[-1 - min(VELOCITY_FRAMES, len(self.points) - 1)], self.points[-1]
         gap = max(1, f1 - f0)
-        return x1 + (x1 - x0) / gap * ahead, y1 + (y1 - y0) / gap * ahead
+        vx, vy = (x1 - x0) / gap, (y1 - y0) / gap
+        speed = float(np.hypot(vx, vy))
+        if speed > MAX_YARDS_PER_FRAME:
+            vx, vy = vx * MAX_YARDS_PER_FRAME / speed, vy * MAX_YARDS_PER_FRAME / speed
+        return x1 + vx * ahead, y1 + vy * ahead
 
 
 # When two people cross, nearness can't tell them apart but their jerseys can: a candidate costs his
@@ -226,7 +235,7 @@ def follow(
         taken: set[int] = set()
         for _, dist, ti, j in pairs:
             t = tracks[ti]
-            if ti in taken or j not in free or dist > MAX_STEP_YARDS + MISSED_GROWTH_YARDS * t.missed:
+            if ti in taken or j not in free or dist > min(MAX_STEP_YARDS + MISSED_GROWTH_YARDS * t.missed, MAX_RADIUS_YARDS):
                 continue
             t.points.append((f, people[j][0], people[j][1]))
             t.matched.append((f, j))
