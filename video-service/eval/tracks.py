@@ -346,6 +346,8 @@ def track_play(
                 "team": labels[t.id],
                 "start": [round(t.start[0], 2), round(t.start[1], 2)],
                 "points": [[round(f / fps, 3), round(x, 2), round(y, 2)] for f, x, y in t.points],
+                # The jersey color (Lab L, a, b) at each point, so a swap to the other team can be seen in the numbers.
+                "colors": [[round(c, 0) for c in colors[f][j]] for f, j in t.matched] if colors else [],
             }
             for t in tracks
         ],
@@ -385,19 +387,24 @@ def unfrozen(frames: list[np.ndarray]) -> list[np.ndarray]:
     return frames
 
 
-FROZEN_BOX_PIXELS = 2.0
+FROZEN_BOX_PIXELS = 3.0
+FROZEN_SAME_FRACTION = 0.85
 
 
 def frozen_from(boxes: list[list[Box]]) -> int:
     """The first frame of a tail in which the detector sees the same people in the same places (to within a couple of
-    pixels) to the end of the clip: a frozen picture, whatever noise compression left in its pixels. The length of
-    `boxes` if there is no such tail of at least `FROZEN_FRAMES` frames."""
+    pixels) to the end of the clip: a frozen picture, whatever noise compression left in its pixels. Faint detections
+    (the crowd) flicker in and out, so a frame counts as the same when nearly every box has a twin in the one before.
+    The length of `boxes` if there is no such tail of at least `FROZEN_FRAMES` frames."""
+
+    def twin(box: Box, others: list[Box]) -> bool:
+        return any(all(abs(box[k] - o[k]) <= FROZEN_BOX_PIXELS for k in range(4)) for o in others)
 
     def same(a: list[Box], b: list[Box]) -> bool:
-        if len(a) != len(b):
-            return False
-        ka, kb = sorted(a, key=lambda r: (r[0], r[1])), sorted(b, key=lambda r: (r[0], r[1]))
-        return all(abs(x - y) <= FROZEN_BOX_PIXELS for p, q in zip(ka, kb) for x, y in zip(p[:4], q[:4]))
+        if not a or not b:
+            return not a and not b
+        matched = sum(twin(box, b) for box in a) + sum(twin(box, a) for box in b)
+        return matched >= FROZEN_SAME_FRACTION * (len(a) + len(b))
 
     last_change = 0
     for i in range(1, len(boxes)):
