@@ -59,6 +59,23 @@ python -m eval.score --hudl hudl.csv --corrected corrected.csv --ours ours.csv
 The score shows exact formation matches, "same family" (Pro and I-form are one shape on
 a card), the strength side, and which formations get mixed up for which.
 
+## Routes (scout offense): follow the players, name the routes
+
+Same calibrated clips. This follows every player for a few seconds after the snap, holding the
+camera still on paper (the camera pans and zooms with the play), and writes where each went in yards:
+
+```bash
+python -m eval.tracks clips/ --out tracks/ --seconds 5     # from video-service/ (needs the detector, like presnap)
+cd ..                                                      # the repo root, where `npm install` was run
+npx jiti scripts/read-routes.ts video-service/tracks/play_01.json
+```
+
+The second command names each offensive player's route with the same reader the cards use
+(`src/lib/routeReader.ts`): the route, how sure it is, and its next two guesses. Plays it isn't sure
+about are the ones to look at. `test_tracks.py` checks the whole path on a drawn clip with a panning,
+zooming camera (paths back within about a fifth of a yard, routes named right) and shows the same clip with
+the camera motion ignored comes out wrong, so the test isn't passing by accident.
+
 ## When it's wrong
 
 Open the picture in `debug/`. A missing player means the detector missed him (try

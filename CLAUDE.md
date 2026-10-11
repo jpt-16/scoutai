@@ -700,9 +700,18 @@ his spot, `unknown` when nothing fits, else the route with a `confidence` (the m
 the full ranking, so only unsure plays need a coach. Tested on simulated played routes (jittered stems and
 breaks, rounded corners, tracker noise, run-on past the catch): about 91% right on the route tree and 92% off
 it; GO vs FADE and a path seen only part way (11 yards of a deep route) are the real ambiguities, and
-show as low confidence. **Not yet run on real film.** The tracker that produces the paths (camera-pan
-compensation to the snap frame, then each player mapped to his letter from the pre-snap formation) is the
-next piece. The answer key for routes is free: the coach's corrected play call, expanded by `buildDiagram`
+show as low confidence. **Not yet run on real film.** The tracker that produces the paths is
+`video-service/eval/tracks.py`: each frame is matched to the one before on the background (ORB features with
+the people masked out, RANSAC homography, falling back to a pan-and-zoom similarity, holding the camera when
+nothing matches), the matrices are chained back to the snap frame so every frame lands on the calibrated
+snap frame (`camera_to_snap`), people are put on the field in yards in the offense's own view (`to_yards`)
+and paired frame to frame by nearest-to-predicted (`follow`, 1.6 yd a frame, survives missed frames). It
+writes `tracks/<clip>.json` and `scripts/read-routes.ts` (run with `npx jiti`) names each offensive
+player's route with `readRoute`. `test_tracks.py` runs the whole chain on a drawn clip with a panning,
+zooming camera (median error about 0.15 yd, routes named right, and a control with the camera motion ignored
+that fails as it should); real grass has less texture, motion blur and rolling shutter, so expect to tune on
+real clips. Still to do: map each track to his letter (the app's `matchDetectedLetters` against the
+pre-snap spots) and draw the Scout O card from it. The answer key for routes is free: the coach's corrected play call, expanded by `buildDiagram`
 into a route per letter, against the same call as Assist tagged it.
 
 ## Video-to-card via a hosted vision model (`/api/parse-video`)
