@@ -775,7 +775,15 @@ ACES three wide receivers, a tight end and one back (ACES OFF with the tight end
 two backs one behind the other, a tight end and a receiver each side; TWINS the same people with both receivers on
 one side; BUNCH three receivers within three yards, one on the line and two off it. The line is found as a row
 (`find_line`) and everything is measured from it, so a ball spot a yard off doesn't matter. "gun" means shotgun and is only said when the QB is in it (under center is the default and
-unwritten). Hudl's BACKFIELD code GNF isn't mapped yet. Helmet color was measured and does not separate teams at this camera distance. The model weights (Hugging Face) can't be reached from the cloud
+unwritten). Hudl's BACKFIELD code GNF isn't mapped yet. Helmet color was measured and does not separate teams at this camera distance. **First real tracks (plays 5 and 6, 5 s each):** the camera pans about 430 px in five seconds, and the first tracker
+(frame-to-frame ORB matching, a radius that grew the longer a man was missed) both drifted (the QB and a back slid ~7 yd
+sideways) and jumped (a receiver on the right grabbed a bench player 30 yd away and a third of the "followed" men were
+the sideline). Now: the camera is held against the field's painted lines directly, every frame registered to the snap frame
+(`camera_to_snap_paint`, ECC homography, then `smooth_cameras` over ~3 frames, since each frame's error is independent;
+measured on the real clips it beats the ORB chain, 0.60 vs 0.33 paint correlation at 5 s on play 5), detections are filtered
+exactly like the formation read (`people_on_the_field`: officials, the edge margin, short boxes whose feet are hidden, duplicates),
+the radius a missed man may jump is capped (`MISSED_GROWTH_CAP`) and a track remembers his jersey color so two men who cross
+keep their own tracks (`COLOR_YARDS_PER_UNIT`). Shared geometry lives in `eval/people.py`. The model weights (Hugging Face) can't be reached from the cloud
 sandbox, so the detector, the tracker and the route reader have still only run on drawn clips. The answer key for routes is free: the coach's corrected play call, expanded by `buildDiagram`
 into a route per letter, against the same call as Assist tagged it.
 

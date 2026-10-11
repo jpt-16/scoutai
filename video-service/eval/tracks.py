@@ -33,12 +33,25 @@ import numpy as np
 
 from geometry import CalibrationPoints, build_homography, transform_point
 
+from . import field as fieldmod
+from .officials import looks_like_official
+from .people import feet_locator, on_the_field
 from .teams import split_teams
 
 Box = tuple[float, float, float, float, float]  # x1, y1, x2, y2, score
 
-# A person moves at most this far (yards) between two frames and is still the same person.
-MAX_STEP_YARDS = 1.6
+# A person moves at most this far (yards) between two frames and is still the same person (a sprint is
+# about a third of a yard a frame; the rest is detection jitter).
+MAX_STEP_YARDS = 1.2
+# A man the detector misses for a few frames may have moved further, but not without limit: a track that
+# is allowed to jump anywhere grabs the nearest of the bench standing still.
+MISSED_GROWTH_CAP = 3
+# People further than this from the ball (yards) are the crowd.
+MAX_DEPTH = 25.0
+# Two detections this close together (yards) are one person seen twice.
+SAME_PERSON_YARDS = 0.4
+# Below this much paint (summed over a half-size frame) the paint can't hold the camera still.
+MIN_PAINT = 150.0
 # A track missing for this many frames is dropped.
 MAX_MISSED = 12
 MIN_MATCHES = 25
@@ -82,6 +95,60 @@ def frame_to_previous(prev_gray, gray, prev_boxes: list[Box], boxes: list[Box]) 
     return None
 
 
+def _paint_image(frame_bgr: np.ndarray) -> np.ndarray:
+    """The field's painted lines on a half-size frame, softened: what the camera is held against."""
+    small = cv2.resize(frame_bgr, (frame_bgr.shape[1] // 2, frame_bgr.shape[0] // 2), interpolation=cv2.INTER_AREA)
+    return cv2.GaussianBlur(fieldmod.paint_mask(small).astype(np.float32) / 255.0, (0, 0), 2.5)
+
+
+# The camera moves smoothly; the error in lining each frame up with the snap frame is independent from
+# frame to frame. Smoothing the camera over about a tenth of a second removes that jitter, which would
+# otherwise look like every player trembling a quarter of a yard.
+CAMERA_SMOOTHING_FRAMES = 3.0
+
+
+def smooth_cameras(matrices: list[np.ndarray], size: tuple[int, int], sigma: float = CAMERA_SMOOTHING_FRAMES) -> list[np.ndarray]:
+    """The same camera path with its frame-to-frame jitter taken out: where each frame's four corners land on
+    the snap frame, smoothed over time, and a matrix refitted to the smoothed corners."""
+    if len(matrices) < 3 or sigma <= 0:
+        return matrices
+    w, h = size
+    corners = np.float32([[0, 0], [w, 0], [w, h], [0, h]])
+    path = np.array([cv2.perspectiveTransform(corners.reshape(1, -1, 2), m).reshape(-1, 2) for m in matrices])
+    radius = int(3 * sigma)
+    kernel = np.exp(-0.5 * (np.arange(-radius, radius + 1) / sigma) ** 2)
+    kernel /= kernel.sum()
+    padded = np.concatenate([path[radius:0:-1], path, path[-2 : -radius - 2 : -1]], axis=0)
+    smooth = np.stack(
+        [np.convolve(padded[:, c, d], kernel, mode="valid") for c in range(4) for d in range(2)], axis=1
+    ).reshape(len(matrices), 4, 2)
+    return [cv2.getPerspectiveTransform(corners, smooth[i].astype(np.float32)).astype(np.float64) for i in range(len(matrices))]
+
+
+def camera_to_snap_paint(frames_bgr: list[np.ndarray]) -> list[np.ndarray] | None:
+    """For each frame (the first is the snap frame): the matrix taking its pixels onto the snap frame's,
+    found by lining the field's painted lines up with the snap frame's directly (ECC, a homography fitted
+    to the two paint pictures), each time starting from where the last frame landed. Registering every
+    frame straight to the snap frame, not frame to frame, means errors don't add up over the play: on a
+    real clip the camera pans 400 yards-worth of pixels in five seconds, and a chain of frame-to-frame
+    matches drifted by a quarter of that, this by a fraction. None if there is too little paint to hold
+    onto, and the caller falls back to `camera_to_snap`."""
+    paint = [_paint_image(f) for f in frames_bgr]
+    if not paint or float(paint[0].sum()) < MIN_PAINT:
+        return None
+    down, up = np.diag([0.5, 0.5, 1.0]), np.diag([2.0, 2.0, 1.0])
+    out = [np.eye(3)]
+    h = np.eye(3, dtype=np.float32)
+    criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 60, 1e-5)
+    for p in paint[1:]:
+        try:
+            _, h = cv2.findTransformECC(paint[0], p, h.copy(), cv2.MOTION_HOMOGRAPHY, criteria, None, 5)
+        except cv2.error:
+            pass  # no fit on this frame (a blur): hold the camera where it was
+        out.append(up @ np.linalg.inv(h) @ down)
+    return smooth_cameras(out, (frames_bgr[0].shape[1], frames_bgr[0].shape[0]))
+
+
 def camera_to_snap(
     grays: list[np.ndarray], boxes: list[list[Box]], snap: int
 ) -> list[np.ndarray]:
@@ -100,6 +167,7 @@ class Track:
     start: tuple[float, float]
     points: list[tuple[int, float, float]] = field(default_factory=list)  # frame, x, y (yards)
     missed: int = 0
+    color: tuple[float, float, float] | None = None  # his jersey, as it has looked so far
 
     @property
     def last(self) -> tuple[float, float]:
@@ -113,24 +181,50 @@ class Track:
         return x1 + (x1 - x0), y1 + (y1 - y0)
 
 
-def follow(seen_at_snap: list[tuple[float, float]], per_frame: list[list[tuple[float, float]]]) -> list[Track]:
-    """Pairs people across frames, nearest first. `per_frame[0]` is the snap frame."""
-    tracks = [Track(i, p, [(0, p[0], p[1])]) for i, p in enumerate(seen_at_snap)]
+# When two people cross, nearness can't tell them apart but their jerseys can: a candidate costs his
+# distance (yards) plus this much per unit of Lab color difference from the jersey the track has had.
+COLOR_YARDS_PER_UNIT = 0.08
+COLOR_MEMORY = 0.8  # how much of a track's remembered color survives each match
+
+
+def _color_gap(a: tuple[float, float, float] | None, b: tuple[float, float, float] | None) -> float:
+    if a is None or b is None:
+        return 0.0
+    return float(np.sqrt(sum((x - y) ** 2 for x, y in zip(a, b))))
+
+
+def follow(
+    seen_at_snap: list[tuple[float, float]],
+    per_frame: list[list[tuple[float, float]]],
+    colors: list[list[tuple[float, float, float]]] | None = None,
+) -> list[Track]:
+    """Pairs people across frames, cheapest first (distance plus how different the jersey looks).
+    `per_frame[0]` is the snap frame; `colors[f][j]` is person j's torso color in frame f."""
+    tracks = [Track(i, p, [(0, p[0], p[1])], color=colors[0][i] if colors else None) for i, p in enumerate(seen_at_snap)]
     for f, people in enumerate(per_frame[1:], start=1):
         free = set(range(len(people)))
         pairs = sorted(
-            (np.hypot(people[j][0] - t.predicted()[0], people[j][1] - t.predicted()[1]), ti, j)
+            (
+                np.hypot(people[j][0] - t.predicted()[0], people[j][1] - t.predicted()[1])
+                + COLOR_YARDS_PER_UNIT * _color_gap(t.color, colors[f][j] if colors else None),
+                np.hypot(people[j][0] - t.predicted()[0], people[j][1] - t.predicted()[1]),
+                ti,
+                j,
+            )
             for ti, t in enumerate(tracks)
             if t.missed <= MAX_MISSED
             for j in free
         )
         taken: set[int] = set()
-        for dist, ti, j in pairs:
+        for _, dist, ti, j in pairs:
             t = tracks[ti]
-            if ti in taken or j not in free or dist > MAX_STEP_YARDS * (1 + t.missed):
+            if ti in taken or j not in free or dist > MAX_STEP_YARDS * (1 + min(t.missed, MISSED_GROWTH_CAP)):
                 continue
             t.points.append((f, people[j][0], people[j][1]))
             t.missed = 0
+            if colors:
+                new = colors[f][j]
+                t.color = new if t.color is None else tuple(COLOR_MEMORY * a + (1 - COLOR_MEMORY) * b for a, b in zip(t.color, new))  # type: ignore[assignment]
             taken.add(ti)
             free.discard(j)
         for ti, t in enumerate(tracks):
@@ -148,6 +242,40 @@ def to_yards(
     return (fx - ball[0]) * direction, (fy - ball[1]) * direction
 
 
+def people_on_the_field(
+    frame_bgr: np.ndarray,
+    boxes: list[Box],
+    to_snap: np.ndarray,
+    locate,
+    ball: tuple[float, float],
+    direction: int,
+) -> tuple[list[Box], list[tuple[float, float]], list[tuple[float, float, float]]]:
+    """The people in one frame who are players: not the referees, not the bench or the sideline (a box too
+    short for where its man stands is someone hidden behind others, and his head says where his feet are),
+    one entry each. Returns their boxes, their positions in yards from the ball in the offense's view, and their jersey colors."""
+    from .presnap import torso_color
+
+    found: list[tuple[Box, float, float]] = []
+    for b in boxes:
+        if looks_like_official(frame_bgr, b):
+            continue
+        cx = (b[0] + b[2]) / 2
+        top, bottom = cv2.perspectiveTransform(np.float32([[[cx, b[1]], [cx, b[3]]]]), to_snap)[0]
+        fx, fy = locate((float(bottom[0]), float(top[1]), float(bottom[0]), float(bottom[1]), b[4]))
+        if on_the_field(fx, fy, ball[1], MAX_DEPTH):
+            found.append((b, fx, fy))
+    kept: list[tuple[Box, float, float]] = []
+    for item in sorted(found, key=lambda p: -p[0][4]):
+        if all((item[1] - k[1]) ** 2 + (item[2] - k[2]) ** 2 > SAME_PERSON_YARDS**2 for k in kept):
+            kept.append(item)
+    kept.sort(key=lambda p: found.index(p))
+    return (
+        [k[0] for k in kept],
+        [((k[1] - ball[0]) * direction, (k[2] - ball[1]) * direction) for k in kept],
+        [torso_color(frame_bgr, k[0]) for k in kept],
+    )
+
+
 def track_play(
     frames_bgr: list[np.ndarray],
     boxes: list[list[Box]],
@@ -160,15 +288,21 @@ def track_play(
     direction = calibration["direction"]
     calib = build_homography(CalibrationPoints(source=calibration["source"], destination=calibration["destination"]))
     ball = transform_point(calib, *calibration["ball"])
-    grays = [cv2.cvtColor(f, cv2.COLOR_BGR2GRAY) for f in frames_bgr]
-    to_snap = camera_to_snap(grays, boxes, snap)
+    # Hold the camera still: against the field's paint where there is enough of it, else its texture.
+    to_snap = camera_to_snap_paint(frames_bgr[snap:])
+    if to_snap is None:
+        grays = [cv2.cvtColor(f, cv2.COLOR_BGR2GRAY) for f in frames_bgr]
+        to_snap = camera_to_snap(grays, boxes, snap)
+    locate = feet_locator(calib)
 
-    per_frame = [
-        [to_yards(b, to_snap[i - snap], calib, ball, direction) for b in boxes[i]] for i in range(snap, len(grays))
-    ]
-    snap_boxes = boxes[snap]
-    tracks = follow(per_frame[0], per_frame)
-    labels = team_of(frames_bgr[snap], snap_boxes, per_frame[0])
+    kept_boxes, per_frame, colors = [], [], []
+    for i in range(snap, len(frames_bgr)):
+        kb, pos, col = people_on_the_field(frames_bgr[i], boxes[i], to_snap[i - snap], locate, ball, direction)
+        kept_boxes.append(kb)
+        per_frame.append(pos)
+        colors.append(col)
+    tracks = follow(per_frame[0], per_frame, colors)
+    labels = team_of(frames_bgr[snap], kept_boxes[0], per_frame[0])
     return {
         "fps": fps,
         "tracks": [

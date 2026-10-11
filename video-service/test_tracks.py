@@ -188,6 +188,7 @@ def test_without_holding_the_camera_still_the_paths_are_wrong(monkeypatch):
     import eval.tracks as tracks_module
 
     frames, boxes, calibration, receivers, truth, _ = simulate(None)
+    monkeypatch.setattr(tracks_module, "camera_to_snap_paint", lambda frames: None)
     monkeypatch.setattr(tracks_module, "camera_to_snap", lambda grays, boxes, snap: [np.eye(3)] * (len(grays) - snap))
     result = tracks_module.track_play(frames, boxes, calibration, jersey_team, FPS)
     worst = []
@@ -196,3 +197,28 @@ def test_without_holding_the_camera_still_the_paths_are_wrong(monkeypatch):
         errors = [np.hypot(x - truth[name][round(t * FPS)][0], y - truth[name][round(t * FPS)][1]) for t, x, y in pts]
         worst.append(max(errors))
     assert max(worst) > 5.0, worst
+
+
+def test_a_smooth_camera_path_loses_its_jitter_but_keeps_its_motion():
+    from eval.tracks import smooth_cameras
+
+    rng = np.random.default_rng(5)
+    truth = [np.array([[1, 0, 4.0 * i], [0, 1, -3.0 * i], [0, 0, 1]]) for i in range(60)]
+    noisy = [np.array([[1, 0, 4.0 * i + rng.normal(0, 3)], [0, 1, -3.0 * i + rng.normal(0, 3)], [0, 0, 1]]) for i in range(60)]
+    smooth = smooth_cameras(noisy, (1470, 816))
+
+    def err(ms):
+        return np.mean([abs(m[0, 2] - t[0, 2]) + abs(m[1, 2] - t[1, 2]) for m, t in zip(ms[5:-5], truth[5:-5])])
+
+    assert err(smooth) < 0.6 * err(noisy)
+
+
+def test_two_people_who_cross_keep_their_own_tracks_by_their_jerseys():
+    # Two men run through each other's spot: one in red, one in blue.
+    n = 12
+    red = [(float(i) * 0.3, 0.0) for i in range(n)]
+    blue = [(float(n - i) * 0.3, 0.05) for i in range(n)]
+    per_frame = [[red[i], blue[i]] for i in range(n)]
+    colors = [[(60.0, 160.0, 150.0), (120.0, 120.0, 90.0)] for _ in range(n)]
+    tracks = follow(per_frame[0], per_frame, colors)
+    assert [t.points[-1][1] for t in tracks] == [red[-1][0], blue[-1][0]]
