@@ -194,8 +194,9 @@ Free-text tags are classified by keyword (`classifyFormation`, `classifyFront`,
     receivers block from the inside out: the first takes the **LB** (up, then inside) and the
     second the **S/C** (up and in). With only one blocker, he takes the **C**. Each block is
     labeled at its T-bar, and backside receivers stalk.
-    Several words go left to right across the receivers ("FADE OUT OUT FADE"). LEAK goes to
-    the tight end.
+    Several words go **right to left** across the receivers, like numbers ("FADE SPEED OUT HITCH FADE" in
+    Deuces: the right outside receiver fades, the right slot runs the speed out, the left slot the hitch, the left
+    outside receiver fades). LEAK goes to the tight end.
   - **Named concepts** (`src/lib/conceptMapper.ts`'s `CONCEPT_DICTIONARY`): MESH, FLOOD,
     SMASH, DAGGER and CROSS (CROSS only when it's the lone route word) give **each position its
     own route** instead of one route repeated across every receiver. Positions are by play side,

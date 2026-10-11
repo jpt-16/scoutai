@@ -622,7 +622,8 @@ describe("buildDiagram (offense only)", () => {
 
   it("labels tree routes by number and calls out the rest by name", () => {
     const d = buildDiagram(card("spread", "SLANT CORNER WHEEL ACROSS"));
-    expect(routesBy(d)).toEqual({ X: "2", F: "7", Y: "WHEEL", Z: "6" });
+    // Route words read right to left across the formation (Deuces going right: X F | Y Z), like numbers.
+    expect(routesBy(d)).toEqual({ Z: "2", Y: "7", F: "WHEEL", X: "6" });
     expect(routeTokens("SPEED OUT")).toEqual(["speed-out"]);
   });
 

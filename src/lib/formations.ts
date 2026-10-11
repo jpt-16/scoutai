@@ -1338,11 +1338,11 @@ function buildRoutes(
     ).sort((a, b) => b.x - a.x);
     others.slice(0, eligible.length).forEach((kind, i) => run(eligible[i], kind));
   } else if (others.length > 1) {
-    // Several route words read left to right across the formation ("FADE OUT OUT FADE").
-    const eligible =
-      others.length > receivers.length
-        ? [...receivers, ...backs.filter((b) => !assigned.has(b))].sort((a, b) => a.x - b.x)
-        : receivers;
+    // Several route words read right to left across the formation, like numbers ("FADE SPEED OUT HITCH FADE":
+    // the fade and the speed out are on the right, the hitch and the other fade on the left).
+    const eligible = (
+      others.length > receivers.length ? [...receivers, ...backs.filter((b) => !assigned.has(b))] : [...receivers]
+    ).sort((a, b) => b.x - a.x);
     others.slice(0, eligible.length).forEach((kind, i) => run(eligible[i], kind));
   }
   return { routes, stalks, targeted, jobs };

@@ -68,3 +68,16 @@ describe("what the receivers do on a run", () => {
     expect(d.carrier![d.carrier!.length - 1].x).toBeGreaterThan(250);
   });
 });
+
+describe("route words read right to left", () => {
+  it("FADE SPEED OUT HITCH FADE: the fade and speed out are on the right, the hitch and the other fade on the left", () => {
+    const d = draw("spread", "FADE SPEED OUT HITCH FADE", "right");
+    const wr = d.players.filter((p) => p.role === "WR").sort((a, b) => b.x - a.x); // right to left
+    expect(wr).toHaveLength(4);
+    const label = (i: number) => d.jobs[wr[i].label];
+    expect(label(0)).toMatch(/fade/i);
+    expect(label(1)).toMatch(/speed out/i);
+    expect(label(2)).toMatch(/hitch/i);
+    expect(label(3)).toMatch(/fade/i);
+  });
+});
