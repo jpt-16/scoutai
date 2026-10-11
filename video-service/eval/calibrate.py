@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import threading
 from pathlib import Path
 
 import cv2
@@ -82,16 +83,27 @@ def main() -> None:
         cv2.circle(frame, clicks[-1], 6, (0, 0, 255), -1)
         return clicks[-1]
 
+    def ask(prompt: str) -> str:
+        """`input`, but the picture window keeps running while Terminal waits (otherwise macOS
+        shows a spinning wheel and ignores clicks)."""
+        box: list[str] = []
+        worker = threading.Thread(target=lambda: box.append(input(prompt)), daemon=True)
+        worker.start()
+        while worker.is_alive():
+            cv2.imshow("click", frame)
+            cv2.waitKey(30)
+        return box[0]
+
     cv2.namedWindow("click")
     cv2.imshow("click", frame)
     cv2.waitKey(50)
     # Clicking a window to bring it forward would count as a click on the field, so do that now.
-    input("The picture window is open. Click on it once to bring it forward, then come back here and press Enter. ")
+    ask("The picture window is open. Click on it once to bring it forward, then click Terminal and press Enter. ")
     source, destination = [], []
     for i in range(4):
         while True:
             pt = click_one(f"Click spot {i + 1} of 4 (a yard line meeting a hash or sideline)")
-            answer = input("  where is it? (e.g. 35 HL, or `skip` if that click was a mistake): ")
+            answer = ask("  where is it? (e.g. 35 HL, or `skip` if that click was a mistake): ")
             if answer.strip().lower() in ("skip", "redo", "s"):
                 clicks.pop()
                 print("  ok, click again")
@@ -109,7 +121,7 @@ def main() -> None:
     ball = click_one("Click the ball")
     direction = ""
     while direction not in ("UP", "DOWN"):
-        direction = input("Which way is the offense going, up or down the yard numbers? ").strip().upper()
+        direction = ask("Which way is the offense going, up or down the yard numbers? ").strip().upper()
     cv2.destroyAllWindows()
 
     out = path.with_suffix(".json")
