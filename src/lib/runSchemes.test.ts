@@ -13,7 +13,6 @@ describe("naming the run", () => {
     ["IZ", "zone"],
     ["OUTSIDE ZONE", "outside-zone"],
     ["POWER", "power"],
-    ["HAMMER", "hammer"],
     ["G ISO", "power"],
     ["ISO", "iso"],
     ["COUNTER", "counter"],

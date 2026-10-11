@@ -22,7 +22,7 @@ export default function TermsPage() {
           printing and exporting happen in your browser. Your script, playbook and playsheet are
           kept on your device and, when you&apos;re signed in, saved to private storage shared by
           everyone on your coaching team. Some features use AI: reviewing plays the
-          app couldn&apos;t place, drawing a play from a typed call, drawing cards from uploaded game film, and reading
+          app couldn&apos;t place, drawing a play from a typed call, and reading
           the opponent&apos;s secondary from a pre-snap clip. See the Privacy Policy for what each one sends.
         </p>
       </LegalSection>

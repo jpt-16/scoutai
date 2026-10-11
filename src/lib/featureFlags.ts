@@ -1,6 +1,6 @@
 /**
  * Testing-only bypass for the AI video feature's Clerk sign-in + team +
- * subscription gate (src/lib/entitlement.ts, src/components/VideoUploadCard.tsx),
+ * subscription gate (src/lib/entitlement.ts),
  * so the upload → Gemini → card pipeline itself can be tried out before
  * Clerk/Stripe are fully wired up and trusted.
  *
@@ -14,17 +14,4 @@ export function isAiGateDisabled(): boolean {
   return (
     process.env.NEXT_PUBLIC_SKIP_AI_GATE === "true" && process.env.NEXT_PUBLIC_VERCEL_ENV !== "production"
   );
-}
-
-/**
- * The film-to-card features: the single-clip uploader, the one-click game
- * import (a Hudl zip of clips), and their routes (`/api/parse-video`,
- * `/api/parse-video-batch`). On by default: the film is the source of the scout
- * cards, replacing Hudl Assist's tags. Set `NEXT_PUBLIC_FILM_IMPORT=false`
- * (inlined at build, so the page and the routes agree) to switch them off. The
- * secondary read from a pre-snap clip (`/api/read-secondary`) is separate and
- * stays on.
- */
-export function isFilmImportEnabled(): boolean {
-  return process.env.NEXT_PUBLIC_FILM_IMPORT !== "false";
 }

@@ -48,7 +48,6 @@ src/
     ExportModal.tsx        CoachPad / iPad / letter export: one card per page, a PDF or a ZIP of PNGs
     FilterBar.tsx          Down / formation toggle pills
     UploadDropzone.tsx     Drag-and-drop + file picker (multiple films, .csv/.xlsx) + paste-to-import
-    BatchUploader.tsx      One-click game import: a Hudl video-with-data zip (or loose clips + sheet) → script
     landing/               Landing-page-only visuals (see "Landing page" below)
     EditPlayDialog.tsx     Edit a play (formation, strength, play, direction, hash, front, coverage, note)
     ImportNotice.tsx       Non-blocking "Loaded / Added N plays" notice with file notes
@@ -153,10 +152,10 @@ Free-text tags are classified by keyword (`classifyFormation`, `classifyFront`,
     - `zone`: every lineman reaches playside.
     - `outside-zone`: same, wider.
     - `power` (POWER, G ISO, READ POWER): the backside guard pulls and the frontside blocks down.
-    - `counter` (COUNTER, TREY, GT): the guard and tackle both pull.
+    - `counter` (COUNTER, TREY, GT): the line blocks one way and the ball goes the other. The frontside blocks down
+      away from the play, the guard and tackle both pull across, and the carrier steps away first, then cuts back behind them.
     - `iso` / lead: the center and guards climb to the backers and the fullback leads.
     - `draw` and `sneak`.
-    - `hammer`: drawn like power until the staff defines it (placeholder name).
     - `toss` / `jet` (`TOSS`, `PITCH`; `JET`, `FLY`): outside-zone line blocking. The toss back runs flat to the
       sideline. The jet is carried by the **motion receiver** (the backside receiver nearest the ball), across behind the line.
 
@@ -642,22 +641,21 @@ set to `gemini-3.6-flash`, which overrides the code default until it's removed i
 Film calls send the clip at `FILM_FPS` (8) frames a second, not Gemini's default 1, so a release
 or break isn't lost between frames: about 10-25k input tokens for a 5-12 second clip.
 
-## Film is the source (`NEXT_PUBLIC_FILM_IMPORT`)
+## Film is the source
 
 The product is moving from "upload Hudl Assist's CSV" to "upload the film and get the scout cards",
-because Assist's tags are often wrong and it can't read routes. The landing page's **`#upload`
-section (START HERE) is now the film uploader**: the single-clip card, the one-click game import and
-a button to open a game file the film analyzer wrote (`parseScriptFile`, `game.json`). The Hudl
-CSV / Excel / paste dropzone and the Hudl export guide are **gone from the landing page**.
-`src/lib/featureFlags.ts`'s `isFilmImportEnabled()` is **on by default**; set
-`NEXT_PUBLIC_FILM_IMPORT=false` (inlined at build) to switch the film routes
-(`/api/parse-video`, `/api/parse-video-batch`) off again. Still in the repo, on purpose: the CSV
-parser and everything built on it (the playbook upload, which takes the staff's *own* plays; review
-mode's tags; batch import's sheet as ground truth; practice playsheets; `/script`'s **Add film**).
-The rest of the page's copy (hero, showcase, FAQ) still describes a Hudl breakdown and needs
-rewriting for the film-first story. The Gemini film path below is the web version; the real
-analyzer is the Python pipeline in `video-service/` (formation, tracker, route reader), run on a
-Mac for now, which writes the same `game.json`.
+because Assist's tags are often wrong and it can't read routes. The real analyzer is the Python
+pipeline in `video-service/` (formation, tracker, route reader), run on a Mac for now, which writes a
+`game.json`; the landing page's **`#upload`** section is a button to open that file
+(`parseScriptFile`) plus the 5-play demo. The hosted **Gemini film uploader is gone** (the
+single-clip card, the one-click game zip import and `/api/parse-video`, `/api/parse-video-batch`,
+removed on the staff's call): film no longer goes to Gemini to draw cards. Still in the repo, on
+purpose: the CSV parser and everything built on it (the playbook upload, which takes the staff's
+*own* plays; review mode's tags; practice playsheets; `/script`'s **Add film**), the secondary read
+from a pre-snap clip (`/api/read-secondary`, `/api/blob-upload`), and the libraries the tracker's
+output goes through (`videoImport.ts`, `coordinateMapper.ts`, `batchMatcher.ts`). The rest of the
+page's copy (hero, showcase, FAQ) still describes a Hudl breakdown and needs rewriting for the
+film-first story.
 
 **Parked idea: measure the Secondary from a pre-snap frame, no GPU and no server.** Instead of
 Gemini guessing safety depth by eye, the coach pauses the clip on the pre-snap frame, clicks 4 yard-line /
@@ -829,160 +827,35 @@ is unchanged: on the clean sprint it still reads wheel (fade next) at low confid
 before reading changed the answer in odd ways (it made a straight sprint read as a comeback because of the frozen tail),
 so it was left alone until there are more real tracks to tune on.
 
-## Video-to-card via a hosted vision model (`/api/parse-video`)
+## Shared film libraries and rate limiting
 
-A second, serverless-friendly path to the same goal as `video-service/` above, and the one
-that was wired into the app (hidden unless the flag above is on): **Upload game film (beta)** on the landing page uploads a
-clip straight to a **private** Vercel Blob store (`/api/blob-upload` authorizes the client
-upload; private, not public — opposing-team film shouldn't sit at a plain fetchable URL), then
-`/api/parse-video` fetches it back with `BLOB_READ_WRITE_TOKEN` (auto-added once a Blob store is
-connected to the project) and sends it to Gemini 2.5 Flash (`@google/genai`, structured JSON
-output) to detect each skill player's route. Also needs a `GEMINI_API_KEY` env var (Vercel
-project settings + `.env.local`).
+The hosted Gemini film-to-card path (single clip, zip batch) was removed, but its libraries stay because the
+Python tracker's output uses them. `src/lib/videoImport.ts`'s `buildCardFromDetection` /
+`applyDetectionToCard` turn a validated detection into a real `HudlPlayCard` (the formation in its
+canonical shape, each letter's route a `routeOverrides` entry with `source: "video"` and a raw `path`, so
+it has draggable break points). `matchDetectedLetters` puts each detected player on the card's own player
+who lined up nearest, `FILM_ROUTES` / `namedRouteDeltas` snap a named route to the staff's route tree,
+and `coordinateMapper.ts`'s `yardRouteToPathDeltas` maps yards to the card. `videoDetection.ts` still
+holds the film prompt rules (`QB_ANCHOR_RULES`, `FOOTBALL_CONCEPT_RULES`) the secondary read and text
+cards use.
 
-This is **not a calibrated top-down transform** — there's no homography or clicked calibration
-points here, unlike `video-service/`. The model reports every point in **field yards from the ball
-at the snap** (x = yards to the offense's right / left, y = yards past the line / into the
-backfield), measured off the yard lines, hashes and numbers, never the screen. It used to answer
-in percent of the frame, stretched straight onto the card, which only works for an end zone
-camera: from the sideline (the usual high school angle) upfield runs across the screen, so every
-route came out turned 90°, and a panning camera or a screen recording of Hudl (playback controls,
-a desktop) threw it further. `coordinateMapper.ts`'s `yardRouteToPathDeltas` maps yards to scale
-(`YARD_X` across, `YARD_PX` downfield) and simplifies the path (`RDP`-style) into the app's
-straight stems and sharp breaks; `detectPlayFromClip` stamps answers `units: "yards"`, and an old
-frame-percent answer still maps the old way. `matchDetectedLetters` puts each detected player on
-the card's own player who lined up nearest where he stood (Q stays Q), so the route lands on the
-right man even when the model's letter doesn't fit this staff's formation. If Hudl's **data bar**
-is on screen the model copies it (`hudl`: PLAY #, OFF FORM, OFF PLAY, PLAY TYPE, HASH, OFF STR,
-PLAY DIR), and a single-clip card takes the formation, call, hash, strength and direction from it
-(`hudlBarFields`) over the model's own guess. Still a rough starting point, not a measurement.
-
-**Route names, the catch, and repeatability.** Each player's `routeType` must be one of the
-staff's names (`videoImport.ts`'s `FILM_ROUTES`, the schema's enum, explained to the model in
-`FILM_ROUTE_GUIDE`: the tree 0-9 by name, GO, HITCH, DIG, DRAG, FLAT, SWING, WHIP, BUBBLE (only if he
-loses ground first; a flat release is a SLIDE), WHEEL, RAIL, LEAK, plus BLOCK, FAKE, CARRY, NONE).
-A named route is **snapped**: redrawn exactly like the route tree from that player's spot on the
-card (`formations.ts`'s `namedRouteDeltas`), stored as a `path` plus `route` so it keeps its number,
-its table text ("Slide · BALL") and its drag handles. BLOCK becomes a stalk, FAKE is left to the
-card's own mesh, and DRAG / RAIL / CARRY keep the film's own shape. A route ends at the catch (the
-prompt says never to follow the run after it), and the ball note names the card's letter, not the
-model's. Film calls (routes and the secondary read) run with `generateJson`'s `deterministic`
-(temperature 0, a fixed seed), so the same clip reads the same way; if the model answers without
-the schema, `filmRouteName` still finds the route name in its free text. The prompt tells the
-model the data bar and play call are tags, not evidence ("RPO BUBBLE" on screen doesn't make the
-route a bubble). Two staff rules are applied in code on top: a **wing** (`wingLetters`, the
-alignment check on the film's spots) who the model says ran a BUBBLE ran the SLIDE (route 0), and
-only the widest receiver the film put on the line on each side stays on it (seven on the line).
-
-`src/lib/videoImport.ts`'s `buildCardFromDetection` turns a validated detection into a real
-`HudlPlayCard`: the formation is drawn in its normal, canonical shape (via `classifyFormation`,
-same as a CSV row) — only each letter's route is video-derived, stored as a `routeOverrides`
-entry with `source: "video"` and a raw `path` (waypoint deltas from the player's own position;
-see `RouteOverride.path` in `hudlParser.ts`). This reuses the exact override mechanism
-`EditPlayDialog`'s route picker already writes to, so a video-derived card flows through Print
-Grid, filters, swipe, and storage like any other card, with no separate rendering path.
-
-On the card itself, a route with `source: "video"` gets draggable circle handles at each break
-point (`ScoutCard`'s `onEditDetectedRoute` prop) — the same pointer-capture/`svgPoint` drag
-pattern as moving a Scout D defender or the Pencil overlay — so a coach corrects the AI's guess
-by dragging, which is the whole point given the mapping above is approximate.
-
-**Rate limiting:** both routes call `checkRateLimit` from `@vercel/firewall`, which only enforces
-anything once a matching Vercel Firewall rule exists (a `rate_limit_api_id` condition on
-`"parse-video"` / `"blob-upload"`) — creating one for this project returned a 404 ("Seawall
-Config not found") on every attempt, consistent with custom WAF rules being a paid-plan feature.
-The actual cap right now is `src/lib/rateLimit.ts`'s `checkBlobRateLimit`: a counter (keyed by the
-entitled **team id**, not IP — see below) kept as tiny marker blobs in the same private Blob store
-(`ratelimit/<bucket>/<hashed team id>/<window>/`, counted with `list()`). The limits are **per
-access tier** (`src/lib/usageLimits.ts`'s `TIER_LIMITS`; `requireEntitlement()` returns the tier):
+**Rate limiting:** the AI routes call `checkRateLimit` from `@vercel/firewall`, which only enforces
+anything once a matching Vercel Firewall rule exists — creating one returned a 404 ("Seawall Config not
+found"), consistent with custom WAF rules being a paid-plan feature. The actual cap is
+`src/lib/rateLimit.ts`'s `checkBlobRateLimit`: a counter (keyed by the entitled **team id**, not IP) kept as
+tiny marker blobs in the same private Blob store (`ratelimit/<bucket>/<hashed team id>/<window>/`, counted
+with `list()`). The limits are **per access tier** (`src/lib/usageLimits.ts`'s `TIER_LIMITS`;
+`requireEntitlement()` returns the tier):
 
 | Limit | Demo (allow-listed / test bypass) | Paid (subscribed staff) |
 | ----- | --------------------------------- | ----------------------- |
 | AI text cards (`/api/generate-scout-card`) | 20 / minute | 120 / minute |
-| Single clips (`/api/parse-video`) | 10 / 5 min | 50 / 5 min |
-| Batch jobs (`/api/parse-video-batch`) | 1 running, max 50 plays | 3 running, max 100 plays |
-| Clip uploads (`/api/blob-upload`) | 60 / 5 min | 350 / 5 min |
+| Clip uploads (`/api/blob-upload`, the secondary read) | 60 / 5 min | 350 / 5 min |
 | Import reviews (`/api/review-import`) | 10 / 5 min | 60 / 5 min |
 
-Uploads are sized to the clip limit plus every running job's full game, so a batch never stalls on
-uploads. Each tier has its own bucket name (`parse-video-demo` / `-paid`), so a staff that
-upgrades starts on the paid counts right away. At these rates the counter itself costs Blob
-operations (one `list` + one `put` per request), which count against the Blob plan's advanced
-operations. Not perfectly atomic under concurrent hits from one team — fine for a small coaching
-staff's traffic, and it's defense-in-depth layered on top of the auth/billing gate below, not the
-primary defense against strangers anymore. If this project ever moves to a plan with Firewall
-rate limiting, add the matching rules (dashboard or `vercel firewall rules add`) and
-`checkRateLimit` starts enforcing immediately, no code change.
-
-## Batch video import (`/api/parse-video-batch`)
-
-**Full game film: one click** (landing page, under the single-clip uploader;
-`src/components/BatchUploader.tsx`). A coach drops Hudl's "video with data" **.zip** (every clip
-plus the breakdown sheet), or, if they already unzipped it, the clips and the `.csv` / `.xlsx`
-together; more files can be added in later drops. **How it works** opens the 3-step "How to
-Import Full Game Film in 30 Seconds" guide.
-
-1. The zip is unpacked in the browser (`JSZip`, dynamically imported); `sortBatchFiles`
-   (`src/lib/batchMatcher.ts`) splits clips (`.mp4/.mov/.m4v`) from the sheet and skips `__MACOSX`
-   and dot files. The sheet goes through the normal `parseHudlCsv` (CSV or `.xlsx`): real
-   down/distance/formation/play call, ground truth, never touched by AI.
-2. `planBatch` lines clips up with rows by the number in the file name (`clip_01.mp4`,
-   `Play 4.mp4`; `clipMatching.ts`'s `extractPlayNumberFromFileName`), read both against the
-   sheet's PLAY # and against row order (clip 1 = first row); whichever matches more clips wins,
-   PLAY # on a tie, and no row gets two clips. Every row is routed: **Film** (a clip matched),
-   **AI** (no clip, and the rules can't draw it: an unknown formation or a call that's neither run
-   nor pass, `needsTextAi`), or **Sheet** (no clip, and the sheet already draws it). A checklist
-   ("✓ Play 1: clip_01.mp4 ↔ TRIO · SLOT RPO BUBBLE", unmatched clips in amber) shows before
-   anything is spent.
-3. **Generate Scout Cards** runs two queues side by side with one progress bar ("Processing play
-   4 of 30…"): Film rows through `/api/parse-video-batch` (below), AI rows through
-   `/api/generate-scout-card` two at a time (`textAiRequest`: the call, formation and the row's
-   front + coverage; the AI's routes and defenders go onto the sheet's own card, marked
-   `aiReviewed` so the import review doesn't send it again). A row whose AI call fails keeps its
-   sheet card, counted in the warnings. Sheet rows aren't sent anywhere: sending every clip-less
-   row to the text AI would redraw cards the rules already draw and run into the tier's cards per
-   minute on a full game.
-
-One game is one **job**. Its matched clips go up in chunks of `MAX_BATCH_CLIPS`
-(`src/lib/batchConfig.ts`, 10: a serverless call has to finish in time), every chunk tagged with
-the same client-made `jobId`, the game's `totalPlays`, and `final: true` on the last one.
-`checkBatchJob` (`src/lib/rateLimit.ts`, pure logic in `usageLimits.ts`'s `decideBatchChunk`)
-keeps a marker per chunk (`ratelimit/batch-jobs/<team>/<hour>/<jobId>/<time>-<clips>[-done]`)
-and enforces the tier's running-jobs and plays-per-batch limits; a finished job frees its slot at
-once, and one that goes quiet for `BATCH_JOB_IDLE_MS` (15 min) stops counting. Before uploading
-anything the uploader asks `/api/ai-access` for the tier's limits and refuses a game over its
-plays-per-batch, so no clips are uploaded for a batch that would be refused. Each chunk's clips upload to private Blob storage client-side (same
-`@vercel/blob/client` path the single-clip flow uses), then one call to
-`/api/parse-video-batch` processes the chunk with `src/lib/concurrency.ts`'s `mapWithConcurrency`
-capping it at 4 Gemini calls in flight at once. One clip failing never sinks the batch — each
-comes back with either a `detection` or an `error`, matched back to its clip by array position.
-
-`src/lib/videoImport.ts`'s `applyDetectionToCard` (as opposed to `buildCardFromDetection`, used
-by the single-clip flow with no CSV row behind it) merges a detection's routes onto an *existing*
-CSV-derived card via `updateCard` — the formation, down/distance, and play call all stay exactly
-what the CSV said; only the matched letters' routes come from AI. Both share
-`detectionToRouteOverrides` so the actual `routeOverrides` shape (`source: "video"`, draggable
-handles on the card) is identical either way.
-
-The Gemini call itself (prompt, response schema, per-step error handling) lives in
-`src/lib/videoDetection.ts`'s `detectPlayFromClip`, shared by `/api/parse-video` (one clip) and
-`/api/parse-video-batch` (several) so there's exactly one place that logic can drift. The prompt
-(`buildDetectionPrompt`) carries `FOOTBALL_CONCEPT_RULES`, route geometry for MESH (drags at 3-5
-yards), RAIL / WHEEL (flat, then up the sideline) and CORNER / OUT (10-yard stem, 45° / 90°),
-matching the route tree above, plus the wing slide: detect a flexed wing as the innermost
-receiver and, if he runs flat across the formation or into the flat under outside blocking
-receivers, tag `playName` "RPO SLIDE / WING FLAT" (which the card reads as the wing slide).
-Every film prompt (route detection and the secondary read) opens
-with `QB_ANCHOR_RULES`: find the quarterback first (the player taking the snap under center or 4-5
-yards deep); his jersey is the offense and the way he faces is upfield; everyone across the line
-facing him is defense; left / right are the offense's, never the camera's; then follow the ball
-from the snap to whoever takes it from the QB. The detection answers `playType`, `ballCarrier`
-and `ballDirection` from that (`ballFromDetection`): on a single-clip card the carrier's arrow is
-tagged BALL, `PLAY DIR` is set from the direction, a pass is typed Pass (a run stays drawn from the
-film's own paths) and NOTES reads "Ball: H, left (from film)"; in batch import the film only fills a
-PLAY DIR or note the CSV row left blank. Batch import also sends each clip's play call from its matched CSV
-row, so a called concept is drawn with that geometry; the call is flattened to one quote-free line
-and capped at 80 characters before it goes in the prompt.
+`TIER_LIMITS` and `rateLimit.ts` still carry the single-clip and batch-job counters (`decideBatchChunk`,
+`checkBatchJob`), now unused. Not perfectly atomic under concurrent hits from one team, which is fine for a
+small coaching staff, and it's defense-in-depth on top of the auth/billing gate below.
 
 ## Text-to-card (`/api/generate-scout-card`)
 
@@ -1041,7 +914,7 @@ free-project limit — Clerk's built-in **Organizations** are exactly "a coachin
 no custom teams schema, no RLS policies, and no database at all: sign-in, org creation, org
 switching, and member invites are all Clerk's own prebuilt UI
 (`<SignInButton>`, `<OrganizationSwitcher>`, `<UserButton>` in `src/components/AccountMenu.tsx`;
-`useClerk().openSignIn()`/`openCreateOrganization()` in `src/components/VideoUploadCard.tsx`).
+`useClerk().openSignIn()`/`openCreateOrganization()` in the gate components).
 Billing state (`subscriptionStatus`, Stripe ids) lives directly on the Clerk **Organization's
 metadata** — `publicMetadata` for what the client needs to read (drives the entitlement check and
 the UI), `privateMetadata` for what only the server needs (Stripe customer/subscription ids) — so
@@ -1051,15 +924,13 @@ there's still no separate database for this either.
   `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` presence) **before** rendering `<ClerkProvider>`
   (`src/app/layout.tsx`) or calling a Clerk hook — `<ClerkProvider>` throws synchronously without a
   key, and Clerk hooks throw without a `<ClerkProvider>` in the tree, either of which would take
-  down the whole app (the free CSV path included) if not guarded. `AccountMenu` and
-  `VideoUploadCard` each render a plain, hook-free fallback (nothing, and a disabled "coming soon"
-  card, respectively) when unconfigured, and only mount their real, hook-using inner component once
-  configured.
+  down the whole app (the free CSV path included) if not guarded. `AccountMenu` renders a plain, hook-free fallback (nothing) when unconfigured, and only mounts its real, hook-using inner
+  component once configured.
 - `src/middleware.ts` (it must live in `src/`: with a `src/app` directory Next.js ignores a root `middleware.ts`, which left every gated route throwing "clerkMiddleware() was not run") is a bare `clerkMiddleware()` (also config-guarded) — just enough for
   `auth()`/`clerkClient()` to have request context in the routes that call them. It does **not**
   gate anything itself (Clerk's own path-matcher-based `createRouteMatcher` + `auth.protect()`
   pattern is deprecated in favor of per-route checks); its `matcher` only covers
-  `/api/parse-video`, `/api/parse-video-batch`, `/api/generate-scout-card`, `/api/ai-access`,
+  `/api/generate-scout-card`, `/api/ai-access`,
   `/api/review-import`, `/api/read-secondary`, `/api/blob-upload`,
   `/api/stripe/checkout`, `/api/stripe/portal`, and
   `/account/*`, so it never runs on `/` or `/script`.
@@ -1094,10 +965,9 @@ there's still no separate database for this either.
 - `src/lib/useTeamAccount.ts`: a thin client hook over `useAuth()`/`useOrganization()` (Clerk keeps
   them reactive on its own — no manual refetch/refresh needed, unlike the Supabase version this
   replaced). Only call it from a component that's guaranteed to render inside `<ClerkProvider>`.
-- **Testing the video pipeline before Clerk/Stripe are trusted:** `NEXT_PUBLIC_SKIP_AI_GATE=true`
+- **Testing the AI routes before Clerk/Stripe are trusted:** `NEXT_PUBLIC_SKIP_AI_GATE=true`
   in `.env.local` (`src/lib/featureFlags.ts`'s `isAiGateDisabled()`) bypasses the whole sign-in +
-  team + subscription gate on both the client (`VideoUploadCard`'s testing-mode variant, no Clerk
-  hooks called) and the server (`requireEntitlement()` short-circuits to an always-entitled
+  team + subscription gate on both the client (`AppGate` and `useTeamAccount` skip Clerk) and the server (`requireEntitlement()` short-circuits to an always-entitled
   result keyed `"test-bypass"`, which the rate limiter still buckets by). Only ever set this in
   `.env.local` — `isAiGateDisabled()` also checks `NEXT_PUBLIC_VERCEL_ENV !== "production"`, so
   even if the var leaks into a real deployment's env vars it's a no-op on Vercel's production
@@ -1106,7 +976,7 @@ there's still no separate database for this either.
 ## Landing page (`src/app/page.tsx`)
 
 Sections, in order: hero, `#upload`, `#playbook` (upload your own plays, see "Our own playbook"),
-`#ai-film` (only with `NEXT_PUBLIC_FILM_IMPORT`), `#ai` ("How
+`#ai` ("How
 the AI helps": your tags win, AI fills the gaps, checked then marked; it describes the import review
 and text cards above, so keep it true to them), `#showcase`, problem/solution, on-the-field,
 `#how-it-works`, `#features`, `#about`, `#faq`, final CTA. Visuals live in

@@ -25,8 +25,6 @@ import { AccountMenu } from "@/components/AccountMenu";
 import { BrandMark } from "@/components/BrandMark";
 import { AppGate } from "@/components/AppGate";
 import { UploadDropzone } from "@/components/UploadDropzone";
-import { BatchUploader } from "@/components/BatchUploader";
-import { VideoUploadCard } from "@/components/VideoUploadCard";
 import { FilmToCardVisual } from "@/components/landing/FilmToCardVisual";
 import { HeroDevice } from "@/components/landing/HeroDevice";
 import { PracticeShowcase } from "@/components/landing/PracticeShowcase";
@@ -44,7 +42,6 @@ import {
 } from "@/components/ui/dialog";
 import { MOCK_HUDL_CSV, DEMO_FILE_NAME } from "@/lib/demoScript";
 import { parseHudlCsvText, type HudlField, type HudlParseResult, type UnsupportedFileKind } from "@/lib/hudlParser";
-import { isFilmImportEnabled } from "@/lib/featureFlags";
 import { importFilms } from "@/lib/importFilms";
 import { PLAYBOOK_TEMPLATE_CSV, PLAYBOOK_TEMPLATE_NAME } from "@/lib/playbookTemplate";
 import { loadScript, parseScriptFile, saveScript, storeScript } from "@/lib/scriptStore";
@@ -122,13 +119,10 @@ const SOLUTION_POINTS = [
   "One script: iPad-ready or printed",
 ];
 
-/** AI film-to-card is hidden unless NEXT_PUBLIC_FILM_IMPORT=true (src/lib/featureFlags.ts). */
-const FILM = isFilmImportEnabled();
-
 const FOUR_STEPS: { icon: typeof Upload; title: string; detail: string }[] = [
-  { icon: Upload, title: "Upload", detail: FILM ? "Drop this week's Hudl export — or a game clip." : "Drop this week's Hudl export." },
+  { icon: Upload, title: "Upload", detail: "Drop this week's Hudl export." },
   { icon: Layers, title: "Generate", detail: "Formation, routes, blocking, and assignments draw themselves." },
-  { icon: ClipboardCheck, title: "Review", detail: FILM ? "Tweak an assignment or drag an AI route into shape." : "Tweak an assignment or a route to match your call." },
+  { icon: ClipboardCheck, title: "Review", detail: "Tweak an assignment or a route to match your call." },
   { icon: Smartphone, title: "Practice", detail: "Swipe it on the iPad, or print 2 or 4 to a page." },
 ];
 
@@ -165,9 +159,7 @@ const ABOUT_POINTS: { icon: typeof Upload; title: string; detail: string }[] = [
   { icon: Layers, title: "Real coaching conventions", detail: "Q/F/H/X/Y/Z, your route tree, real run schemes." },
   { icon: Clock, title: "Minutes, not a late night", detail: "Every card draws itself from the breakdown." },
   { icon: Smartphone, title: "Built for the field", detail: "Works offline and reads in direct sunlight." },
-  FILM
-    ? { icon: Sparkles, title: "AI when you need it", detail: "No breakdown? Start from the film instead." }
-    : { icon: Sparkles, title: "AI where it helps", detail: "Checks your breakdown and fills in the concepts it can't place." },
+  { icon: Sparkles, title: "AI where it helps", detail: "Checks your breakdown and fills in the concepts it can't place." },
 ];
 
 const FAQS: { q: string; a: string }[] = [
@@ -197,14 +189,6 @@ const FAQS: { q: string; a: string }[] = [
     q: "What's the difference between Scout O, Scout D, 7v7 and Team?",
     a: "Scout O draws each play the way your scout offense runs it, with routes and blocks. Scout D shows the formation and where each defender lines up against it, turned so the offense is on top the way your defense sees it. 7v7 drops the linemen and lists the passes, RPOs and play action; Team shows all eleven on offense, runs and passes.",
   },
-  ...(FILM
-    ? [
-        {
-          q: "How accurate is the AI game-film analysis?",
-          a: "It's a first-pass read, not a measurement. The AI reads camera angle and depth by eye from a sideline or endzone clip, so treat every route as a starting point — drag each break point into shape before it's practice-ready.",
-        },
-      ]
-    : []),
   {
     q: "Does the AI change my breakdown?",
     a: "No. Your tags always win. The AI only looks at plays the app can't place on its own, like a formation name it doesn't know or a call that isn't clearly a run or a pass, and it fills in only what the file left open. Anything it filled in is tagged \"AI\" with a notice to check it, and if it can't be reached the cards draw exactly as your file reads.",
@@ -254,9 +238,7 @@ const FAQS: { q: string; a: string }[] = [
   },
   {
     q: "Do I have to upload game film?",
-    a: FILM
-      ? "No. Your Hudl export is read entirely in your browser — nothing is uploaded. AI film import is a separate, optional, paid feature for staffs without a breakdown yet."
-      : "No. The cards come from your breakdown, which Hudl already tags from the film. The only film the app can use is an optional pre-snap clip for the secondary.",
+    a: "No. The cards come from your breakdown, which Hudl already tags from the film. The only film the app can use is an optional pre-snap clip for the secondary.",
   },
 ];
 
@@ -496,7 +478,7 @@ export default function UploadPage() {
           </div>
         </section>
 
-        {/* Game film analysis: the product's entry point (NEXT_PUBLIC_FILM_IMPORT=false turns it off) */}
+        {/* Game film: open what the film analyzer wrote */}
         <section id="upload" className={`${SECTION} bg-card/30`}>
           <div className="mx-auto max-w-6xl">
             <Reveal>
@@ -514,24 +496,6 @@ export default function UploadPage() {
             </Reveal>
             <Reveal delay={100} className="mt-14">
               <FilmToCardVisual />
-            </Reveal>
-            <Reveal
-              delay={150}
-              className="mx-auto mt-14 grid max-w-5xl items-start gap-4 lg:grid-cols-2 lg:[&>*:only-child]:col-span-2 lg:[&>*:only-child]:mx-auto lg:[&>*:only-child]:w-full lg:[&>*:only-child]:max-w-xl"
-            >
-              <AppGate
-                variant="section"
-                lockedActions={
-                  <Button size="xl" variant="outline" onClick={handleDemo}>
-                    Try the 5-play demo
-                  </Button>
-                }
-              >
-                <VideoUploadCard hideHeader />
-              </AppGate>
-              <AppGate variant="section">
-                <BatchUploader />
-              </AppGate>
             </Reveal>
             <Reveal delay={200} className="mx-auto mt-8 flex max-w-5xl flex-wrap items-center justify-between gap-4 rounded-2xl border bg-background/50 p-5">
               <p className="text-sm text-muted-foreground">
@@ -692,7 +656,7 @@ export default function UploadPage() {
           <div className="mx-auto max-w-6xl">
             <Reveal>
               <SectionHeading eyebrow="HOW IT WORKS" title="Upload. Generate. Review. Practice.">
-                {FILM ? "From a Hudl breakdown — or a game clip — to a script your whole staff can run." : "From a Hudl breakdown to a script your whole staff can run."}
+                From a Hudl breakdown to a script your whole staff can run.
               </SectionHeading>
             </Reveal>
             <div className="relative mt-14">

@@ -350,7 +350,6 @@ export type RunScheme =
   | "zone"
   | "outside-zone"
   | "power"
-  | "hammer"
   | "counter"
   | "iso"
   | "draw"
@@ -578,7 +577,6 @@ export function runScheme(card: Pick<HudlPlayCard, "playCall" | "concept">): Run
   const w = words(card.playCall);
   if (/ SNEAK /.test(w)) return "sneak";
   if (/ (COUNTER|TREY|GT|CTR) /.test(w)) return "counter";
-  if (/ HAMMER /.test(w)) return "hammer";
   if (/ (POWER|PWR|G) /.test(w)) return "power";
   if (/ DRAW /.test(w)) return "draw";
   if (/ (ISO|LEAD|BELLY|DIVE|WEDGE) /.test(w)) return "iso";
@@ -1384,7 +1382,6 @@ function buildBlocking(
         blocks.push([p.at, [x + d * 26, 132]]);
         break;
       case "power":
-      case "hammer":
       case "counter":
         if (r(p) >= 0)
           blocks.push([p.at, [x - d * 16, 126]]); // frontside down blocks
@@ -1415,7 +1412,7 @@ function buildBlocking(
   // Backs who don't carry the ball lead-block.
   for (const b of backs) {
     if (b === carrier) continue;
-    if (scheme === "power" || scheme === "hammer")
+    if (scheme === "power")
       blocks.push([b.at, at(80, 136)]); // kick out
     else if (scheme === "iso" || scheme === "draw")
       blocks.push([b.at, at(10, 112)]); // lead up the hole
@@ -1440,7 +1437,6 @@ function carrierPath(scheme: RunScheme, c: Pt, d: number): Pt[] {
     case "outside-zone":
       return [c, at(80, c[1] + 4), at(150, 170), at(172, 100)];
     case "power":
-    case "hammer":
       return [c, at(40, 172), at(56, 96)];
     case "toss":
       // The pitch: flat to the sideline behind the line, then up the edge.
@@ -1575,7 +1571,7 @@ export function buildDiagram(
       jobs[b.label] =
         b === ballCarrier
           ? "Ball carrier"
-          : scheme === "power" || scheme === "hammer"
+          : scheme === "power"
             ? "Kick out the end"
             : scheme === "iso" || scheme === "draw"
               ? "Lead up the hole"
@@ -1801,13 +1797,6 @@ const RUN_LINE_JOBS: Record<RunScheme, Record<LineKey, string>> = {
   },
   "outside-zone": { PST: "Reach", PSG: "Reach", C: "Reach", BSG: "Overtake", BST: "Cut off" },
   power: {
-    PST: "Down",
-    PSG: "Down / double",
-    C: "Back block",
-    BSG: "Pull, wrap to LB",
-    BST: "Hinge",
-  },
-  hammer: {
     PST: "Down",
     PSG: "Down / double",
     C: "Back block",
