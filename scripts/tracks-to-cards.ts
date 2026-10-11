@@ -8,7 +8,7 @@
  * one-click game import lines up clips (`planBatch`: the number in the file name, against PLAY #
  * or row order), and the sheet stays ground truth for down, distance, formation and call; only
  * the routes and where each man stood come from the film. Without a sheet every play is its own
- * card, its formation taken from `--formations` (what `eval.presnap` wrote, by clip name).
+ * card, its formation taken from `--formations` (what `eval.presnap` wrote, by play number).
  *
  * Writes `game.json`, a script the app opens (landing page → Open a tracked game), and prints
  * the plays whose routes the reader wasn't sure of, which are also marked on the cards.
@@ -37,15 +37,23 @@ const files = readdirSync(dir)
   .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
 const plays = new Map(files.map((f) => [f, JSON.parse(readFileSync(join(dir, f), "utf8")) as TrackedPlayFile]));
 
-// Formation names the pre-snap reader wrote, by clip: "clip,formation" lines (header skipped).
-const formations = new Map<string, string>();
+// What the pre-snap reader wrote (`eval.presnap`'s ours.csv: PLAY #, OFF FORM, OFF STR), by play number.
+const formations = new Map<number, string>();
 const formationsPath = flag("--formations");
 if (formationsPath) {
-  for (const line of readFileSync(formationsPath, "utf8").split(/\r?\n/).slice(1)) {
-    const [clip, formation] = line.split(",");
-    if (clip && formation) formations.set(basename(clip).replace(/\.[^.]+$/, ""), formation.trim());
+  const [header, ...lines] = readFileSync(formationsPath, "utf8").split(/\r?\n/).filter(Boolean);
+  const cols = header.split(",");
+  const [num, form, str] = ["PLAY #", "OFF FORM", "OFF STR"].map((c) => cols.indexOf(c));
+  for (const line of lines) {
+    const cells = line.split(",");
+    const n = Number.parseInt(cells[num] ?? "", 10);
+    if (Number.isFinite(n) && cells[form]) formations.set(n, `${cells[form]} ${str >= 0 ? cells[str] ?? "" : ""}`.trim());
   }
 }
+const playNumberOf = (stem: string, fallback: number) => {
+  const m = stem.match(/\d+/);
+  return m ? Number.parseInt(m[0], 10) : fallback;
+};
 
 const sheetPath = flag("--sheet");
 const cards = [];
@@ -71,9 +79,9 @@ if (sheetPath) {
   files.forEach((f, i) => {
     const stem = f.replace(/\.json$/, "");
     const { card, unsure } = cardFromTracks(plays.get(f)!, null, {
-      formation: formations.get(stem) ?? "",
+      formation: formations.get(playNumberOf(stem, i + 1)) ?? "",
       source: stem,
-      playNumber: i + 1,
+      playNumber: playNumberOf(stem, i + 1),
     });
     cards.push(card);
     if (unsure.length) checks.push(`Play ${i + 1} (${stem}): ${unsure.map((u) => u.letter).join(", ")}`);

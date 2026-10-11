@@ -722,8 +722,31 @@ game: files are lined up with the sheet's rows by `planBatch` (the number in the
 ground truth for down / formation / call, and the script lists the plays to check. Without a sheet each play
 is its own card, its formation from `--formations ours.csv` (`eval.presnap`). `game.json` is a normal stored
 script: the landing page's upload box opens it (`allowGameFile`, `parseScriptFile`). **Not run on real film
-yet**; the per-clip calibration (four field spots, the ball) is still done by hand in `eval.calibrate`,
-which is the step to automate before a coach can drop a whole game in. The answer key for routes is free: the coach's corrected play call, expanded by `buildDiagram`
+yet**.
+
+**No-click calibration (`video-service/eval/field.py`, `autocalib.py`, `game.py`).** `eval.calibrate`'s four
+clicks per clip are replaced by `python -m eval.autocalib clips/` (it writes the same `<clip>.json`, plus an
+`auto` block and `debug/<clip>_auto.jpg`: the yard lines it believes in drawn back over the frame). Snap:
+`find_snap`, the frame before the biggest sustained jump in frame-to-frame motion. Field: `calibrate_field`
+finds the white paint (brighter than local grass, unsaturated, inside the grass hull), splits the segments
+into the yard-line fan and the rows by vanishing-point consensus (so it doesn't care which way up the camera
+is or how wide the fan opens), numbers the lines in 5-yard steps by fitting a 1D projective ruler (a lost
+line costs a penalty), finds the sidelines / hash rows (long lines, or RANSAC through tick blobs), tries every
+assignment of rows to the four NFHS positions (0, 17.78, 35.55, 53.33), keeps the best least-squares
+homography whose determinant keeps handedness, and refuses (returns a `FieldFailure` with a reason) when it
+has under three rows, a fit over 0.8 yd off, or two row assignments that fit nearly equally. The yard
+number is never known and isn't needed: the field frame is a rotated copy of the real one, and
+everything downstream is yards from the ball in the offense's view. Ball and direction: `locate_scene` splits
+people by jersey color, puts the line of scrimmage where the two groups meet, calls the group that stays
+close to it the offense (linemen and a couple of backs; the defense is spread deeper), sets the direction
+so the offense is behind the ball, and the ball's across-the-field spot is the middle of the offensive
+line. A clip it can't do is listed with the reason and left for `eval.calibrate`; a hand `.json` is never
+overwritten. `python -m eval.game clips/ --sheet hudl.csv --out game.json` runs the lot (autocalib →
+presnap → tracks → `scripts/tracks-to-cards.ts`) and lists the clips that need a hand. Tested end to end on
+drawn fields from two camera angles and both offense directions (`test_field.py`, `test_autocalib.py`,
+`synthfield.py`); **not run on real footage**, where glare, worn paint, cropped sidelines, a zoomed
+camera and invisible hash ticks are the likely failures (they show as `needs a hand`, not a wrong answer).
+`test_tracks.py` needs OpenCV 5 (the Mac install); it fails under OpenCV 4.10. The answer key for routes is free: the coach's corrected play call, expanded by `buildDiagram`
 into a route per letter, against the same call as Assist tagged it.
 
 ## Video-to-card via a hosted vision model (`/api/parse-video`)

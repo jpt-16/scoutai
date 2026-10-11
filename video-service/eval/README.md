@@ -85,3 +85,18 @@ the usual causes). If all of that looks right and the name is still wrong, the r
 in `formation.py`, and its thresholds are at the top of the file.
 
 Not yet checked against real game film: expect to tune on the first batch.
+
+## No clicking: calibrate a whole game
+
+```bash
+python -m eval.autocalib clips/             # writes clips/<name>.json for every clip it can read
+python -m eval.autocalib clips/ --force     # redo clips that already have one
+python -m eval.game clips/ --sheet hudl.csv --out game.json   # calibrate + formation + tracks + cards
+```
+
+Look at `debug/<clip>_auto.jpg` for a few clips first: the yellow lines are the yard lines it
+believes in, the blue lines the sideline / hash rows, the red dot the ball. If those sit on the
+paint and the dot on the center, trust the rest. A clip it can't read is listed with the reason
+(`no_lines`, `rows`, `ambiguous_rows`, `fit`, `teams_did_not_separate`, ...); calibrate that one by
+hand with `python -m eval.calibrate clips/<name>.mp4` and run `eval.game` again, which only redoes
+what is missing. A hand `.json` is never overwritten.

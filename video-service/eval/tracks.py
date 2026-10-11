@@ -194,6 +194,24 @@ def team_by_jersey(frame: np.ndarray, boxes: list[Box], spots: list[tuple[float,
     return ["offense" if label == offense else "defense" for label in labels]
 
 
+def track_clip(clip: Path, detector, seconds: float = 6.0, tiles: int = 2) -> dict:
+    """Follows everyone through one clip, from the calibration file beside it."""
+    calibration = json.loads(clip.with_suffix(".json").read_text())
+    cap = cv2.VideoCapture(str(clip))
+    fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+    cap.set(cv2.CAP_PROP_POS_FRAMES, calibration["frame"])
+    frames: list[np.ndarray] = []
+    for _ in range(int(seconds * fps) + 1):
+        ok, frame = cap.read()
+        if not ok:
+            break
+        frames.append(frame)
+    # Frame 0 of the list is the snap frame the calibration was made on.
+    calibration = {**calibration, "frame": 0}
+    boxes = [detector.people(f, tiles) for f in frames]
+    return track_play(frames, boxes, calibration, team_by_jersey, fps)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("clips", type=Path, help="folder of clips with a calibration .json beside each (eval.calibrate)")
@@ -207,23 +225,9 @@ def main() -> None:
     detector = Detector()
     args.out.mkdir(parents=True, exist_ok=True)
     for clip in sorted(p for p in args.clips.iterdir() if p.suffix.lower() in {".mp4", ".mov", ".m4v"}):
-        calib_path = clip.with_suffix(".json")
-        if not calib_path.exists():
+        if not clip.with_suffix(".json").exists():
             continue
-        calibration = json.loads(calib_path.read_text())
-        cap = cv2.VideoCapture(str(clip))
-        fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
-        cap.set(cv2.CAP_PROP_POS_FRAMES, calibration["frame"])
-        frames: list[np.ndarray] = []
-        for _ in range(int(args.seconds * fps) + 1):
-            ok, frame = cap.read()
-            if not ok:
-                break
-            frames.append(frame)
-        # Frame 0 of the list is the snap frame the calibration was made on.
-        calibration = {**calibration, "frame": 0}
-        boxes = [detector.people(f, args.tiles) for f in frames]
-        result = track_play(frames, boxes, calibration, team_by_jersey, fps)
+        result = track_clip(clip, detector, args.seconds, args.tiles)
         (args.out / f"{clip.stem}.json").write_text(json.dumps(result))
         n_off = sum(t["team"] == "offense" for t in result["tracks"])
         print(f"{clip.name}: {len(result['tracks'])} people followed, {n_off} offense")
