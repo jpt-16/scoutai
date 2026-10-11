@@ -99,3 +99,21 @@ def test_people_at_the_sidelines_are_not_players(tmp_path):
     clip, boxes = make_clip(tmp_path, 1)
     result = read_clip(clip, StandIn(boxes), tiles=1, debug_dir=None)
     assert result["offense"] == len(TRIPS_RIGHT)
+
+
+def test_a_striped_referee_is_not_a_player():
+    from eval.officials import looks_like_official
+
+    frame = np.full((400, 400, 3), 60, np.uint8)
+    # Black and white vertical stripes, like a referee's shirt.
+    for i, x in enumerate(range(100, 160, 6)):
+        cv2.rectangle(frame, (x, 100), (x + 5, 300), (240, 240, 240) if i % 2 else (15, 15, 15), -1)
+    ref = (100.0, 100.0, 160.0, 300.0, 0.9)
+    # A white jersey with a red number, and a navy jersey with a white number.
+    cv2.rectangle(frame, (220, 100), (280, 300), (235, 235, 235), -1)
+    cv2.rectangle(frame, (240, 150), (260, 190), (30, 30, 200), -1)
+    cv2.rectangle(frame, (320, 100), (380, 300), (80, 40, 20), -1)
+    cv2.rectangle(frame, (340, 150), (360, 190), (240, 240, 240), -1)
+    assert looks_like_official(frame, ref)
+    assert not looks_like_official(frame, (220.0, 100.0, 280.0, 300.0, 0.9))
+    assert not looks_like_official(frame, (320.0, 100.0, 380.0, 300.0, 0.9))

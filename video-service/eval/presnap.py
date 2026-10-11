@@ -30,6 +30,7 @@ from devices import pick_device
 from geometry import CalibrationPoints, build_homography, transform_point
 
 from .formation import Spot, classify
+from .officials import looks_like_official
 from .teams import split_teams
 
 CHECKPOINT = os.environ.get("MODEL_CHECKPOINT", "PekingU/rtdetr_v2_r18vd")
@@ -42,6 +43,8 @@ FIELD_WIDTH = 160 / 3
 # bench, the coaches or the officials: on real film the far sideline is lined with a whole team, and the
 # field mapping is only good to about a yard out there.
 EDGE_YARDS = 2.0
+# Nobody on offense lines up this far behind the ball (yards): that is the referee or a sideline official.
+OFFENSE_MAX_DEPTH = 10.0
 # Two detections this close together (yards) are one player seen twice; the surer one is kept.
 SAME_PLAYER_YARDS = 0.4
 
@@ -135,8 +138,10 @@ def read_clip(path: Path, detector: Detector, tiles: int, debug_dir: Path | None
         players.append((box, (fx - ball[0]) * direction, (fy - ball[1]) * direction))
 
     players = drop_duplicates(players)
+    officials = [p for p in players if looks_like_official(frame, p[0])]
+    players = [p for p in players if not any(p is o for o in officials)]
     labels, offense_label = split_teams([torso_color(frame, b) for b, _, _ in players], [y for _, _, y in players])
-    offense = [Spot(x, y) for (b, x, y), l in zip(players, labels) if l == offense_label]
+    offense = [Spot(x, y) for (b, x, y), l in zip(players, labels) if l == offense_label and y >= -OFFENSE_MAX_DEPTH]
     formation = classify(offense)
 
     if debug_dir:
@@ -145,6 +150,9 @@ def read_clip(path: Path, detector: Detector, tiles: int, debug_dir: Path | None
             color = (0, 200, 0) if l == offense_label else (0, 0, 220)
             cv2.rectangle(frame, (int(box[0]), int(box[1])), (int(box[2]), int(box[3])), color, 2)
             cv2.putText(frame, f"{x:.0f},{y:.0f}", (int(box[0]), int(box[1]) - 4), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
+        for box, x, y in officials:
+            cv2.rectangle(frame, (int(box[0]), int(box[1])), (int(box[2]), int(box[3])), (0, 255, 255), 2)
+            cv2.putText(frame, "ref", (int(box[0]), int(box[1]) - 4), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 1)
         cv2.putText(frame, f"{formation.key} {formation.strength or ''} | {formation.notes}", (20, 40),
                     cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
         cv2.imwrite(str(debug_dir / f"{path.stem}.jpg"), frame)

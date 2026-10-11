@@ -187,10 +187,18 @@ def team_by_jersey(frame: np.ndarray, boxes: list[Box], spots: list[tuple[float,
     """Offense or defense for each person at the snap: the group lined up behind the other."""
     from .presnap import torso_color
 
+    from .officials import looks_like_official
+
     if not boxes:
         return []
-    labels, offense = split_teams([torso_color(frame, b) for b in boxes], [y for _, y in spots])
-    return ["offense" if label == offense else "defense" for label in labels]
+    # Referees are neither team: leave them out of the split and call them "official".
+    players = [i for i, b in enumerate(boxes) if not looks_like_official(frame, b)]
+    out = ["official"] * len(boxes)
+    if players:
+        labels, offense = split_teams([torso_color(frame, boxes[i]) for i in players], [spots[i][1] for i in players])
+        for i, label in zip(players, labels):
+            out[i] = "offense" if label == offense else "defense"
+    return out
 
 
 def track_clip(clip: Path, detector, seconds: float = 6.0, tiles: int = 2) -> dict:
