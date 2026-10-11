@@ -117,3 +117,15 @@ def test_a_striped_referee_is_not_a_player():
     assert looks_like_official(frame, ref)
     assert not looks_like_official(frame, (220.0, 100.0, 280.0, 300.0, 0.9))
     assert not looks_like_official(frame, (320.0, 100.0, 380.0, 300.0, 0.9))
+
+
+def test_a_man_cut_off_by_the_bench_is_off_the_field(tmp_path):
+    """A very short box at a spot where a standing man is tall is someone hidden behind people in front
+    of him: his feet are not where the bottom of his box says, and his head puts them off the field."""
+    clip, boxes = make_clip(tmp_path, 1)
+    # Someone on the near sideline whose box is a sliver: top at a real head height, bottom cut by the crowd.
+    x, y = px((20.0, 66.0))
+    head = y - 90 * (y / 1080) - 20
+    cut = (x - 8, head, x + 8, head + 12, 0.9)
+    result = read_clip(clip, StandIn(boxes + [cut]), tiles=1, debug_dir=None)
+    assert result["offense"] == len(TRIPS_RIGHT)

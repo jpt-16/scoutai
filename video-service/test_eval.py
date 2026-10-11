@@ -98,11 +98,27 @@ def test_split_teams_by_side_when_jersey_colors_overlap():
     assert off == 0
     assert labels == [0] * 8 + [1] * 9
 
-    # A man in the neutral zone takes the side his jersey looks like.
-    colors2 = colors + [(115.0, 127.0, 140.0), (100.0, 126.0, 130.0)]
-    ys2 = ys + [0.2, 0.3]
-    labels2, _ = split_teams(colors2, ys2)
-    assert labels2[-2] == 0 and labels2[-1] == 1
+    # With no clear gap between the lines, a man in the neutral zone takes the side his jersey looks like.
+    near = [-1.3, -1.0, -0.7, -0.4, -0.1, 0.2, 0.5, 0.8, 1.1, 1.4, 1.7, 2.0, 2.3]
+    offense_color, defense_color = (120.0, 127.0, 140.0), (95.0, 126.0, 130.0)
+    colors2 = [offense_color] * 3 + [offense_color] * 5 + [defense_color] * 8 + [defense_color] * 3
+    ys2 = [-5.0, -4.0, -3.0] + near[:5] + near[5:] + [6.0, 8.0, 10.0]
+    labels2, off2 = split_teams(colors2, ys2)
+    assert off2 == 0
+    assert labels2[3:8] == [0] * 5  # the five in the neutral zone dressed like the offense
+    assert labels2[8:13] == [1] * 5  # the rest dressed like the defense
+
+
+def test_the_line_of_scrimmage_is_the_widest_gap_between_the_lines():
+    from eval.teams import line_boundary, split_teams
+
+    # The offense line a yard behind the ball, the defense a yard and more in front of it, and a navy
+    # man at 1.1 yards whose jersey looks like the offense's: he is still defense.
+    ys = [-0.9, -0.9, -0.9, -0.7, -0.5, -4.1, -5.0, -2.4, 1.1, 1.4, 1.7, 4.0, 10.8]
+    assert 0.0 < line_boundary(ys) < 1.0
+    colors = [(120.0, 127.0, 140.0)] * 8 + [(132.0, 125.0, 137.0)] + [(95.0, 126.0, 130.0)] * 4
+    labels, off = split_teams(colors, ys)
+    assert off == 0 and labels == [0] * 8 + [1] * 5
 
 
 def test_split_teams_falls_back_to_color_without_enough_people_on_each_side():

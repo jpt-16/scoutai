@@ -52,16 +52,47 @@ SURE_DEFENSE_Y = 1.5
 MIN_SURE = 3
 
 
+# The line of scrimmage is the biggest empty stretch between the two lines of linemen, looked for
+# only among men near the ball, and it has to be at least this wide (yards) to count.
+LOS_SEARCH = (-1.5, 2.5)
+MIN_LOS_GAP = 0.5
+
+
+LINE_REACH = 1.6
+MIN_PER_LINE = 3
+
+
+def line_boundary(downfield: list[float]) -> float | None:
+    """Where the offense ends and the defense starts, in yards past the ball: the middle of the
+    widest gap between neighbours among the men standing near the line, provided it has a line of
+    men (at least three within `LINE_REACH` yards) on both sides of it. Otherwise None."""
+    near = sorted(y for y in downfield if LOS_SEARCH[0] <= y <= LOS_SEARCH[1])
+    best: tuple[float, float] | None = None
+    for a, b in zip(near, near[1:]):
+        width, middle = b - a, (a + b) / 2
+        if width < MIN_LOS_GAP:
+            continue
+        behind = sum(1 for y in downfield if middle - LINE_REACH <= y <= middle)
+        ahead = sum(1 for y in downfield if middle <= y <= middle + LINE_REACH)
+        if behind >= MIN_PER_LINE and ahead >= MIN_PER_LINE and (best is None or width > best[0]):
+            best = (width, middle)
+    return best[1] if best else None
+
+
 def split_teams(colors: list[Color], downfield: list[float]) -> tuple[list[int], int]:
     """Labels (0 / 1) for each person and which label is the offense.
 
     The offense lines up behind the ball and the defense in front of it, which holds up when
-    jersey color doesn't (white jerseys in shade read as dark as navy ones). People clearly on
-    one side are labeled by where they stand; the few on the line take the team whose jerseys
-    they look most like. If the sides can't be told (too few people clearly on each), it falls
-    back to splitting by color alone, calling the group that lines up behind the other the offense.
+    jersey color doesn't (white jerseys in shade read as dark as navy ones). The line of scrimmage
+    is found as the widest gap between the two lines of linemen (`line_boundary`) and everyone is
+    labeled by which side of it he stands. With no clear gap, people clearly on one side are labeled by
+    where they stand and the few on the line take the team whose jerseys they look most like. If the sides
+    can't be told at all, it falls back to splitting by color alone, calling the group behind the other the offense.
     `downfield` is each person's yards past the ball in the offense's direction.
     """
+    boundary = line_boundary(downfield)
+    if boundary is not None and sum(y < boundary for y in downfield) >= MIN_SURE and sum(y > boundary for y in downfield) >= MIN_SURE:
+        return [0 if y < boundary else 1 for y in downfield], 0
     sure_off = [i for i, y in enumerate(downfield) if y <= SURE_OFFENSE_Y]
     sure_def = [i for i, y in enumerate(downfield) if y >= SURE_DEFENSE_Y]
     if len(sure_off) < MIN_SURE or len(sure_def) < MIN_SURE:

@@ -40,11 +40,17 @@ CONFIDENCE = 0.4
 MAX_DEPTH = 22.0
 FIELD_WIDTH = 160 / 3
 # A player stands at least this far inside a sideline (yards). People closer to it, or past it, are the
-# bench, the coaches or the officials: on real film the far sideline is lined with a whole team, and the
-# field mapping is only good to about a yard out there.
-EDGE_YARDS = 2.0
+# bench, the coaches or the officials: on real film the far sideline is lined with a whole team standing
+# 2-3 yards inside where the mapping puts the line, and the near sideline is lined with the bench.
+EDGE_YARDS = 3.0
 # Nobody on offense lines up this far behind the ball (yards): that is the referee or a sideline official.
 OFFENSE_MAX_DEPTH = 10.0
+# A standing player is about this many yards tall, and a camera sees a yard of height at about the same
+# scale as a yard of ground along the field at that spot, so a box much shorter than this is a man cut
+# off by the people standing in front of him (the bench), whose feet are hidden and whose box bottom
+# therefore sits on the field when he is really off it.
+PLAYER_YARDS = 2.0
+SHORT_BOX_RATIO = 0.45
 # Two detections this close together (yards) are one player seen twice; the surer one is kept.
 SAME_PLAYER_YARDS = 0.4
 
@@ -129,10 +135,30 @@ def read_clip(path: Path, detector: Detector, tiles: int, debug_dir: Path | None
     matrix = build_homography(CalibrationPoints(source=calib["source"], destination=calib["destination"]))
     ball = transform_point(matrix, *calib["ball"])
 
+    inverse = np.linalg.inv(matrix)
+
+    def pixels_per_yard(px: float, py: float) -> float:
+        """How many pixels one yard along the field is, where the picture point (px, py) is."""
+        fx, fy = transform_point(matrix, px, py)
+        bx, by = transform_point(inverse, fx, fy + 1.0)
+        return float(np.hypot(bx - px, by - py))
+
+    def feet_on_field(box) -> tuple[float, float]:
+        """Where he stands. The middle of his feet, unless his box is too short for a standing man at
+        that spot (he is hidden behind people in front of him): then, where a standing man whose head
+        is at the top of the box would have his feet."""
+        cx = (box[0] + box[2]) / 2
+        fx, fy = transform_point(matrix, cx, box[3])
+        if (box[3] - box[1]) / (PLAYER_YARDS * pixels_per_yard(cx, box[3])) < SHORT_BOX_RATIO:
+            foot_y = box[1]
+            for _ in range(25):
+                foot_y = box[1] + PLAYER_YARDS * pixels_per_yard(cx, min(foot_y, 4000.0))
+            fx, fy = transform_point(matrix, cx, min(foot_y, 4000.0))
+        return fx, fy
+
     players = []  # (box, offense-view x, y in yards from the ball)
     for box in detector.people(frame, tiles):
-        # Where he stands: the middle of his feet.
-        fx, fy = transform_point(matrix, (box[0] + box[2]) / 2, box[3])
+        fx, fy = feet_on_field(box)
         if not (EDGE_YARDS <= fx <= FIELD_WIDTH - EDGE_YARDS) or abs(fy - ball[1]) > MAX_DEPTH:
             continue
         players.append((box, (fx - ball[0]) * direction, (fy - ball[1]) * direction))

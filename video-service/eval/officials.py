@@ -2,7 +2,7 @@
 who looks like neither. They wear black and white stripes, so the middle of the body is part
 dark and part bright and flips between the two many times across its width, which a jersey
 (one color, a number on it) doesn't. Measured on real film from the sideline: both referees
-had about a third of their pixels dark, a tenth to a fifth bright, and 6-7 dark/bright flips
+had about a third of their pixels dark, a tenth to a fifth bright, and 7 dark/bright flips
 across the width; white-jersey players had almost nothing dark (< 5%), and navy players, even
 with white numbers, flipped less than 5 times or had far fewer bright pixels.
 
@@ -22,7 +22,7 @@ BRIGHT_LEVEL = 150
 MID_LEVEL = 110
 MIN_DARK = 0.25
 MIN_BRIGHT = 0.10
-MIN_FLIPS = 5.5
+MIN_FLIPS = 6.5  # the two referees on the first real frame had 6.8 and 7.3; a pile of players had 6.0
 
 
 def stripe_stats(frame_bgr: np.ndarray, box: Box) -> tuple[float, float, float]:

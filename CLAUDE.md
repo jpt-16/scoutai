@@ -757,7 +757,19 @@ mostly lines); (3) the camera is low and oblique, only a few worn yard lines sho
 pans between plays, so a clip often has too few lines for the ruler; (4) four evenly spaced lines (sideline,
 hash, hash, sideline) are indistinguishable from four yard lines, so `field_candidates` returns every reading
 (both ways round, outliers dropped) and the pick has to come from something the paint can't say (planned: the
-men on the line stand about a yard apart). The model weights (Hugging Face) can't be reached from the cloud
+men on the line stand about a yard apart). **First real read (play 5, a Hudl-tagged DUCES, from a hand calibration):** the detector (RT-DETRv2 on the Mac's
+GPU) finds nearly everyone, and what broke were the rules around it. Lessons now in the code: (a) the
+dash row on that field was the *near* hash, not the far one (checked by predicting the 1-yard tick spacing and
+the other yard lines); (b) jersey color can't split the teams (white jerseys in shade read as dark as navy), so
+`teams.split_teams` splits by which side of the line of scrimmage a man stands, the line being the widest gap
+between two lines of at least three men (`line_boundary`), with color only as a fallback; (c) the film is the
+*opponent's* offense, so the direction isn't "the home team's"; (d) referees are found by their stripes
+(`eval/officials.py`, thresholds tuned on two referees, so expect to retune) and dropped from both teams, also in
+`tracks.team_by_jersey` ("official"); (e) the bench and sideline are dropped by `EDGE_YARDS` (3 yd from a
+sideline) and by box height: a box much shorter than a standing man at that spot (`SHORT_BOX_RATIO`) is someone
+hidden behind the people in front of him, and his feet are taken from his head instead (`feet_on_field`); (f) one
+man seen twice counts once (`drop_duplicates`); (g) the formation line says when it was made from other than 11
+men. Helmet color was measured and does not separate teams at this camera distance. The model weights (Hugging Face) can't be reached from the cloud
 sandbox, so the detector, the tracker and the route reader have still only run on drawn clips. The answer key for routes is free: the coach's corrected play call, expanded by `buildDiagram`
 into a route per letter, against the same call as Assist tagged it.
 

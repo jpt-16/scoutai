@@ -37,7 +37,7 @@ from .teams import two_means
 # People further than this (yards) from the rest of the crowd's middle are fans and sideline staff.
 CROWD_YARDS = 25.0
 # A player stands at least this far inside a sideline (yards); see presnap.EDGE_YARDS.
-EDGE_YARDS = 2.0
+EDGE_YARDS = 3.0
 FIELD_WIDTH = 160 / 3
 MIN_PER_TEAM = 5
 # The ball is a bit past the offense's front feet.
