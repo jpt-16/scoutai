@@ -27,6 +27,12 @@ UNDER_CENTER_MIN_Y = -2.0
 STACKED_X = 1.5
 # The offensive line is the five players on the line closest to the ball.
 LINEMEN = 5
+# Finding the line: the offensive line is a given, so it is found as the row of men nearest the
+# ball's middle, wherever that row happens to sit (the ball spot can be a yard off): men within
+# LINE_HALF_WIDTH yards sideways and between these depths, in a row at most ROW_TOLERANCE deep.
+LINE_HALF_WIDTH = 7.0
+LINE_DEPTHS = (-2.5, 1.5)
+ROW_TOLERANCE = 0.7
 MIN_PLAYERS = 7
 
 
@@ -53,14 +59,34 @@ def classify(offense: list[Spot]) -> Formation:
     return got
 
 
+def find_line(offense: list[Spot]) -> list[Spot]:
+    """The offensive linemen: the biggest row of men (up to five, the ones nearest the middle) that
+    stand side by side within a yard of the ball's spot. Returns [] if there isn't a row of three."""
+    near = [p for p in offense if abs(p.x) <= LINE_HALF_WIDTH and LINE_DEPTHS[0] <= p.y <= LINE_DEPTHS[1]]
+    best: tuple[int, float, list[Spot]] | None = None
+    for y0 in {p.y for p in near}:
+        row = [p for p in near if abs(p.y - y0) <= ROW_TOLERANCE]
+        key = (min(len(row), LINEMEN), -abs(y0))
+        if best is None or key > (best[0], best[1]):
+            best = (key[0], key[1], row)
+    if best is None or len(best[2]) < 3:
+        return []
+    return sorted(best[2], key=lambda p: abs(p.x))[:LINEMEN]
+
+
 def _classify(offense: list[Spot]) -> Formation:
     if len(offense) < MIN_PLAYERS:
         return Formation("unknown", None, f"only {len(offense)} offensive players found")
 
-    on_line = [p for p in offense if ON_LINE_MIN_Y <= p.y <= ON_LINE_MAX_Y]
-    line = sorted(on_line, key=lambda p: abs(p.x))[:LINEMEN]
+    line = find_line(offense)
     if len(line) < 3:
         return Formation("unknown", None, "no offensive line found on the ball")
+    # Measure everything from the line, not from the ball spot, which can be a yard off: the line's
+    # own depth is where "on the line" and "in the backfield" are counted from.
+    depth = sorted(p.y for p in line)[len(line) // 2]
+    shifted = {id(p): Spot(p.x, p.y - depth) for p in offense}
+    line = [shifted[id(p)] for p in line]
+    offense = [shifted[id(p)] for p in offense]
     edge_left = min(p.x for p in line)
     edge_right = max(p.x for p in line)
     rest = [p for p in offense if p not in line]

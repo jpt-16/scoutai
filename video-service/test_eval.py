@@ -128,3 +128,26 @@ def test_split_teams_falls_back_to_color_without_enough_people_on_each_side():
     ys = [0.0] * 10
     labels, _ = split_teams(colors, ys)
     assert set(labels) == {0, 1}
+
+
+def _deuces(shift=0.0, drop_a_lineman=False):
+    line_men = [-4, -2, 0, 2, 4]
+    if drop_a_lineman:
+        line_men = [-4, -2, 0, 4]
+    spots = [Spot(x, 0 + shift) for x in line_men]
+    spots += [Spot(0, -5 + shift), Spot(1.5, -5 + shift)]  # shotgun QB and a back
+    spots += [Spot(-18, 0 + shift), Spot(-12, -1.3 + shift), Spot(12, -1.3 + shift), Spot(18, 0 + shift)]  # 2x2
+    return spots
+
+
+def test_deuces_is_spread_and_balanced_even_when_the_ball_spot_is_a_yard_off():
+    for shift in (0.0, -0.9, 0.9):
+        f = classify(_deuces(shift))
+        assert (f.key, f.strength) == ("spread", None), (shift, f)
+        assert "wide 2-2" in f.notes
+
+
+def test_a_missing_lineman_does_not_change_the_read_but_is_flagged():
+    f = classify(_deuces(-0.8, drop_a_lineman=True))
+    assert (f.key, f.strength) == ("spread", None)
+    assert "10 offensive players found, expected 11" in f.notes
