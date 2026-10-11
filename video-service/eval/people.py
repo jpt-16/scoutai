@@ -35,6 +35,8 @@ SHORT_EDGE_YARDS = 8.0
 # yards of a sideline only a box at least this fraction of a standing man's height counts.
 SIDELINE_ZONE_YARDS = 10.0
 FULL_BOX_RATIO = 0.8
+# Below this fraction of a man's height a box near a sideline is never a player (a head over the bench row).
+WEAK_BOX_RATIO = 0.4
 
 Box = tuple[float, float, float, float, float]
 

@@ -17,7 +17,7 @@ import numpy as np
 from geometry import CalibrationPoints, build_homography
 
 from .people import feet_locator
-from .tracks import follow, people_on_the_field, track_play  # noqa: F401
+from .tracks import drop_standing_weak, follow, people_on_the_field, track_play  # noqa: F401
 
 
 def replay(dump: dict) -> dict:
@@ -27,14 +27,16 @@ def replay(dump: dict) -> dict:
     ball = tuple(dump["ball"])
     direction = dump["direction"]
     to_snap = [np.array(m, dtype=np.float64) for m in dump["to_snap"]]
-    kept_boxes, per_frame, colors = [], [], []
+    kept_boxes, per_frame, colors, weak = [], [], [], []
     for i, raw in enumerate(dump["raw"]):
         boxes = [(*r["box"], r["score"]) for r in raw]
         info = [(tuple(r["color"]), r["official"]) for r in raw]
-        kb, pos, col = people_on_the_field(None, boxes, to_snap[i], locate, ball, direction, info)  # type: ignore[arg-type]
+        kb, pos, col, wk = people_on_the_field(None, boxes, to_snap[i], locate, ball, direction, info)  # type: ignore[arg-type]
         kept_boxes.append(kb)
         per_frame.append(pos)
         colors.append(col)
+        weak.append(wk)
+    drop_standing_weak(per_frame, kept_boxes, colors, weak)
     tracks = follow(per_frame[0], per_frame, colors)
     return {"per_frame": per_frame, "colors": colors, "tracks": tracks, "boxes": kept_boxes}
 

@@ -35,7 +35,7 @@ from geometry import CalibrationPoints, build_homography, transform_point
 
 from . import field as fieldmod
 from .officials import looks_like_official
-from .people import EDGE_YARDS, FIELD_WIDTH, FULL_BOX_RATIO, SHORT_EDGE_YARDS, SIDELINE_ZONE_YARDS, feet_locator, on_the_field
+from .people import EDGE_YARDS, FIELD_WIDTH, FULL_BOX_RATIO, WEAK_BOX_RATIO, SHORT_EDGE_YARDS, SIDELINE_ZONE_YARDS, feet_locator, on_the_field
 from .teams import split_teams
 
 Box = tuple[float, float, float, float, float]  # x1, y1, x2, y2, score
@@ -274,7 +274,7 @@ def people_on_the_field(
     ball: tuple[float, float],
     direction: int,
     info: list[tuple[tuple[float, float, float], bool]] | None = None,
-) -> tuple[list[Box], list[tuple[float, float]], list[tuple[float, float, float]]]:
+) -> tuple[list[Box], list[tuple[float, float]], list[tuple[float, float, float]], list[bool]]:
     """The people in one frame who are players: not the referees, not the bench or the sideline (a box too
     short for where its man stands is someone hidden behind others, and his head says where his feet are),
     one entry each. Returns their boxes, their positions in yards from the ball in the offense's view, and their jersey colors.
@@ -282,6 +282,7 @@ def people_on_the_field(
     from .presnap import torso_color
 
     found: list[tuple[Box, float, float]] = []
+    weak_of: dict[int, bool] = {}
     colors_of: dict[int, tuple[float, float, float]] = {}
     for bi, b in enumerate(boxes):
         if (info[bi][1] if info is not None else looks_like_official(frame_bgr, b)):
@@ -295,10 +296,16 @@ def people_on_the_field(
         margin = SHORT_EDGE_YARDS if getattr(locate, "short", lambda _b: False)(located) else EDGE_YARDS
         # Near a sideline, a box that doesn't show a whole man is the bench (hidden by the row in front), not a player.
         ratio = getattr(locate, "height_ratio", lambda _b: 1.0)(located)
+        # Not a whole man, but more than a head: kept for now as "weak", and dropped later unless he moves (the bench
+        # stands still; a receiver sprinting up the sideline, blurred and leaning, is not a whole box either).
+        weak = False
         if min(fx, FIELD_WIDTH - fx) < SIDELINE_ZONE_YARDS and ratio < FULL_BOX_RATIO:
-            continue
+            if ratio < WEAK_BOX_RATIO:
+                continue
+            weak = True
         if margin <= fx <= FIELD_WIDTH - margin and on_the_field(fx, fy, ball[1], MAX_DEPTH):
             found.append((b, fx, fy))
+            weak_of[id(b)] = weak
             colors_of[id(b)] = info[bi][0] if info is not None else None  # type: ignore[assignment]
     kept: list[tuple[Box, float, float]] = []
     for item in sorted(found, key=lambda p: -p[0][4]):
@@ -309,7 +316,40 @@ def people_on_the_field(
         [k[0] for k in kept],
         [((k[1] - ball[0]) * direction, (k[2] - ball[1]) * direction) for k in kept],
         [colors_of[id(k[0])] if info is not None else torso_color(frame_bgr, k[0]) for k in kept],
+        [weak_of[id(k[0])] for k in kept],
     )
+
+
+MOVING_YARDS = 0.9
+MOVING_WINDOW_FRAMES = 6
+
+
+def drop_standing_weak(per_frame, kept_boxes, colors, weak):
+    """Drops the 'weak' people (a box that isn't a whole man, near a sideline) who stay in the same place: the bench.
+    One counts as moving when the nearest person to him a few frames earlier or later is more than `MOVING_YARDS` away
+    (but not so far that it is someone else). Mutates and returns the lists."""
+    n = len(per_frame)
+    for f in range(n):
+        keep = []
+        for j, w in enumerate(weak[f]):
+            if not w:
+                keep.append(j)
+                continue
+            x, y = per_frame[f][j]
+            moved = False
+            for g in (f - MOVING_WINDOW_FRAMES, f + MOVING_WINDOW_FRAMES):
+                if not 0 <= g < n or not per_frame[g]:
+                    continue
+                nearest = min(np.hypot(x - a, y - b) for a, b in per_frame[g])
+                if MOVING_YARDS <= nearest < 4.0:
+                    moved = True
+            if moved:
+                keep.append(j)
+        per_frame[f] = [per_frame[f][j] for j in keep]
+        kept_boxes[f] = [kept_boxes[f][j] for j in keep]
+        colors[f] = [colors[f][j] for j in keep]
+        weak[f] = [False] * len(keep)
+    return per_frame, kept_boxes, colors
 
 
 def track_play(
@@ -332,12 +372,14 @@ def track_play(
         to_snap = camera_to_snap(grays, boxes, snap)
     locate = feet_locator(calib)
 
-    kept_boxes, per_frame, colors = [], [], []
+    kept_boxes, per_frame, colors, weak = [], [], [], []
     for i in range(snap, len(frames_bgr)):
-        kb, pos, col = people_on_the_field(frames_bgr[i], boxes[i], to_snap[i - snap], locate, ball, direction)
+        kb, pos, col, wk = people_on_the_field(frames_bgr[i], boxes[i], to_snap[i - snap], locate, ball, direction)
         kept_boxes.append(kb)
         per_frame.append(pos)
         colors.append(col)
+        weak.append(wk)
+    drop_standing_weak(per_frame, kept_boxes, colors, weak)
     tracks = follow(per_frame[0], per_frame, colors)
     labels = team_of(frames_bgr[snap], kept_boxes[0], per_frame[0])
     if debug is not None:  # what a picture of the tracking needs
