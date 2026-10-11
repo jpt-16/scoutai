@@ -47,6 +47,8 @@ class Formation:
     key: str  # one of vocab.FORMATION_KEYS
     strength: str | None  # "left" | "right" | None when balanced or unknown
     notes: str = ""
+    # The staff's own name for it ("deuces gun", "trio gun left"): see `staff_name`.
+    staff: str = ""
 
 
 def classify(offense: list[Spot]) -> Formation:
@@ -55,7 +57,7 @@ def classify(offense: list[Spot]) -> Formation:
     got = _classify(offense)
     if len(offense) != 11 and got.key != "unknown":
         note = f"{len(offense)} offensive players found, expected 11"
-        return Formation(got.key, got.strength, f"{got.notes}; {note}" if got.notes else note)
+        return Formation(got.key, got.strength, f"{got.notes}; {note}" if got.notes else note, got.staff)
     return got
 
 
@@ -112,16 +114,72 @@ def _classify(offense: list[Spot]) -> Formation:
     strength = "right" if right > left else "left" if left > right else None
     detail = f"wide {wide_left}-{wide_right}, attached {te_left}-{te_right}, backs {len(backs)}"
 
-    if max(wide_left, wide_right) >= 3:
-        return Formation("trips", "left" if wide_left > wide_right else "right", detail)
-    if te_left >= 1 and te_right >= 1:
-        return Formation("double-eagle", strength, detail)
     under_center = qb is not None and qb.y >= UNDER_CENTER_MIN_Y
+    skill = attached + wide
+    staff = staff_name(
+        wide=wide, attached=attached, backs=backs, under_center=under_center, strength=strength
+    )
+
+    def make(key: str, side: str | None, extra: str = "") -> Formation:
+        return Formation(key, side, detail + extra, staff)
+
+    if max(wide_left, wide_right) >= 3:
+        return make("trips", "left" if wide_left > wide_right else "right")
+    if te_left >= 1 and te_right >= 1:
+        return make("double-eagle", strength)
     if not under_center:
-        return Formation("spread", strength, detail + ", shotgun")
+        return make("spread", strength, ", shotgun")
     if len(backs) >= 2:
         # The app's Pro is I-backs (one behind the other); "i-form" is only ever a name a
         # staff writes, which the scorer treats as the same family.
         side_by_side = abs(backs[0].x - backs[1].x) > STACKED_X
-        return Formation("split-pro" if side_by_side else "pro", strength, detail)
-    return Formation("pro", strength, detail)
+        return make("split-pro" if side_by_side else "pro", strength)
+    return make("pro", strength)
+
+
+# The staff's formation names (the staff's own words, kept in step with the app's vocabulary in
+# `classifyFormation`). Receivers are everyone off the line who isn't a back: tight ends (attached
+# within ATTACHED_YARDS of the box) and wide receivers, counted by side.
+BUNCH_YARDS = 3.0
+
+
+def staff_name(
+    *, wide: list[Spot], attached: list[Spot], backs: list[Spot], under_center: bool, strength: str | None
+) -> str:
+    """Names the shape in the staff's own words, with where the QB stands ("gun" or "under center"),
+    and the strength side where it matters. "" when the shape is none of the staff's names.
+
+    DUCES 2x2, one back. TRIO / SLOT TRIPS three receivers to one side, one to the other, one back
+    (SLOT TRIPS when the inside of the three is off the line, in the slot). EMPTY five receivers and no
+    back. ACES three wide receivers, a tight end and one back (ACES OFF with the tight end off the line).
+    PRO under center, two backs, a tight end and a receiver each side; TWINS the same people with both
+    receivers on one side and the tight end the other way. BUNCH three receivers within three yards of
+    each other, one on the line and two off it."""
+    qb = "under center" if under_center else "gun"
+    side = {"left": " left", "right": " right"}.get(strength or "", "")
+    skill = wide + attached
+    wide_left = sum(1 for p in wide if p.x < 0)
+    wide_right = len(wide) - wide_left
+
+    # BUNCH: three receivers in a cluster, one on the line, the other two off it.
+    for a in skill:
+        near = [p for p in skill if (p.x - a.x) ** 2 + (p.y - a.y) ** 2 <= BUNCH_YARDS**2]
+        if len(near) >= 3 and sum(1 for p in near if p.y >= ON_LINE_MIN_Y) == 1:
+            return f"bunch {qb}{side}"
+
+    if under_center:
+        if len(backs) >= 2 and len(attached) == 1 and len(wide) == 2:
+            return f"pro{side}" if (wide_left == 1 and wide_right == 1) else f"twins{side}"
+        return ""
+    if not backs and len(skill) >= 5:
+        return "empty gun"
+    if len(backs) == 1 and not attached and len(wide) == 4:
+        if wide_left == wide_right == 2:
+            return "deuces gun"
+        if max(wide_left, wide_right) == 3:
+            trips = [p for p in wide if (p.x < 0) == (wide_left > wide_right)]
+            inside = min(trips, key=lambda p: abs(p.x))
+            return f"{'slot trips' if inside.y < ON_LINE_MIN_Y else 'trio'} gun{side}"
+    if len(backs) == 1 and len(attached) == 1 and len(wide) == 3:
+        return f"{'aces off' if attached[0].y < ON_LINE_MIN_Y else 'aces'} gun{side}"
+    return ""

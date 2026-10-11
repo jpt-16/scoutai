@@ -179,7 +179,7 @@ def read_clip(path: Path, detector: Detector, tiles: int, debug_dir: Path | None
         for box, x, y in officials:
             cv2.rectangle(frame, (int(box[0]), int(box[1])), (int(box[2]), int(box[3])), (0, 255, 255), 2)
             cv2.putText(frame, "ref", (int(box[0]), int(box[1]) - 4), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 1)
-        cv2.putText(frame, f"{formation.key} {formation.strength or ''} | {formation.notes}", (20, 40),
+        cv2.putText(frame, f"{formation.staff or formation.key} | {formation.notes}", (20, 40),
                     cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
         cv2.imwrite(str(debug_dir / f"{path.stem}.jpg"), frame)
 
@@ -215,10 +215,13 @@ def main() -> None:
             print(f"{clip.name}: skipped, its calibration file is wrong ({detail}). Redo it with `python -m eval.calibrate {clip}`")
             continue
         f = result["formation"]
-        print(f"{clip.name}: {f.key} {f.strength or ''} ({result['offense']} of {result['found']} found) {f.notes}")
-        rows.append({"PLAY #": play_number(clip, i), "OFF FORM": f.key, "OFF STR": f.strength or "", "NOTES": f.notes})
+        name = f.staff or f"{f.key} {f.strength or ''}".strip()
+        print(f"{clip.name}: {name} ({f.key}) ({result['offense']} of {result['found']} found) {f.notes}")
+        rows.append(
+            {"PLAY #": play_number(clip, i), "OFF FORM": f.key, "OFF STR": f.strength or "", "STAFF FORM": f.staff, "NOTES": f.notes}
+        )
     with args.out.open("w", newline="") as fh:
-        writer = csv.DictWriter(fh, fieldnames=["PLAY #", "OFF FORM", "OFF STR", "NOTES"])
+        writer = csv.DictWriter(fh, fieldnames=["PLAY #", "OFF FORM", "OFF STR", "STAFF FORM", "NOTES"])
         writer.writeheader()
         writer.writerows(rows)
     print(f"wrote {args.out}")

@@ -151,3 +151,38 @@ def test_a_missing_lineman_does_not_change_the_read_but_is_flagged():
     f = classify(_deuces(-0.8, drop_a_lineman=True))
     assert (f.key, f.strength) == ("spread", None)
     assert "10 offensive players found, expected 11" in f.notes
+
+
+def _line(shift=0.0):
+    return [Spot(x, shift) for x in (-4, -2, 0, 2, 4)]
+
+
+def test_the_staffs_names():
+    gun_qb, one_back = [Spot(0, -5)], [Spot(1.5, -5)]
+    line = _line()
+    # deuces: 2x2, one back, gun
+    assert classify(line + gun_qb + one_back + [Spot(-18, 0), Spot(-12, -1.3), Spot(12, -1.3), Spot(18, 0)]).staff == "deuces gun"
+    # empty: five receivers, no back
+    assert classify(line + gun_qb + [Spot(-18, 0), Spot(-12, -1.3), Spot(12, -1.3), Spot(18, 0), Spot(9, 0)]).staff == "empty gun"
+    # trio: three to the right on the line, one left; slot trips: the inside one in the slot
+    trio = classify(line + gun_qb + one_back + [Spot(-18, 0), Spot(9, 0), Spot(13, 0), Spot(19, 0)])
+    assert trio.staff == "trio gun right", trio
+    slot = classify(line + gun_qb + one_back + [Spot(-18, 0), Spot(9, -1.4), Spot(13, 0), Spot(19, 0)])
+    assert slot.staff == "slot trips gun right", slot
+    # aces: three wide, a tight end, a back; aces off: the tight end off the line
+    aces = classify(line + gun_qb + one_back + [Spot(7, 0), Spot(-18, 0), Spot(-12, -1.3), Spot(18, 0)])
+    assert aces.staff.startswith("aces gun"), aces
+    aces_off = classify(line + gun_qb + one_back + [Spot(7, -1.4), Spot(-18, 0), Spot(-12, -1.3), Spot(18, 0)])
+    assert aces_off.staff.startswith("aces off gun"), aces_off
+
+
+def test_pro_and_twins_and_bunch():
+    line = _line()
+    under_center = [Spot(0, -1.0), Spot(0, -4.0), Spot(0.3, -6.5)]  # QB, then two backs one behind the other
+    pro = classify(line + under_center + [Spot(6, 0), Spot(-18, 0), Spot(18, 0)])
+    assert pro.staff.startswith("pro"), pro
+    twins = classify(line + under_center + [Spot(-6, 0), Spot(12, 0), Spot(18, 0)])
+    assert twins.staff.startswith("twins"), twins
+    # bunch: Y on the line in the middle, Z to his left and F to his right, both off the line behind him
+    bunch = classify(line + [Spot(0, -5)] + [Spot(8, 0), Spot(6.5, -1.5), Spot(9.5, -1.5), Spot(-18, 0), Spot(-12, -1.2)])
+    assert bunch.staff.startswith("bunch gun"), bunch
