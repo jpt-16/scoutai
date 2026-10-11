@@ -36,7 +36,8 @@ from .teams import two_means
 
 # People further than this (yards) from the rest of the crowd's middle are fans and sideline staff.
 CROWD_YARDS = 25.0
-SIDE_MARGIN = 3.0
+# Anyone this far past a sideline (yards) is the bench, the coaches or the officials, not a player.
+SIDE_MARGIN = 1.0
 FIELD_WIDTH = 160 / 3
 MIN_PER_TEAM = 5
 # The ball is a bit past the offense's front feet.

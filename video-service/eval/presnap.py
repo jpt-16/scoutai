@@ -38,7 +38,8 @@ CONFIDENCE = 0.4
 # or the other end of the field.
 MAX_DEPTH = 22.0
 FIELD_WIDTH = 160 / 3
-SIDE_MARGIN = 3.0
+# Anyone this far past a sideline (yards) is the bench, the coaches or the officials, not a player.
+SIDE_MARGIN = 1.0
 
 
 class Detector:
