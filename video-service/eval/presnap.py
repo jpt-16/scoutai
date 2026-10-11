@@ -30,7 +30,7 @@ from devices import pick_device
 from geometry import CalibrationPoints, build_homography, transform_point
 
 from .formation import Spot, classify
-from .teams import pick_offense, two_means
+from .teams import split_teams
 
 CHECKPOINT = os.environ.get("MODEL_CHECKPOINT", "PekingU/rtdetr_v2_r18vd")
 CONFIDENCE = 0.4
@@ -120,8 +120,7 @@ def read_clip(path: Path, detector: Detector, tiles: int, debug_dir: Path | None
             continue
         players.append((box, (fx - ball[0]) * direction, (fy - ball[1]) * direction))
 
-    labels = two_means([torso_color(frame, b) for b, _, _ in players])
-    offense_label = pick_offense(labels, [y for _, _, y in players]) if players else 0
+    labels, offense_label = split_teams([torso_color(frame, b) for b, _, _ in players], [y for _, _, y in players])
     offense = [Spot(x, y) for (b, x, y), l in zip(players, labels) if l == offense_label]
     formation = classify(offense)
 

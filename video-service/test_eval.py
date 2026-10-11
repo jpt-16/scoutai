@@ -83,3 +83,32 @@ def test_scorer_counts_hudl_and_ours_against_the_corrected_sheet(tmp_path):
     s = score(answers, ours)
     assert (s["exact"], s["family"]) == (1, 2)  # I-form counts as the same family as Pro
     assert s["confusion"][("spread", "trips")] == 1
+
+
+def test_split_teams_by_side_when_jersey_colors_overlap():
+    from eval.teams import split_teams
+
+    # White jerseys in shade read as dark as navy ones: by color alone the teams overlap.
+    offense = [(115.0, 127.0, 140.0)] * 6 + [(205.0, 129.0, 130.0)] * 2  # backs and linemen
+    defense = [(100.0, 126.0, 130.0)] * 6 + [(118.0, 125.0, 131.0)] * 3
+    colors = offense + defense
+    # Offense behind the ball, defense past it, two men right on the line.
+    ys = [-5.0, -4.0, -1.5, -1.2, -3.0, -2.0, -1.1, -1.3] + [4.0, 6.0, 8.0, 12.0, 2.0, 3.0, 1.6, 5.0, 7.0]
+    labels, off = split_teams(colors, ys)
+    assert off == 0
+    assert labels == [0] * 8 + [1] * 9
+
+    # A man in the neutral zone takes the side his jersey looks like.
+    colors2 = colors + [(115.0, 127.0, 140.0), (100.0, 126.0, 130.0)]
+    ys2 = ys + [0.2, 0.3]
+    labels2, _ = split_teams(colors2, ys2)
+    assert labels2[-2] == 0 and labels2[-1] == 1
+
+
+def test_split_teams_falls_back_to_color_without_enough_people_on_each_side():
+    from eval.teams import split_teams
+
+    colors = [(30.0, 128.0, 128.0)] * 5 + [(200.0, 128.0, 128.0)] * 5
+    ys = [0.0] * 10
+    labels, _ = split_teams(colors, ys)
+    assert set(labels) == {0, 1}

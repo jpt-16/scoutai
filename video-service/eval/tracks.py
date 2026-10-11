@@ -33,7 +33,7 @@ import numpy as np
 
 from geometry import CalibrationPoints, build_homography, transform_point
 
-from .teams import pick_offense, two_means
+from .teams import split_teams
 
 Box = tuple[float, float, float, float, float]  # x1, y1, x2, y2, score
 
@@ -187,10 +187,9 @@ def team_by_jersey(frame: np.ndarray, boxes: list[Box], spots: list[tuple[float,
     """Offense or defense for each person at the snap: the group lined up behind the other."""
     from .presnap import torso_color
 
-    labels = two_means([torso_color(frame, b) for b in boxes])
     if not boxes:
         return []
-    offense = pick_offense(labels, [y for _, y in spots])
+    labels, offense = split_teams([torso_color(frame, b) for b in boxes], [y for _, y in spots])
     return ["offense" if label == offense else "defense" for label in labels]
 
 
