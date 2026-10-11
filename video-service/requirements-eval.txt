@@ -6,4 +6,6 @@ opencv-python  # the full build, for the click window in eval.calibrate
 pydantic
 fastapi  # geometry.py imports it for its error type
 transformers  # RT-DETRv2 (Apache-2.0), no ultralytics
+pillow  # the detector's image processor needs it
+timm  # RT-DETRv2's ResNet backbone comes from timm
 pytest
