@@ -159,7 +159,12 @@ def main() -> None:
 
     rows = []
     for i, clip in enumerate(todo, start=1):
-        result = read_clip(clip, detector, args.tiles, args.debug)
+        try:
+            result = read_clip(clip, detector, args.tiles, args.debug)
+        except Exception as e:  # a bad calibration file shouldn't stop the other clips
+            detail = getattr(e, "detail", None) or str(e)
+            print(f"{clip.name}: skipped, its calibration file is wrong ({detail}). Redo it with `python -m eval.calibrate {clip}`")
+            continue
         f = result["formation"]
         print(f"{clip.name}: {f.key} {f.strength or ''} ({result['offense']} of {result['found']} found) {f.notes}")
         rows.append({"PLAY #": play_number(clip, i), "OFF FORM": f.key, "OFF STR": f.strength or "", "NOTES": f.notes})
