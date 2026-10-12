@@ -387,7 +387,7 @@ def drop_standing_weak(per_frame, kept_boxes, colors, weak):
 # near sideline). Calibration is a yard or two off out there, so the 3-yard edge margin lets them in.
 SIDELINE_STILL_YARDS = 7.0
 STILL_YARDS = 0.7  # a man who never gets this far from where he was, through a play, is standing
-STILL_OFFSETS = (8, 16, 24, 40)  # frames before and after
+STILL_OFFSETS = (8, 16, 24, 40, 60, 90, 120)  # frames before and after: out to 4 s, so a receiver who stands through a long set and then runs a route is seen to move
 
 
 def drop_standing_sideline(per_frame, kept_boxes, colors, ball_x: float, direction: int):
@@ -511,7 +511,34 @@ def formation_reads(tracks: list[dict]) -> dict:
         return {"key": f.key, "strength": f.strength, "staff": f.staff, "text": text, "notes": f.notes, "men": len(spots)}
 
     first = min((t["points"][0][0] for t in tracks if t["team"] == "offense" and t["points"]), default=0.0)
-    return {"set": read(first), "snap": read(at_snap), "snapSeconds": round(at_snap, 2)}
+    set_read = read(first)
+    if not _someone_moved_before_snap(tracks, first, at_snap):
+        # Nobody shifted or went in motion, so the formation at the snap is the one the clip began in. Reading the snap again from a
+        # moment when the offense is already starting to run only adds men the tracker has lost (play 34: the set read Trio right,
+        # the snap read "aces off" from 10 men). A read from the quiet set is the better one.
+        return {"set": set_read, "snap": dict(set_read), "snapSeconds": round(at_snap, 2)}
+    return {"set": set_read, "snap": read(at_snap), "snapSeconds": round(at_snap, 2)}
+
+
+MOTION_MIN_YARDS = 2.5  # the same distance `trackedPlay.ts` reads as a man in motion
+
+
+def _someone_moved_before_snap(tracks: list[dict], first: float, snap: float) -> bool:
+    """A man (a receiver or back) who stood somewhere in the first half second and somewhere else 2.5+ yards away at the snap."""
+    for t in tracks:
+        if t["team"] != "offense" or len(t["points"]) < 2:
+            continue
+        early = [p for p in t["points"] if p[0] <= first + 0.5]
+        late = [p for p in t["points"] if snap - 0.3 <= p[0] <= snap]
+        if not early or not late:
+            continue
+        ex = sum(p[1] for p in early) / len(early)
+        ey = sum(p[2] for p in early) / len(early)
+        lx = sum(p[1] for p in late) / len(late)
+        ly = sum(p[2] for p in late) / len(late)
+        if ((ex - lx) ** 2 + (ey - ly) ** 2) ** 0.5 >= MOTION_MIN_YARDS:
+            return True
+    return False
 
 
 # Seeding the tracks where the men are *separated*: a clip starts at the set, and the set can be a bunch (three men inside three yards,

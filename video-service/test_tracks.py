@@ -492,3 +492,30 @@ def test_a_man_on_the_track_beside_the_sideline_is_off_the_field_but_one_on_gras
     on_track = (200.0, 10.0, 220.0, 55.0, 0.9)  # feet at y=55, on the track
     assert ground_green_fraction(img, on_grass) > 0.9
     assert ground_green_fraction(img, on_track) < GROUND_MIN_GREEN
+
+
+def test_a_receiver_who_stands_through_a_long_set_and_then_runs_is_not_taken_for_the_bench():
+    from eval.tracks import drop_standing_sideline
+
+    # Real play 34: the clip began 1.2 s before the snap; two receivers 4-6 yd from the sideline stood still that long, then ran.
+    # Ball at 26.7 across, direction +1; the far sideline is across = 0, so x = -26.7 and a man at x = -21 is 5.7 yd inside it.
+    frames = 180
+    receiver = lambda f: (-21.0, 3.0) if f < 40 else (-21.0 - 0.12 * (f - 40), 3.0 + 0.1 * (f - 40))
+    bench = (-25.0, 6.0)
+    per_frame = [[receiver(f), bench] for f in range(frames)]
+    boxes = [[(0, 0, 1, 1, 1.0)] * 2 for _ in range(frames)]
+    colors = [[(0.0, 0.0, 0.0)] * 2 for _ in range(frames)]
+    drop_standing_sideline(per_frame, boxes, colors, 26.7, 1)
+    assert receiver(0) in per_frame[0], "he was dropped at the snap frame, so nobody seeded his track"
+    assert bench not in per_frame[0] and bench not in per_frame[100]
+
+
+def test_the_snap_formation_is_the_set_when_nobody_moved_before_the_snap():
+    from eval.tracks import formation_reads
+
+    def trk(i, x, y):
+        return {"id": i, "team": "offense", "start": [x, y], "points": [[t / 10, x, y] for t in range(0, 61)]}
+
+    line = [trk(i, -2.4 + 1.2 * i, -0.5) for i in range(5)]
+    got = formation_reads(line + [trk(5, -1.0, -5.0), trk(6, 2.0, -5.0), trk(7, 9.0, -0.5), trk(8, 12.0, -0.5), trk(9, -9.0, -1.5), trk(10, -14.0, -0.5)])
+    assert got["snap"] == got["set"]

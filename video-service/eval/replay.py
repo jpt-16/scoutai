@@ -20,9 +20,10 @@ from .people import feet_locator
 from .tracks import follow_two_pass, drop_standing_sideline, drop_standing_weak, trim_at_sideline, follow, people_on_the_field, track_play  # noqa: F401
 
 
-def replay(dump: dict, tracker: str = "greedy", signatures_from=None) -> dict:
+def replay(dump: dict, tracker: str = "greedy", signatures_from=None, labels_for=None) -> dict:
     """`tracker="tracklets"` needs each raw box's jersey signature: the dump's "jersey" (written since the tracklet tracker
-    came in), or `signatures_from(frame, box)` for an older dump replayed beside its film."""
+    came in), or `signatures_from(frame, box)` for an older dump replayed beside its film. `labels_for(frame, spots)` names
+    each person offense / defense for the greedy tracker (`tracks.team_by_jersey` against the film's frames); without it all are offense."""
     calibration = dump["calibration"]
     calib = build_homography(CalibrationPoints(source=calibration["source"], destination=calibration["destination"]))
     locate = feet_locator(calib)
@@ -53,7 +54,7 @@ def replay(dump: dict, tracker: str = "greedy", signatures_from=None) -> dict:
                     for b in kept
                 ]
             )
-    tracks, labels = follow_two_pass(per_frame, colors, tracker, dump.get("fps", 30.0), signatures, None)
+    tracks, labels = follow_two_pass(per_frame, colors, tracker, dump.get("fps", 30.0), signatures, labels_for)
     trim_at_sideline(tracks, ball[0], direction)
     return {"per_frame": per_frame, "colors": colors, "tracks": tracks, "labels": labels, "boxes": kept_boxes}
 
