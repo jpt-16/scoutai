@@ -519,3 +519,13 @@ def test_the_snap_formation_is_the_set_when_nobody_moved_before_the_snap():
     line = [trk(i, -2.4 + 1.2 * i, -0.5) for i in range(5)]
     got = formation_reads(line + [trk(5, -1.0, -5.0), trk(6, 2.0, -5.0), trk(7, 9.0, -0.5), trk(8, 12.0, -0.5), trk(9, -9.0, -1.5), trk(10, -14.0, -0.5)])
     assert got["snap"] == got["set"]
+
+
+def test_a_receiver_split_just_outside_the_strip_is_not_cut_for_stepping_into_it():
+    from eval.tracks import Track, trim_at_sideline
+
+    # Real play 34: a receiver 4.03 yd from the sideline at the snap, 3.9 a frame later; his track was cut to two points.
+    pts = [(f, -22.67 - 0.02 * f, 0.0) for f in range(60)]  # across = 26.7 + x: 4.03 yd in, drifting toward the sideline
+    t = Track(0, (pts[0][1], pts[0][2]), list(pts), matched=[(f, 0) for f in range(60)])
+    trim_at_sideline([t], 26.7, 1)
+    assert len(t.points) == 60

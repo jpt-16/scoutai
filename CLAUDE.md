@@ -969,6 +969,26 @@ fit from rows and five worn lines skews across the field (residual 0.2 yd, error
 Fix by calibrating with more points (the in-app four-click tool, not built) or checking the fit against the offense itself (the men on the line must sit at one depth). Also found: tight clusters (a bunch, two backs
 stacked) come out of the detector as one box; and `TWO_PASS=1` (seed the tracks at the snap, with the set's path put in front for the motion) is built but unproven (`follow_two_pass`).
 
+**Thirteenth pass (the same three plays, working from the clips we have; plan: get these right and prove it per play, not a rate).**
+(1) **Play 34 had been calibrated 0.4 s *after* the snap** (frame 225; the snap is about frame 212), so tracking began mid-play: the snap was never found
+(0.0), the play read as a toss, and the near-side receivers never had a set to be seeded from. Moved back to frame 180 (`truth/plays_8_34_43/play_34.json`) and
+re-run: the snap is found at 1.2 s, and **a clip that starts after the snap is now said so** (`runRead.ts`: three or more offensive men already moving over
+3 yd/s in the first half second give `unknown`, never a guessed run). (2) **Two tracker bugs hid receivers who stand wide through a long set.**
+`drop_standing_sideline` looked only 1.3 s ahead for a move, so a receiver 4-6 yd from the sideline who stood still for the 1.2 s before the snap was dropped as
+"the bench" at the very frame the tracks are seeded from (`STILL_OFFSETS` now reach 4 s); and `trim_at_sideline` cut a man who started 4.03 yd from the sideline
+after two points for stepping into the strip (it now leaves alone anyone who started within `SIDELINE_CUT_START_MARGIN` 2 yd beyond it). Each has a drawn test
+that failed before the fix. (3) **A run read needs the line to back it up** (`runRead.ts`): a carrier crossing with the line not firing forward is a tracking slip
+(a quarterback's track handed to another man read plays 34 and 43, both passes, as a toss and a power), so it says `unknown`. (4) **A formation the film names from
+fewer than 11 offensive players, or with the line assumed, is a guess**: `formationCheckNote` writes "Check formation: film read X from 10 of 11 offensive
+players" when the film's formation is the only source (a sheet's tag wins as always). On the real plays an incomplete read was right 1 time in 4. (5) `formation_reads`:
+when no one moved 2.5+ yd between the set and the snap, the snap formation is the set's (play 34: the set read Trio right, the snap re-read said "aces off" from 10 men).
+A zapped formation (plays 8 and 43) is still not read at the snap: the motion man's track is in pieces. (6) `eval/calibcheck.py`: the offense's line must sit level at the
+snap; play 8 passes, play 34 is at the limit (1.4 yd tilt on the re-run), play 43 can't be judged (two linemen tracked). It reports "needs a hand"; it does **not** correct
+the field (a shear fitted from the line was tried and dropped: it can't tell the linemen from a row of skill men, so it would be a guess). **Reader finding:** play 34's
+Y runs a 7-yd dig and the path is tracked cleanly, and the reader still ranks shallow ahead of dig (the tree's dig is a 10-yd stem; the staff's own is 7): a reader
+question, not a tracking one. Scores after all this: play 34 routes 2 of 5 (H speed out, F slide), run/pass `unknown` instead of wrong, formation Trio right (set).
+**Still not proven on any play; film routes stay off the cards (`FILM_ROUTES_PROVEN = false`).**
+
 ## Game film upload (the hosted pipeline: `/film`, `src/lib/film/`, `video-service/eval/worker*.py`)
 
 A coach uploads a game's clips on **`/film`** (`FilmLibrary.tsx`), a hosted worker reads them, and the finished game

@@ -610,13 +610,18 @@ def follow_two_pass(per_frame, colors, tracker: str, fps: float, signatures=None
 # A track that runs into the 4 yards beside a sideline from inside is cut there: past it the "player" is far more often the
 # bench, a coach or an official the track was handed to than a receiver (a fade ends 3-6 yards in, so its shape is kept).
 SIDELINE_CUT_YARDS = 4.0
+# A man who started within this much beyond the strip (a receiver split 4-6 yd from the sideline: play 34's two near-side receivers
+# started 4.0 and 5.9 yd in) is not "running into" it, whatever he does; the cut is for tracks that come from further inside.
+SIDELINE_CUT_START_MARGIN = 2.0
 
 
 def trim_at_sideline(tracks, ball_x: float, direction: int):
     """Cuts every track at the first point where it enters the `SIDELINE_CUT_YARDS` beside a sideline from further in.
-    A track that started inside that strip is left alone (it was filtered as a standing man already). Mutates and returns them."""
+    A track that started inside that strip, or within `SIDELINE_CUT_START_MARGIN` beyond it, is left alone. Mutates and returns them."""
     for t in tracks:
         gaps = [min(fx, FIELD_WIDTH - fx) for fx in (ball_x + p[1] / direction for p in t.points)]
+        if gaps and gaps[0] < SIDELINE_CUT_YARDS + SIDELINE_CUT_START_MARGIN:
+            continue
         for i in range(1, len(gaps)):
             if gaps[i] < SIDELINE_CUT_YARDS <= gaps[i - 1]:
                 del t.points[i:]
