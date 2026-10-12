@@ -2,7 +2,7 @@
  * The blitz from film, in this staff's words (`pressure.ts`): who rushed in the first `RUSH_SECONDS` after the snap.
  * A down lineman who stayed at the line rushed (one who ran back into coverage dropped); a backer, nickel or DB who
  * reached the line blitzed. Where a blitzer crossed it says which: outside the tackle (`EDGE_YARDS`) is an outside
- * backer's FIRE, inside it an LB blitz; both outside backers is DOUBLE FIRE. The count of everyone who rushed is the
+ * backer's FIRE (either side), inside it an LB blitz; both outside backers is DOUBLE FIRE. The count of everyone who rushed is the
  * number the staff writes first ("6 - DOUBLE FIRE").
  *
  * The defense at the snap has to add up (`readDefense` plausible) for the read to be sure; on the low sideline
@@ -54,11 +54,6 @@ export function readPressure(file: TrackedPlayFile): PressureRead | null {
   const pre = readDefense(file);
   if (!pre) return null;
   const end = snap + RUSH_SECONDS;
-  // The formation's strong side: the side with more receivers at the snap.
-  const right = pre.receivers.filter((r) => r.x > 0).length;
-  const left = pre.receivers.length - right;
-  const strongDir = right > left ? 1 : right < left ? -1 : 1;
-
   let rushers = 0;
   let dropped = 0;
   const blitzers: PressureRead["blitzers"] = [];
@@ -83,7 +78,8 @@ export function readPressure(file: TrackedPlayFile): PressureRead | null {
       continue;
     }
     const edge = Math.abs(crossed.x) >= EDGE_YARDS;
-    const how: Blitzer = edge ? (Math.sign(crossed.x) === strongDir ? "outside-strong" : "outside-weak") : "inside";
+    // Which side doesn't matter to the staff: an outside blitzer is a FIRE.
+    const how: Blitzer = edge ? "outside-strong" : "inside";
     blitzers.push({ role: def.role, how });
   }
 

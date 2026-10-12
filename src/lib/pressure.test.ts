@@ -9,8 +9,8 @@ describe("the staff's blitz tags", () => {
   it("reads DOUBLE FIRE, FIRE and LB with the rush count", () => {
     expect(parsePressure("6 - DOUBLE FIRE")).toMatchObject({ rushers: 6, call: "DOUBLE FIRE", blitzers: ["outside-strong", "outside-weak"] });
     expect(parsePressure("5 - DOUBLE FIRE")?.rushers).toBe(5);
-    expect(parsePressure("5 - FIRE")).toMatchObject({ rushers: 5, call: "FIRE", blitzers: ["outside-strong"], sideTagged: false });
-    expect(parsePressure("FIRE WEAK")).toMatchObject({ call: "FIRE", blitzers: ["outside-weak"], sideTagged: true });
+    expect(parsePressure("5 - FIRE")).toMatchObject({ rushers: 5, call: "FIRE", blitzers: ["outside-strong"] });
+    expect(parsePressure("5 - FIRE")?.describe).toBe("Fire: an outside backer off the edge, 5 rush.");
     expect(parsePressure("5 - LB")).toMatchObject({ rushers: 5, call: "LB", blitzers: ["inside"] });
     expect(parsePressure("6 - DOUBLE FIRE")?.describe).toBe("Double Fire: both outside backers off the edge, 6 rush.");
   });
@@ -53,9 +53,8 @@ describe("the blitz on the Scout D card", () => {
     expect(d.defenseNotes[0]).toContain("Double Fire");
   });
 
-  it("FIRE: the strong side's outside backer, and the weak side's when the tag says so", () => {
+  it("FIRE: one outside backer (drawn from the strong side)", () => {
     expect(rushersOn(card("5 - FIRE"))).toEqual(["S"]);
-    expect(rushersOn(card("5 - FIRE WEAK"))).toEqual(["W"]);
   });
 
   it("LB: the backer nearest the ball, through the A gap", () => {

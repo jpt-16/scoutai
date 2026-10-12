@@ -240,8 +240,8 @@ Free-text tags are classified by keyword (`classifyFormation`, `classifyFront`,
   receiver-heavy side. An unknown front draws as 4-3, and the card footer says so. `COVERAGE`
   shows in the footer.
   **Blitzes** (`src/lib/pressure.ts`): this staff writes the blitz in the COVERAGE column, not a coverage: "6 - DOUBLE
-  FIRE", "5 - LB". The number is how many rush; **FIRE** is one outside backer blitzing off the edge (the strong side's
-  unless the tag says WEAK / WILL), **DOUBLE FIRE** both outside backers, **LB** an inside backer. `parsePressure` reads
+  FIRE", "5 - LB". The number is how many rush; **FIRE** is one outside backer blitzing off the edge (either side: it doesn't
+  matter to the staff; the card draws it from the strong side), **DOUBLE FIRE** both outside backers, **LB** an inside backer. `parsePressure` reads
   the tag; the Scout D card draws a rush arrow (`Diagram.rushes`, defense color) from each blitzer (the outermost backer
   on that side, or the one nearest the ball for LB) off the edge or through the A gap at the quarterback, puts "Double
   Fire: both outside backers off the edge, 6 rush" first in NOTES, and labels the table's box BLITZ. None in 7v7. There is
@@ -818,7 +818,7 @@ so it was left alone until there are more real tracks to tune on.
 **Blitz from film (`src/lib/pressureRead.ts`):** `readPressure` counts who rushed in the first 1.5 s after `snapTime`
 (a down lineman who stayed at the line rushed, one who ran 4+ yards back dropped into coverage; a backer, nickel or DB who
 reached the line blitzed) and where each blitzer crossed the line (4.5+ yards from the ball is off the edge: an outside
-backer's FIRE, strong or weak by the side with more receivers; inside it, LB), and writes the staff's tag (`pressureTag`:
+backer's FIRE, either side; inside it, LB), and writes the staff's tag (`pressureTag`:
 "6 - DOUBLE FIRE", "5 - FIRE", "5 - LB"; a straight four-man rush is none). Sure only when the defense at the snap adds up;
 `applyPressureRead` writes it in a blank COVERAGE (the coach's tag wins) before the coverage read, and notes it either way.
 `score-routes` scores the call and the rush count against a key whose COVERAGE is a blitz. Tested on drawn plays

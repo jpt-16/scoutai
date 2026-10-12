@@ -1,7 +1,8 @@
 /**
  * Blitzes, as this staff tags them. Their breakdown's COVERAGE column carries the pressure, not a coverage:
  * "6 - DOUBLE FIRE", "5 - DOUBLE FIRE", "5 - LB". The number is how many rush. **FIRE** is one outside backer
- * blitzing off the edge, **DOUBLE FIRE** both outside backers, **LB** an inside backer.
+ * blitzing off the edge (which one doesn't matter to the staff), **DOUBLE FIRE** both outside backers, **LB** an
+ * inside backer.
  *
  * `parsePressure` reads a tag into who comes; the Scout D card draws them (`formations.ts`, rush arrows from the
  * blitzers); `readPressure` (`pressureRead.ts`) reads the same thing off film. Framework-free.
@@ -18,8 +19,6 @@ export interface Pressure {
   blitzers: Blitzer[];
   /** A one-line description for the card's notes: "Double Fire: both outside backers off the edge, 6 rush." */
   describe: string;
-  /** True when the tag named a side; a plain FIRE is drawn from the strong side. */
-  sideTagged: boolean;
 }
 
 const norm = (tag: string) => ` ${tag.toUpperCase().replace(/[^A-Z0-9]+/g, " ").trim()} `;
@@ -36,8 +35,6 @@ export function parsePressure(tag: string): Pressure | null {
   const t = norm(tag);
   const count = tag.match(/^\s*(\d+)\s*-/)?.[1] ?? t.match(/ (\d+) MAN RUSH /)?.[1];
   const rushers = count ? Number(count) : null;
-  const weak = / (WEAK|WILL|W|BOUNDARY|BACKSIDE|WK) /.test(t);
-  const strong = / (STRONG|SAM|S|FIELD|STR) /.test(t);
   let call: string;
   let blitzers: Blitzer[];
   if (/ DOUBLE FIRE | DBL FIRE /.test(t)) {
@@ -45,7 +42,8 @@ export function parsePressure(tag: string): Pressure | null {
     blitzers = ["outside-strong", "outside-weak"];
   } else if (/ FIRE /.test(t)) {
     call = "FIRE";
-    blitzers = [weak && !strong ? "outside-weak" : "outside-strong"];
+    // Either side is a FIRE; the card draws it from the strong side.
+    blitzers = ["outside-strong"];
   } else if (/ (LB|MIKE|MIKE BLITZ|BACKER|ILB) /.test(t)) {
     call = "LB";
     blitzers = ["inside"];
@@ -58,7 +56,7 @@ export function parsePressure(tag: string): Pressure | null {
     call === "DOUBLE FIRE"
       ? "both outside backers off the edge"
       : call === "FIRE"
-        ? `the ${blitzers[0] === "outside-weak" ? "weak" : "strong"}-side outside backer off the edge`
+        ? "an outside backer off the edge"
         : call === "LB"
           ? "an inside backer"
           : "";
@@ -68,7 +66,7 @@ export function parsePressure(tag: string): Pressure | null {
     .map((w) => (w === "lb" ? "LB" : w.charAt(0).toUpperCase() + w.slice(1)))
     .join(" ");
   const describe = [title + (who ? `: ${who}` : ""), rushers ? `${rushers} rush` : ""].filter(Boolean).join(", ") + ".";
-  return { rushers, call, blitzers, describe, sideTagged: weak || strong };
+  return { rushers, call, blitzers, describe };
 }
 
 /** The tag as the staff writes it, from what was read: "6 - DOUBLE FIRE", "5 - FIRE", "5 - LB". */
