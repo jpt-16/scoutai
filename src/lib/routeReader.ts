@@ -52,6 +52,15 @@ const WORST_WEIGHT = 0.4;
 const SIMPLICITY = 0.25;
 /** How much deeper / wider than the diagram a real route may run: receivers run short stems and bad breaks. */
 const SCALES = [0.7, 0.85, 1, 1.2, 1.4];
+/**
+ * A dig's depth is not what makes it a dig: this staff runs it at 7 yards and at 15 ("dig depth varies", the coach), a sharp turn
+ * inside after a vertical stem. So its depth runs deeper (up to 16) at a fifth of the usual stretch cost. A dig at 7 yards is still
+ * close to the tree's shallow (up 6.4, then across) and reads as a low-confidence call with the dig next: flagged, not drawn.
+ */
+const DIG_DEPTH_SCALES = [0.55, 0.65, 0.75, 0.85, 1, 1.2, 1.4, 1.6];
+/** A shallow is the tree's cross at 5-6 yards; deeper than the tree's 6.4 is a dig by this staff's words. */
+const SHALLOW_DEPTH_SCALES = [0.7, 0.85, 1];
+const DIG_DEPTH_STRETCH = 0.2;
 /** Yards charged per unit of |ln scale|, so a route that fits as drawn beats one that needs stretching to fit. */
 const STRETCH_COST = 1.2;
 /**
@@ -157,8 +166,9 @@ export function readRoute(track: RoutePoint[], outside: 1 | -1 = 1): RouteRead {
   const merged = new Map<RouteKind, number>();
   const ranked0 = [...READABLE_ROUTES, "go" as RouteKind].map((kind) => {
     let best = Infinity;
+    const depthScales = kind === "dig" ? DIG_DEPTH_SCALES : kind === "shallow" ? SHALLOW_DEPTH_SCALES : SCALES;
     for (const sx of SCALES) {
-      for (const sy of SCALES) {
+      for (const sy of depthScales) {
         const shape = template(kind).map((p) => ({ x: p.x * sx, y: p.y * sy }));
         const want = lengthOf(shape);
         // The whole path seen, against the shape carried on past its end (the run after the
@@ -193,7 +203,7 @@ export function readRoute(track: RoutePoint[], outside: 1 | -1 = 1): RouteRead {
           shortfall * 0.5 +
           breaks * SIMPLICITY +
           releaseGap * RELEASE_COST +
-          (Math.abs(Math.log(sx)) + Math.abs(Math.log(sy))) * STRETCH_COST;
+          (Math.abs(Math.log(sx)) + Math.abs(Math.log(sy)) * (kind === "dig" ? DIG_DEPTH_STRETCH : 1)) * STRETCH_COST;
         if (dist < best) best = dist;
       }
     }

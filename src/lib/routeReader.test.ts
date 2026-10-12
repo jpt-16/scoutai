@@ -192,3 +192,19 @@ describe("readRoute", () => {
   }, 60_000);
 });
 
+describe("a dig's depth varies", () => {
+  const dig = (depth: number) => {
+    const p = [];
+    for (let i = 0; i <= 10; i++) p.push({ x: 0, y: (depth * i) / 10 });
+    for (let i = 1; i <= 12; i++) p.push({ x: -i, y: depth });
+    return p;
+  };
+  it("reads a 12 and a 15 yard dig as a dig", () => {
+    expect(readRoute(dig(12), 1).kind).toBe("dig");
+    expect(readRoute(dig(15), 1).kind).toBe("dig");
+  });
+  it("never reads a 7 yard dig as a sure shallow: either the dig, or unsure with the dig next", () => {
+    const r = readRoute(dig(7), 1);
+    expect(r.kind === "dig" || (r.ranked[1].kind === "dig" && r.confidence < 0.25)).toBe(true);
+  });
+});
