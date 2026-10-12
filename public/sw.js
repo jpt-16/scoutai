@@ -6,7 +6,7 @@
  * - Next.js build assets and icons (content-hashed / static): cache first.
  * - Everything else same-origin (RSC payloads, manifest): network first.
  */
-const CACHE_VERSION = "scoutcard-v1";
+const CACHE_VERSION = "scoutcard-v2";
 const PRECACHE = [
   "/",
   "/script",

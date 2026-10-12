@@ -972,6 +972,17 @@ Clerk / Stripe / Google / Vercel processors, and the private-pilot sign-in. The 
 off, and the pages say so. The support email is `jake@jtbuildsco.com` (for now). Still a placeholder to fill in by hand: the governing
 law (state / country). They're a draft, not legal advice.
 
+## Logo and icons (`public/brand/`, `public/icons/`)
+
+The mark is an orange play card with an **O**, a route breaking to an arrow, and an **X** (the old O and X, now a
+play). Lockups set `SCOUTCARD AI` in Barlow Condensed 800, chalk on the dark ground with `AI` in the accent (a
+darker orange on cream, for contrast). `public/brand/` holds the PNGs (dark, light and stacked lockups, the mark
+at 512 and 1024) and `scoutcard-mark.svg`. The favicon is a simpler cut (heavier strokes, no X, so it holds at
+16 px): `public/favicon.ico` (16/32/48), `public/icons/icon.svg`, `icon-192/512.png`, a full-bleed maskable icon
+and the Apple touch icon, all wired in `layout.tsx`. The design canvas is https://claude.ai/artifact/1UeWVzz1WzU5fU2eb5UNDs.
+`BrandMark.tsx` draws the same mark inline. Changing an icon: bump `CACHE_VERSION` in `sw.js`, since installed
+iPads cache them.
+
 ## Conventions
 
 - Keep `src/lib/*` framework-free (relative imports, no React) so Vitest runs it directly.
