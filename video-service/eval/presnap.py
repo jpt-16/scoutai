@@ -85,11 +85,52 @@ class Detector:
                         (x1 + tx, y1 + ty, x2 + tx, y2 + ty, s)
                         for x1, y1, x2, y2, s in self._run(rgb[ty : ty + th, tx : tx + tw])
                     ]
-        if not found:
-            return []
-        boxes = [[b[0], b[1], b[2] - b[0], b[3] - b[1]] for b in found]
-        keep = cv2.dnn.NMSBoxes(boxes, [b[4] for b in found], CONFIDENCE, 0.45)
-        return [found[int(i)] for i in np.array(keep).flatten()]
+        return _nms(found)
+
+    def _run_batch(self, rgbs: list[np.ndarray]) -> list[list[tuple[float, float, float, float, float]]]:
+        """Several crops through the model in one pass (the processor resizes each to the model's input)."""
+        torch = self.torch
+        with torch.inference_mode():
+            inputs = self.processor(images=rgbs, return_tensors="pt").to(self.device)
+            outputs = self.model(**inputs)
+            results = self.processor.post_process_object_detection(
+                outputs, target_sizes=torch.tensor([r.shape[:2] for r in rgbs]), threshold=CONFIDENCE
+            )
+        return [
+            [
+                (*box.tolist(), float(score))
+                for box, score, label in zip(r["boxes"], r["scores"], r["labels"])
+                if int(label) in self.person
+            ]
+            for r in results
+        ]
+
+    def people_in_windows(
+        self, frame_bgr: np.ndarray, windows: list[tuple[int, int, int, int]], batch: int = 8
+    ) -> list[tuple[float, float, float, float, float]]:
+        """Boxes (x1, y1, x2, y2, score) in the frame's own pixels, from the detector run on just these windows
+        (x0, y0, x1, y1), a few at a time. See `regiondetect`."""
+        rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+        found: list[tuple[float, float, float, float, float]] = []
+        for i in range(0, len(windows), batch):
+            chunk = windows[i : i + batch]
+            crops = [np.ascontiguousarray(rgb[y0:y1, x0:x1]) for x0, y0, x1, y1 in chunk]
+            try:
+                results = self._run_batch(crops)
+            except Exception:  # a batch the processor or model refuses: one window at a time
+                results = [self._run(c) for c in crops]
+            for (x0, y0, _x1, _y1), res in zip(chunk, results):
+                found += [(bx1 + x0, by1 + y0, bx2 + x0, by2 + y0, s) for bx1, by1, bx2, by2, s in res]
+        return _nms(found)
+
+
+def _nms(found: list[tuple[float, float, float, float, float]]) -> list[tuple[float, float, float, float, float]]:
+    """One box per person where tiles or windows overlap: the surest of the boxes that mostly cover each other."""
+    if not found:
+        return []
+    boxes = [[b[0], b[1], b[2] - b[0], b[3] - b[1]] for b in found]
+    keep = cv2.dnn.NMSBoxes(boxes, [b[4] for b in found], CONFIDENCE, 0.45)
+    return [found[int(i)] for i in np.array(keep).flatten()]
 
 
 def torso_color(frame_bgr: np.ndarray, box: tuple[float, float, float, float, float]) -> tuple[float, float, float]:

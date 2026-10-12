@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -359,17 +360,24 @@ def track_play(
     team_of: "callable",
     fps: float,
     debug: dict | None = None,
+    to_snap: list[np.ndarray] | None = None,
 ) -> dict:
     """The tracks for one play. `boxes[i]` are the people found in frame `i`; frame `calibration['frame']` is the snap."""
     snap = calibration["frame"]
     direction = calibration["direction"]
     calib = build_homography(CalibrationPoints(source=calibration["source"], destination=calibration["destination"]))
     ball = transform_point(calib, *calibration["ball"])
-    # Hold the camera still: against the field's paint where there is enough of it, else its texture.
-    to_snap = camera_to_snap_paint(frames_bgr[snap:])
+    # Hold the camera still: against the field's paint where there is enough of it, else its texture (or the
+    # matrices were already worked out, from the snap frame on, because the detector needed them first).
+    timing: dict[str, float] = {}
+    began = time.perf_counter()
     if to_snap is None:
-        grays = [cv2.cvtColor(f, cv2.COLOR_BGR2GRAY) for f in frames_bgr]
-        to_snap = camera_to_snap(grays, boxes, snap)
+        to_snap = camera_to_snap_paint(frames_bgr[snap:])
+        if to_snap is None:
+            grays = [cv2.cvtColor(f, cv2.COLOR_BGR2GRAY) for f in frames_bgr]
+            to_snap = camera_to_snap(grays, boxes, snap)
+        timing["camera_seconds"] = time.perf_counter() - began
+    began = time.perf_counter()
     locate = feet_locator(calib)
 
     kept_boxes, per_frame, colors, weak = [], [], [], []
@@ -386,6 +394,7 @@ def track_play(
         debug.update(frames=frames_bgr[snap:], boxes=kept_boxes, tracks=tracks, labels=labels, fps=fps, to_snap=to_snap, per_frame=per_frame, colors=colors, raw_boxes=boxes[snap:], calibration=calibration, ball=ball, direction=direction)
     return {
         "fps": fps,
+        "timing": {**timing, "track_seconds": round(time.perf_counter() - began, 2)},
         "tracks": [
             {
                 "id": t.id,
@@ -459,8 +468,15 @@ def frozen_from(boxes: list[list[Box]]) -> int:
     return last_change + 1 if len(boxes) - 1 - last_change >= FROZEN_FRAMES else len(boxes)
 
 
-def track_clip(clip: Path, detector, seconds: float = 6.0, tiles: int = 2, debug: dict | None = None) -> dict:
-    """Follows everyone through one clip, from the calibration file beside it."""
+def track_clip(
+    clip: Path, detector, seconds: float = 6.0, tiles: int = 2, debug: dict | None = None, region: bool = False
+) -> dict:
+    """Follows everyone through one clip, from the calibration file beside it.
+
+    `region`: hold the camera first, then run the detector only on the field the tracker keeps people from, cut so a man is
+    the same size to the model all play (`regiondetect`). Without it, the whole frame is tiled (`tiles`)."""
+    timing: dict[str, float] = {}
+    began = time.perf_counter()
     calibration = json.loads(clip.with_suffix(".json").read_text())
     cap = cv2.VideoCapture(str(clip))
     fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
@@ -472,12 +488,34 @@ def track_clip(clip: Path, detector, seconds: float = 6.0, tiles: int = 2, debug
             break
         frames.append(frame)
     frames = unfrozen(frames)
+    timing["read_seconds"] = time.perf_counter() - began
     # Frame 0 of the list is the snap frame the calibration was made on.
     calibration = {**calibration, "frame": 0}
-    boxes = [detector.people(f, tiles) for f in frames]
+    to_snap = None
+    boxes = None
+    if region:
+        from .regiondetect import detect_play
+
+        calib = build_homography(CalibrationPoints(source=calibration["source"], destination=calibration["destination"]))
+        ball = transform_point(calib, *calibration["ball"])
+        began = time.perf_counter()
+        to_snap = camera_to_snap_paint(frames)
+        timing["camera_seconds"] = time.perf_counter() - began
+        if to_snap is not None:
+            boxes = detect_play(frames, to_snap, calib, ball[1], feet_locator(calib).pixels_per_yard, detector, stats=timing)  # type: ignore[attr-defined]
+    if boxes is None:  # the whole-frame tiles (also when the paint couldn't hold the camera)
+        began = time.perf_counter()
+        boxes = [detector.people(f, tiles) for f in frames]
+        timing["detect_seconds"] = time.perf_counter() - began
+        to_snap = None
     end = frozen_from(boxes)
     frames, boxes = frames[:end], boxes[:end]
-    return track_play(frames, boxes, calibration, team_by_jersey, fps, debug)
+    if to_snap is not None:
+        to_snap = to_snap[:end]
+    result = track_play(frames, boxes, calibration, team_by_jersey, fps, debug, to_snap=to_snap)
+    result["timing"] = {k: round(v, 2) for k, v in {**timing, **result["timing"]}.items()}
+    result["timing"]["frames"] = len(frames)
+    return result
 
 
 def main() -> None:
@@ -486,6 +524,7 @@ def main() -> None:
     ap.add_argument("--out", type=Path, default=Path("tracks"))
     ap.add_argument("--seconds", type=float, default=6.0, help="how long after the snap to follow")
     ap.add_argument("--tiles", type=int, default=2)
+    ap.add_argument("--region", action="store_true", help="hold the camera first, then detect only on the field, with a man the same size to the model all play (see eval.regiondetect); --tiles is then unused")
     ap.add_argument("--debug", type=Path, default=None, help="also write pictures of the tracking here (see eval.trackdebug)")
     ap.add_argument("--detections", type=Path, default=None, help="also write everyone the detector found in every frame here, so the tracking can be tuned without the film")
     args = ap.parse_args()
@@ -498,10 +537,11 @@ def main() -> None:
         if not clip.with_suffix(".json").exists():
             continue
         debug: dict | None = {} if (args.debug or args.detections) else None
-        result = track_clip(clip, detector, args.seconds, args.tiles, debug)
+        result = track_clip(clip, detector, args.seconds, args.tiles, debug, args.region)
         (args.out / f"{clip.stem}.json").write_text(json.dumps(result))
         n_off = sum(t["team"] == "offense" for t in result["tracks"])
         print(f"{clip.name}: {len(result['tracks'])} people followed, {n_off} offense")
+        print("  time: " + ", ".join(f"{k.replace('_seconds', '')} {v}s" if k.endswith("_seconds") else f"{k.replace('_', ' ')} {v}" for k, v in result["timing"].items()))
         if debug is not None and args.debug:
             from .trackdebug import write_pictures
 

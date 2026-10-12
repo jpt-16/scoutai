@@ -71,6 +71,7 @@ def feet_locator(matrix: np.ndarray) -> Callable[[Box], tuple[float, float]]:
             fx, fy = transform_point(matrix, cx, min(foot_y, 4000.0))
         return fx, fy
 
+    feet_on_field.pixels_per_yard = pixels_per_yard  # type: ignore[attr-defined]
     feet_on_field.short = is_short  # type: ignore[attr-defined]
     feet_on_field.height_ratio = height_ratio  # type: ignore[attr-defined]
     return feet_on_field

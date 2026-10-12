@@ -150,3 +150,14 @@ the tracking rules tried again and again elsewhere. Combine it with `MODEL_CHECK
 colab.research.google.com, set the runtime to T4 GPU, and follow its cells (zip `video-service/` on the Mac, upload
 it, run, download `results.zip`). The tracker picks CUDA by itself (`devices.py`). The clips are game film, so use
 your own account and delete the runtime afterwards.
+
+## Detecting only where the play is (`--region`)
+
+    python -m eval.tracks clips/ --out tracks --seconds 8 --region --detections detections/
+
+Holds the camera first, then runs the detector only on the field the tracker keeps people from (inside the sidelines,
+25 yards either way of the ball), in rows of square windows cut so the farthest man in each row is about 90 pixels tall
+to the model, however far the camera has zoomed (`eval/regiondetect.py`). Measured on play 3 with the whole-frame
+tiles: the camera zoomed out 1.6x after the snap and the people found fell from 94 a frame to 61. Every run now prints a
+`time:` line per clip (read, camera, detect, track, and windows per frame for `--region`). Compare two dumps of the same
+clip with `python -m eval.compare a_detections.json b_detections.json`.
