@@ -61,6 +61,8 @@ const playNumberOf = (stem: string, fallback: number) => {
 };
 
 const sheetPath = flag("--sheet");
+// Film routes are drawn over the sheet's call only when asked (`FILM_ROUTES_PROVEN` in trackedPlay.ts says why not by default).
+const trustFilmRoutes = args.includes("--trust-film-routes") || undefined;
 const cards = [];
 const checks: string[] = [];
 const warnings: string[] = [];
@@ -89,7 +91,7 @@ if (sheetPath) {
       cards.push(row.card); // no film for this row: the sheet draws it, as always
       continue;
     }
-    const { card, unsure } = cardFromTracks(file, row.card, { source: basename(sheetPath) });
+    const { card, unsure } = cardFromTracks(file, row.card, { source: basename(sheetPath), trustFilmRoutes });
     cards.push(withDefense(card, file));
     if (unsure.length) checks.push(`Play ${card.playNumber}: ${unsure.map((u) => u.letter).join(", ")}`);
   }
@@ -103,6 +105,7 @@ if (sheetPath) {
       formation: formations.get(playNumberOf(stem, i + 1)) ?? "",
       source: stem,
       playNumber: playNumberOf(stem, i + 1),
+      trustFilmRoutes,
     });
     const card = run.kind === "run" ? applyRunRead({ ...built.card, playCall: "" }, run) : built.card;
     const unsure = run.kind === "run" ? [] : built.unsure;

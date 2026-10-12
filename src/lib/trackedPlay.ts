@@ -67,6 +67,15 @@ const QB_MAX_ACROSS_YARDS = 2.5;
 const QB_BEHIND_LINE_YARDS = 0.8;
 /** A read this unsure (margin over the runner-up) is flagged for a coach. */
 export const SURE_CONFIDENCE = 0.25;
+
+/**
+ * Whether a route read from film may be drawn on a card as the play's route. **Off until it's proven**: on the first real plays scored against
+ * what the coach says each man ran, the reader was right on 2 of 13 routes (the tracks, not the reader, are the limit) and its confidence did not
+ * separate the right reads from the wrong ones, so a film route can't be told from a wrong one by the card. Off, a card built with the staff's
+ * sheet keeps the sheet's call (the coach's own tags) and lists what the film saw in its notes, and a film-only card draws the read but says
+ * every route is unchecked. Turn it on per run (`--trust-film-routes`) once `scripts/score-truth.ts` shows it right on a real set of plays.
+ */
+export const FILM_ROUTES_PROVEN = false;
 /** The snap is when this many offensive men have all started to move: a man or two in motion before it do not count. */
 const SNAP_MOVERS = 4;
 const MOVED_YARDS = 1.5;
@@ -419,7 +428,7 @@ export function motionFormationNote(file: TrackedPlayFile): string {
 export function cardFromTracks(
   file: TrackedPlayFile,
   row: HudlPlayCard | null,
-  opts: { formation?: string; playName?: string; source?: string; playNumber?: number } = {},
+  opts: { formation?: string; playName?: string; source?: string; playNumber?: number; trustFilmRoutes?: boolean } = {},
 ): TrackedCard {
   const { detection, reads: raw } = detectionFromTracks(file, { ...opts, formation: opts.formation || filmFormationText(file) });
   const motion = motionFormationNote(file);
@@ -435,8 +444,20 @@ export function cardFromTracks(
     return letter ? [{ letter, kind: r.kind, confidence: r.confidence, runnerUp: r.runnerUp }] : [];
   });
   const unsure = reads.filter((r) => r.kind === "unknown" || (r.kind !== "block" && r.confidence < SURE_CONFIDENCE));
-  if (unsure.length === 0) return { card: built, reads, unsure };
-  const note = checkNote(unsure);
-  const notes = built.notes.trim() ? `${built.notes.trim()} ${note}` : note;
-  return { card: deriveCard({ ...built, notes }), reads, unsure };
+  const trust = opts.trustFilmRoutes ?? FILM_ROUTES_PROVEN;
+  const notesOf = (card: HudlPlayCard, ...more: string[]) => [card.notes.trim(), ...more].filter(Boolean).join(" ");
+  if (trust) {
+    if (unsure.length === 0) return { card: built, reads, unsure };
+    return { card: deriveCard({ ...built, notes: notesOf(built, checkNote(unsure)) }), reads, unsure };
+  }
+  const named = reads.filter((r) => r.kind !== "block" && r.kind !== "unknown").map((r) => `${r.letter} ${routeName(r.kind).toLowerCase()}`);
+  if (row) {
+    // The sheet's call stays the routes; the film's reads are only listed, so a wrong one can't be mistaken for the play.
+    const kept = Object.fromEntries(Object.entries(built.routeOverrides ?? {}).filter(([, v]) => v.source !== "video"));
+    const stripped = { ...built, routeOverrides: Object.keys(kept).length ? kept : undefined };
+    const note = named.length ? `Film's route reads (unchecked, not drawn): ${named.join(", ")}.` : "";
+    return { card: deriveCard({ ...stripped, notes: notesOf(stripped, note) }), reads, unsure };
+  }
+  const note = "Routes read from film, unchecked: confirm each one.";
+  return { card: deriveCard({ ...built, notes: notesOf(built, unsure.length ? checkNote(unsure) : "", note) }), reads, unsure };
 }

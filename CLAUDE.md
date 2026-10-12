@@ -952,6 +952,14 @@ stick → hitch ✓. The pictures of the tracks on the film (`trackdebug.draw_fr
 camera zooms out 1.5-2.7x and the receivers on the near side, in front of the bench, are lost within a second or two (play 8's two right-side receivers kept 39 and 14 points of ~300),
 and the tracks that do last cross into the pile. Pre-snap motion is found on play 8 (F, from the right bunch to the left slot).
 
+**Film routes are not drawn over the sheet's call until proven (`FILM_ROUTES_PROVEN = false` in `trackedPlay.ts`).** 2 of 13 routes right on the first real plays means a drawn film route
+can't be told from a wrong one (confidence didn't separate them: right reads at 0.27-0.37, wrong ones at 0.38-0.39). So `cardFromTracks` with a sheet row keeps the sheet's call
+as the routes and only lists the film's reads in the notes ("Film's route reads (unchecked, not drawn): Z corner, ..."); with no sheet the read is drawn and the notes say every route is unchecked;
+`--trust-film-routes` (or `trustFilmRoutes`) turns the old behaviour back on, for scoring and once `scripts/score-truth.ts` shows it right on a real set. The reads themselves are unchanged and still scored.
+**The app's MESH is not this staff's MESH** (coach's own read of plays 8 and 43, a MESH RAIL): Z corner, X a stick at 10 yd, the two inside receivers shallow (the mesh), the back the rail; the
+app's template draws Z post / X corner (Duces going left), so a sheet call of MESH draws two outside routes wrong for this staff until `CONCEPT_DICTIONARY.MESH` is changed to theirs (waiting on whether it
+is by letter or by play side).
+
 ## Game film upload (the hosted pipeline: `/film`, `src/lib/film/`, `video-service/eval/worker*.py`)
 
 A coach uploads a game's clips on **`/film`** (`FilmLibrary.tsx`), a hosted worker reads them, and the finished game

@@ -52,7 +52,7 @@ describe("cardFromTracks", () => {
     const [a, b] = letters; // two skill players, whoever they are in a Spread
     const want: Record<string, RouteKind> = { [a.label]: "post", [b.label]: "out" };
     const { file } = played(want);
-    const { card, reads } = cardFromTracks(file, row);
+    const { card, reads } = cardFromTracks(file, row, { trustFilmRoutes: true });
     expect(card.routeOverrides?.[a.label]?.route).toBe("post");
     expect(card.routeOverrides?.[b.label]?.route).toBe("out");
     expect(card.routeOverrides?.[a.label]?.source).toBe("video");
@@ -60,6 +60,21 @@ describe("cardFromTracks", () => {
     // The sheet stays ground truth.
     expect(card.playCall).toBe("QUICK SLANT");
     expect(card.down).toBe(1);
+  });
+
+  it("by default keeps the sheet's call as the routes and only lists what the film read (film routes are unproven on real plays)", () => {
+    const row = parseHudlCsvText(CSV).cards[0];
+    const letters = buildDiagram({ ...row, hash: null }, "team", "offense").players.filter((p) => p.label && p.label !== "Q");
+    const [a, b] = letters;
+    const { file } = played({ [a.label]: "post", [b.label]: "out" });
+    const { card, reads } = cardFromTracks(file, row);
+    expect(Object.values(card.routeOverrides ?? {}).some((r) => r?.source === "video")).toBe(false);
+    expect(card.notes).toContain("not drawn");
+    expect(card.notes).toContain(`${a.label} post`);
+    expect(reads.find((r) => r.letter === a.label)?.kind).toBe("post"); // the read itself is still there for scoring
+    // Film only, no sheet: the read is drawn but every route is called unchecked.
+    const film = cardFromTracks(file, null, { formation: "Spread" });
+    expect(film.card.notes).toContain("unchecked");
   });
 
   it("leaves linemen, the quarterback and the defense out of the routes", () => {
@@ -75,7 +90,7 @@ describe("cardFromTracks", () => {
     const { file } = played({});
     const wander = file.tracks.find((t) => Math.abs(t.start[0] - (a.x - FIELD.center.x) / YARD_X) < 0.2 && Math.abs(t.start[1] - (FIELD.los - a.y) / YARD_PX) < 0.2)!;
     wander.points = Array.from({ length: 30 }, (_, i) => [i * 0.5, wander.start[0] + Math.sin(i / 2) * 9, wander.start[1] + 8 - i * 0.5]);
-    const { card, unsure } = cardFromTracks(file, row);
+    const { card, unsure } = cardFromTracks(file, row, { trustFilmRoutes: true });
     expect(unsure.some((u) => u.kind === "unknown")).toBe(true);
     expect(card.notes).toContain("Check routes");
   });
