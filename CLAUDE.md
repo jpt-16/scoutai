@@ -259,7 +259,7 @@ Free-text tags are classified by keyword (`classifyFormation`, `classifyFront`,
   one backer stays in the box (a lone one bumps over the ball). How the slots are played
   (`CoverageStyle`) comes from the COVERAGE tag (`coverageStyleFor`): Cover 0/1/man is
   `MAN_OVER` (head up, a yard inside), Cover 3 or blank `ZONE_APEX` (halfway between #2 and the
-  next man inside), Cover 2/4/6/quarters/Tampa `DEEP_SHELL` (both safeties stay deep, backers
+  next man inside), Cover 2/4/quarters/Tampa `DEEP_SHELL` (there is no Cover 6 in this staff's calls) (both safeties stay deep, backers
   apex). What it did shows in the NOTES box ("SS apex Y · S apex H · FS middle") until a coach
   writes a note. Formations with at most one split receiver a side (Pro, I, Double Eagle) are
   unchanged.
@@ -815,7 +815,8 @@ closes his cushion first), his steps match the receiver's step for step and he's
 through (a vertical gives no vote, since a Cover 3 corner bailing with a go runs with him just like a man corner); rushers (ending
 at the line) don't vote; 60%+ man is man. (2) **How many deep** at the end (11+ yards, not counting a man defender running with
 his receiver): man gives Cover 0 / Cover 1 / 2 Man; zone gives Cover 2 (two deep, corners in the flats), Tampa 2 (the middle backer
-ran the deep middle), Cover 3 (three deep splitting the field in thirds) or Cover 6 (three deep, two on one side), Cover 4 (four).
+ran the deep middle), Cover 3 (three deep; unsure when two of them are on one side, since there is no Cover 6 in this staff's
+calls), Cover 4 (four).
 (3) **The details:** who took each flat (`cloud` corner, `sky` safety or nickel, `buzz` backer), Cover 4 **match** (a safety
 carried a vertical #2) or spot drop, and whether the defense rotated out of its pre-snap shell. The label is the COVERAGE column's
 own words ("COVER 3 SKY", "COVER 4 MATCH", "2 MAN", "TAMPA 2"), so `coverageStyleFor` and the card footer use it as is. A read has
@@ -823,9 +824,9 @@ own words ("COVER 3 SKY", "COVER 4 MATCH", "2 MAN", "TAMPA 2"), so `coverageStyl
 not adding up (`readDefense` not plausible) or five deep. `applyCoverageRead` writes a sure read only where the sheet left COVERAGE
 blank (the coach's tag wins) and notes either way ("Film coverage: COVER 1." / "Check coverage: film says …, unsure.");
 `tracks-to-cards` applies it and `score-routes` scores it against the key's COVERAGE by family (`coverageFamilyOf`: "C3", "Cover 3
-Sky", "Quarters", "Tampa", "6 - DOUBLE FIRE"). Tested on drawn plays (Duces against a 4-2-5, a tracker's jitter and a tenth of
-the points missing): Cover 0, 1, 2 Man, 2, Tampa 2, 3 sky out of a two-high rotation, 3 cloud, 4 match, 4 spot drop and 6 all
-read right across 12 noise patterns, four verticals with no break is unsure. On the two real recordings every read is unsure (the
+Sky", "Quarters", "Tampa"; a number the staff doesn't use as a coverage, like the "6" in "6 - DOUBLE FIRE", names none). Tested on drawn plays (Duces against a 4-2-5, a tracker's jitter and a tenth of
+the points missing): Cover 0, 1, 2 Man, 2, Tampa 2, 3 sky out of a two-high rotation, 3 cloud, 4 match and 4 spot drop all
+read right across 12 noise patterns; three deep with two on one side reads Cover 3, unsure; four verticals with no break is unsure. On the two real recordings every read is unsure (the
 defense at the snap reads "3-1-7" / "1-1-8"), so nothing is written: the real test is press-box film with the coverage tagged.
 
 **Tenth pass (offline, on the real dumps and recordings, plays 5 and 6):** measured against the truth for the first time.
@@ -991,7 +992,7 @@ instead of a second renderer:
 - `generationContext` + `buildGenerationPrompt` hand the model the card's **own** spots for all
   11 offensive players (Q/F/H/X/Y/Z + OL, grid units) and the exact defender labels for the front,
   plus the rules: `FOOTBALL_CONCEPT_RULES` (MESH, RAIL, CORNER/OUT),
-  coverage alignment rules (Cover 0/1/2/3/4/6), 100% receiver coverage (a safety or nickel over /
+  coverage alignment rules (Cover 0/1/2/3/4), 100% receiver coverage (a safety or nickel over /
   apexed on the #2 of any side with 2+ split receivers, backers walked out on the rest), and the
   defense's starting spots from the app's own alignment rules. An optional **safety depth**
   (`safetyDepth`, the dialog's Auto / Press / Normal / Deep shell) is written into the prompt and

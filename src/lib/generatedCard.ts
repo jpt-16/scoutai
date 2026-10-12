@@ -93,7 +93,6 @@ const DEFENSE_RULES = `DEFENSE: place all 11 defenders using exactly the labels 
 - Cover 3: FS alone in the middle 12-15 deep; corners 7-10 off in deep thirds; SS rolled down to
   the strength at 7-8 as the curl-flat player.
 - Cover 4 / Quarters: two safeties 10-12 deep, just inside the #2s; corners 7-8 off.
-- Cover 6: quarters to the strength, Cover 2 (squat corner, half-field safety) to the weak side.
 - No call: a sound Cover 3.
 - Rule: Ensure 100% receiver coverage. Every split receiver has a defender leveraged over him:
   corners on the #1s. If the offense presents 2 or more split receivers to a side, align a Safety

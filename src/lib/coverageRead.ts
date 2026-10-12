@@ -11,8 +11,9 @@
  *     one vote (`mirrors`); a defender nobody ran at says nothing.
  *  2. **How many deep** (at least `DEEP_YARDS` off the ball as the read ends, and in man, not running with a
  *     receiver): 0 is Cover 0, 1 Cover 1 in man; in zone, two with both corners sitting in the flats is Cover 2
- *     (Tampa 2 when the middle backer ran the deep middle), three is Cover 3 when they split the field in thirds and
- *     Cover 6 when two of them are on one side (quarter-quarter-half), four is Cover 4. Two deep in man is 2-Man.
+ *     (Tampa 2 when the middle backer ran the deep middle), three is Cover 3, four is Cover 4. Two deep in man is
+ *     2-Man. (There is no Cover 6 in this staff's calls: three deep with two of them on one side is still read as
+ *     Cover 3, and marked unsure.)
  *  3. **The details a staff calls it by.** Who took each flat: a corner squatting is *cloud*, a safety rolling down
  *     *sky*, a backer *buzz*. In Cover 4, whether a safety carried a vertical #2 (**match**) or sat in his spot.
  *
@@ -74,7 +75,7 @@ const RUSH_DEPTH = 1.5;
 const BOX_HALF_WIDTH = 4;
 const LINE_DEPTH = 1.6;
 
-export type CoverageFamily = "0" | "1" | "2" | "2-man" | "tampa-2" | "3" | "4" | "6";
+export type CoverageFamily = "0" | "1" | "2" | "2-man" | "tampa-2" | "3" | "4";
 export type FlatPlayer = "cloud" | "sky" | "buzz" | "none";
 
 export interface CoverageRead {
@@ -299,12 +300,14 @@ export function readCoverage(file: TrackedPlayFile): CoverageRead | null {
     if (middleLb && shallowCorners.length >= 2) {
       family = "tampa-2";
       evidence.push("the middle backer ran the deep middle; both corners sat in the flats");
-    } else if (thirds) {
-      family = "3";
-      evidence.push("three deep, splitting the field in thirds");
     } else {
-      family = "6";
-      evidence.push("three deep, two of them on one side: quarter-quarter-half");
+      family = "3";
+      if (thirds) evidence.push("three deep, splitting the field in thirds");
+      else {
+        // Not thirds: two of the three deep on one side. Not a call this staff uses, so a man may have been misread.
+        confidence -= 0.3;
+        evidence.push("three deep, but two of them on one side rather than in thirds");
+      }
     }
   } else if (deep.length === 2) {
     family = "2";
@@ -320,7 +323,7 @@ export function readCoverage(file: TrackedPlayFile): CoverageRead | null {
   }
 
   const shell = pre?.shell ?? null;
-  const highAfter = family === "2" || family === "2-man" || family === "4" || family === "6" || family === "tampa-2" ? 2 : family === "0" ? 0 : 1;
+  const highAfter = family === "2" || family === "2-man" || family === "4" || family === "tampa-2" ? 2 : family === "0" ? 0 : 1;
   const rotated = !!shell && shell !== `${highAfter}-high`;
   if (rotated) evidence.push(`${shell} before the snap, rotated at the snap`);
 
@@ -332,20 +335,23 @@ export function readCoverage(file: TrackedPlayFile): CoverageRead | null {
     : family === "tampa-2" ? "TAMPA 2"
     : family === "2" ? "COVER 2"
     : family === "4" ? (match ? "COVER 4 MATCH" : "COVER 4")
-    : family === "6" ? "COVER 6"
     : `COVER 3${flatTag === "none" ? "" : ` ${flatTag.toUpperCase()}`}`;
   confidence = Math.max(0, Math.min(1, confidence));
   return { family, label, man, deep: deep.length, flats, match, shell, rotated, confidence, sure: confidence >= SURE_COVERAGE, evidence };
 }
 
-/** The coverage family a COVERAGE tag names ("C3", "Cover 3 Sky", "Quarters", "Tampa"), for scoring against a sheet. */
+/**
+ * The coverage family a COVERAGE tag names ("C3", "Cover 3 Sky", "Quarters", "Tampa"), for scoring against a sheet. A
+ * number this staff doesn't use as a coverage (no Cover 5 or 6; their sheets also carry calls like "6 - DOUBLE FIRE")
+ * names none.
+ */
 export function coverageFamilyOf(tag: string): CoverageFamily | null {
   const t = ` ${tag.toUpperCase().replace(/[^A-Z0-9]+/g, " ")} `;
   if (/ TAMPA /.test(t)) return "tampa-2";
   if (/ (QUARTERS|QTRS|QUARTER) /.test(t)) return "4";
   if (/ (2 MAN|TWO MAN|COVER 5|C5) /.test(t)) return "2-man";
   const n = t.match(/ (?:COVER|CVR|CV|C)? ?([0-9]) /)?.[1] ?? t.match(/ C([0-9])/)?.[1];
-  if (n === "0" || n === "1" || n === "2" || n === "3" || n === "4" || n === "6") return n;
+  if (n === "0" || n === "1" || n === "2" || n === "3" || n === "4") return n;
   if (/ (ZERO) /.test(t)) return "0";
   return null;
 }

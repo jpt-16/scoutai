@@ -98,13 +98,14 @@ export function safetyY(yards: number): number {
 
 /**
  * The style a Hudl COVERAGE tag implies: Cover 0 / 1 / man is man over, Cover
- * 2 / 4 / 6 / quarters / Tampa is a 2-high shell, Cover 3 (or nothing) apex.
+ * 2 / 4 / quarters / Tampa is a 2-high shell, Cover 3 (or nothing) apex. There
+ * is no Cover 6 in this staff's calls.
  */
 export function coverageStyleFor(coverage: string): CoverageStyle {
   const t = ` ${coverage.toUpperCase().replace(/[^A-Z0-9]+/g, " ")} `;
   if (/ (QUARTERS|QTRS|QUARTER|TAMPA|TWO HIGH|2 HIGH|SPLIT|HALVES) /.test(t)) return "DEEP_SHELL";
   const n = t.match(/ (?:COVER|CVR|CV|C)? ?([0-9]) /)?.[1] ?? t.match(/ C([0-9])/)?.[1];
-  if (n === "2" || n === "4" || n === "6") return "DEEP_SHELL";
+  if (n === "2" || n === "4") return "DEEP_SHELL";
   if (n === "0" || n === "1") return "MAN_OVER";
   if (!n && / (MAN|PRESS|ZERO) /.test(t)) return "MAN_OVER";
   return "ZONE_APEX";

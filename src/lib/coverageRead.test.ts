@@ -212,12 +212,15 @@ describe("readCoverage on drawn plays", () => {
     expect(read.match).toBe(false);
   });
 
-  it("Cover 6: quarters to the right, the left corner squats and his safety takes the half", () => {
+  it("three deep with two of them on one side (no Cover 6 in this staff's calls) is Cover 3, unsure", () => {
     const file = play(MESH, () => [
       drop(CB_L, [-15, 4]), drop(CB_R, [16, 15]), drop(NICKEL, [6, 8]), drop(WILL, [-4, 8]), drop(MIKE, [3, 8]),
       drop(TWO_HIGH[0], [-12, 17]), drop(TWO_HIGH[1], [7, 14]),
     ]);
-    expect(readCoverage(file)!.label).toBe("COVER 6");
+    const read = readCoverage(file)!;
+    expect(read.family).toBe("3");
+    expect(read.label).not.toContain("6");
+    expect(read.sure).toBe(false);
   });
 
   it("says nothing when too few defenders were followed through the play", () => {
@@ -257,7 +260,8 @@ describe("coverage tags", () => {
     expect(coverageFamilyOf("Quarters")).toBe("4");
     expect(coverageFamilyOf("Tampa 2")).toBe("tampa-2");
     expect(coverageFamilyOf("2 Man")).toBe("2-man");
-    expect(coverageFamilyOf("6 - DOUBLE FIRE")).toBe("6");
+    expect(coverageFamilyOf("6 - DOUBLE FIRE")).toBeNull();
+    expect(coverageFamilyOf("Cover 6")).toBeNull();
     expect(coverageFamilyOf("")).toBeNull();
   });
 
