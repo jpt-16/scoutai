@@ -225,6 +225,3 @@ run on drawn film; a replay is cut as a second play, a no-huddle snap with no se
 The hosted worker does the same on a `split` dispatch (reading the video over HTTP by range, so no whole download) and then
 cuts each play out of the same video for its shard.
 
-**Two angles of one game.** Cut each recording with `eval.split`, then name a play's second view with a `_b` suffix (`play_007.mp4`
-and `play_007_b.mp4`) before `eval.game`: `scripts/tracks-to-cards.ts` and `scripts/score-routes.ts` merge the two views of a play
-(`src/lib/viewMerge.ts`) and build one card. The hosted flow pairs the plays and names the clips itself.

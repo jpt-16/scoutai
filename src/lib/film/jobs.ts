@@ -45,20 +45,22 @@ export interface JobClip {
   size: number;
   /** A play found in a long video: where to cut it (seconds into video `video`). Absent for an uploaded clip. */
   source?: { video: number; start: number; end: number };
-  /** Which play of the game this is (1-based), and which view of it: 0 the first angle, 1 the second ("_b"), 2 the third. */
-  play?: number;
-  view?: number;
 }
 
 /** What the split found, kept on the job so the coach can see how the angles were matched. */
 export interface PlanSummary {
+  /** Plays that will be read (each from the press-box video). */
   plays: number;
-  /** Plays seen from two or more angles. */
+  /** Of those, plays the other angle saw too. */
   matched: number;
-  /** Clips to read (a matched play has one per angle). */
-  views: number;
-  /** Videos that turned out to be other angles of the same game. */
-  angleVideos: number;
+  /** Plays only the other angle caught, cut from the press-box video at the same moment. */
+  recovered: number;
+  /** Plays only the other angle caught that the press-box recording doesn't cover: not read. */
+  skipped: number;
+  /** Videos that turned out to be other angles of a game (matched to a press-box video, not read). */
+  otherAngles: number;
+  /** Videos marked "other angle" that matched no press-box video, so were read on their own. */
+  readAlone: number;
 }
 
 /** A whole game's video the coach uploaded, for the worker to find the plays in. */
@@ -66,6 +68,9 @@ export interface JobVideo {
   index: number;
   name: string;
   size: number;
+  /** The one to read (the press box). A video marked false is another angle of the same game: it is used to recognize
+   * each play and to find plays the press box missed, and is never read itself. */
+  read: boolean;
 }
 
 export type JobKind = "clips" | "video";
@@ -274,7 +279,7 @@ export function checkNewVideoJob(
   if (files.length > MAX_VIDEOS) return { ok: false, message: `Up to ${MAX_VIDEOS} videos at once (a game in halves or quarters); you picked ${files.length}.` };
   const seen = new Set<string>();
   const videos: JobVideo[] = [];
-  for (const f of files as { name?: unknown; size?: unknown }[]) {
+  for (const f of files as { name?: unknown; size?: unknown; read?: unknown }[]) {
     if (!isValidClipName(f?.name)) {
       return { ok: false, message: `"${String(f?.name).slice(0, 60)}" isn't a video the analyzer can read. Use .mp4, .mov or .m4v files with plain names.` };
     }
@@ -286,7 +291,7 @@ export function checkNewVideoJob(
     const key = f.name.toLowerCase();
     if (seen.has(key)) return { ok: false, message: `Two videos are named ${f.name}. Rename one.` };
     seen.add(key);
-    videos.push({ index: videos.length, name: f.name, size });
+    videos.push({ index: videos.length, name: f.name, size, read: f.read !== false });
   }
   const within = checkGameLimits(limits, existing, now);
   return within.ok ? { ok: true, value: videos } : within;
@@ -323,44 +328,60 @@ export function cleanSplit(index: unknown, duration: unknown, plays: unknown): S
   return { index: index as number, duration: length, plays: clean };
 }
 
-const VIEW_SUFFIX = ["", "_b", "_c", "_d"];
-
-/** `play_007.mp4` for a play's first view, `play_007_b.mp4` for its second: the reader and the card builder pair views by the name. */
-export function clipName(play: number, view: number): string {
-  return `play_${String(play).padStart(3, "0")}${VIEW_SUFFIX[view] ?? `_${view}`}.mp4`;
-}
-
 /**
- * The split of every video becomes one numbered list of plays. Videos that turn out to be other angles of the same game (their
- * snaps line up, see pairing.ts) are grouped, and a play seen from two places is one play with a clip per view; a play only one
- * camera caught is a play with one view. Different parts of a game (halves) are kept apart and numbered in upload order.
+ * The split of every video becomes one numbered list of plays to read. Videos that turn out to be other angles of the same
+ * game (their snaps line up, see pairing.ts) are grouped, and only the video marked as the press box is read: the other angle
+ * recognizes each play (so it isn't counted twice) and shows where the press box missed one, which is then cut from the press-box
+ * recording at the same moment. Different parts of a game (halves) are kept apart and numbered in upload order.
  */
-export function planGame(reports: SplitReport[], maxPlays: number): Checked<{ clips: JobClip[]; summary: PlanSummary }> {
-  const groups = groupVideos(reports.map((r) => ({ index: r.index, snaps: r.plays.map((p) => p.snap) })));
+export function planGame(reports: SplitReport[], maxPlays: number, read: ReadonlySet<number> = new Set()): Checked<{ clips: JobClip[]; summary: PlanSummary }> {
+  const groups = groupVideos(reports.map((r) => ({ index: r.index, snaps: r.plays.map((p) => p.snap) })), read);
   const byVideo = new Map(reports.map((r) => [r.index, r]));
-  // `GroupedPlay.views[].snap` indexes the video's snaps in sorted order; cleanSplit sorts plays by snap, so it is the same list.
   const clips: JobClip[] = [];
-  let plays = 0;
-  let matched = 0;
+  const summary: PlanSummary = { plays: 0, matched: 0, recovered: 0, skipped: 0, otherAngles: 0, readAlone: 0 };
   for (const g of groups) {
+    const main = byVideo.get(g.primary)!;
+    summary.otherAngles += g.videos.length - 1;
+    // A video marked "other angle" that found no press box to go with was read on its own, and the coach should be told.
+    if (read.size > 0 && !read.has(g.primary)) summary.readAlone++;
     for (const play of g.plays) {
-      plays++;
-      if (play.views.length > 1) matched++;
-      play.views.forEach((v, view) => {
-        const p = byVideo.get(v.video)!.plays[v.snap];
-        const n = clips.length;
-        clips.push({ index: n, name: clipName(plays, view), size: 0, source: { video: v.video, start: p.start, end: p.end }, play: plays, view });
-      });
+      const own = play.views.find((v) => v.video === g.primary);
+      let source: { video: number; start: number; end: number };
+      if (own) {
+        const p = main.plays[own.snap];
+        source = { video: main.index, start: p.start, end: p.end };
+        if (play.views.length > 1) summary.matched++;
+      } else {
+        // Only the other angle saw it: the same moment in the press-box recording, if that recording covers it.
+        const seen = play.views[0];
+        const q = byVideo.get(seen.video)!.plays[seen.snap];
+        const shift = g.toPrimary[seen.video] ?? 0;
+        const start = q.start + shift;
+        const end = q.end + shift;
+        if (start < 0 || end > main.duration + 1) {
+          summary.skipped++;
+          continue;
+        }
+        source = { video: main.index, start, end };
+        summary.recovered++;
+      }
+      const n = clips.length;
+      clips.push({ index: n, name: clipName(n + 1), size: 0, source });
     }
   }
-  if (plays === 0) {
+  if (clips.length === 0) {
     return { ok: false, message: "No plays were found in the video. Check that it shows the field, with the offense lined up before each snap." };
   }
-  if (plays > maxPlays) {
-    return { ok: false, message: `The video has ${plays} plays, more than the ${maxPlays} your plan allows in a game. Upload it in halves.` };
+  if (clips.length > maxPlays) {
+    return { ok: false, message: `The video has ${clips.length} plays, more than the ${maxPlays} your plan allows in a game. Upload it in halves.` };
   }
-  const angleVideos = groups.reduce((sum, g) => sum + g.videos.length - 1, 0);
-  return { ok: true, value: { clips, summary: { plays, matched, views: clips.length, angleVideos } } };
+  summary.plays = clips.length;
+  return { ok: true, value: { clips, summary } };
+}
+
+/** `play_007.mp4`: the number is what the app lines a clip up with a sheet's row by. */
+export function clipName(play: number): string {
+  return `play_${String(play).padStart(3, "0")}.mp4`;
 }
 
 /** Clips split into dispatches of `size`, in order. */

@@ -132,64 +132,67 @@ export interface GroupedPlay {
 }
 
 export interface VideoGroup {
-  /** Video indexes, the primary (earliest uploaded) first. */
+  /** The video to read: the one marked as the press box (else the first uploaded of the group). */
+  primary: number;
+  /** Video indexes, the primary first. */
   videos: number[];
-  /** Plays in time order, each seen from one or more videos. */
+  /** Add this to a time in a video to get the same moment in the primary video (0 for the primary itself). */
+  toPrimary: Record<number, number>;
+  /** Plays in time order (on the primary's clock), each seen from one or more videos, the primary's view first. */
   plays: GroupedPlay[];
 }
 
 /**
- * Which videos are the same game seen from several places, and the plays across them. Videos that share snaps are one group;
- * the earliest uploaded of a group is its primary and sets the clock. Groups come out in order of their first video.
+ * Which videos are the same game seen from several places, and the plays across them. Videos that share snaps are one group.
+ * `read` is the videos the coach marked as the one to read (the press box): each group's primary is its first marked video,
+ * or its first video if none is marked, and every time in the group is on the primary's clock. Groups come out in order of
+ * their first video.
  */
-export function groupVideos(videos: VideoSnaps[]): VideoGroup[] {
+export function groupVideos(videos: VideoSnaps[], read: ReadonlySet<number> = new Set()): VideoGroup[] {
   const ordered = [...videos].sort((x, y) => x.index - y.index);
-  const clock = new Map<number, number>(); // video index -> add to its time to get the group's clock
-  const members = new Map<number, number[]>(); // primary -> videos
-  const primaryOf = new Map<number, number>();
-
+  const byIndex = new Map(ordered.map((v) => [v.index, v]));
+  // Pass 1: join each video to the first earlier group it shares snaps with, on that group's first video's clock.
+  const anchorClock = new Map<number, number>(); // video -> add to its time for its group anchor's clock
+  const groups: { anchor: number; ids: number[] }[] = [];
   for (const v of ordered) {
     let joined = false;
-    for (const [primary] of members) {
-      const p = ordered.find((x) => x.index === primary)!;
-      // `offset` takes the primary's clock to this video's; this video's own clock to the group's is minus that.
-      const al = alignSnaps(p.snaps, v.snaps);
+    for (const g of groups) {
+      const al = alignSnaps(byIndex.get(g.anchor)!.snaps, v.snaps);
       if (al.same) {
-        members.get(primary)!.push(v.index);
-        clock.set(v.index, -al.offset);
-        primaryOf.set(v.index, primary);
+        g.ids.push(v.index);
+        anchorClock.set(v.index, -al.offset);
         joined = true;
         break;
       }
     }
     if (!joined) {
-      members.set(v.index, [v.index]);
-      clock.set(v.index, 0);
-      primaryOf.set(v.index, v.index);
+      groups.push({ anchor: v.index, ids: [v.index] });
+      anchorClock.set(v.index, 0);
     }
   }
 
-  const groups: VideoGroup[] = [];
-  for (const [primary, ids] of members) {
-    const snapsOf = (i: number) => [...ordered.find((x) => x.index === i)!.snaps].sort((x, y) => x - y);
-    // Every snap of every video in the group, on the group's clock; those within the tolerance are one play.
-    const all = ids.flatMap((i) => snapsOf(i).map((s, snap) => ({ video: i, snap, t: s + (clock.get(i) ?? 0) })));
+  // Pass 2: choose each group's primary and put every video on its clock.
+  const out: VideoGroup[] = groups.map((g) => {
+    const primary = g.ids.find((i) => read.has(i)) ?? g.ids[0];
+    const shift = anchorClock.get(primary) ?? 0;
+    const toPrimary: Record<number, number> = {};
+    for (const i of g.ids) toPrimary[i] = (anchorClock.get(i) ?? 0) - shift;
+
+    const all = g.ids.flatMap((i) => [...byIndex.get(i)!.snaps].sort((x, y) => x - y).map((t, snap) => ({ video: i, snap, t: t + toPrimary[i] })));
     all.sort((x, y) => x.t - y.t);
     const plays: GroupedPlay[] = [];
     for (const s of all) {
       // Join the latest play that doesn't already have a view from this video and is close enough in time.
       const last = plays.at(-1);
-      const seen = last?.views.some((v) => v.video === s.video);
-      if (last && !seen && s.t - last.time <= SNAP_TOLERANCE_SECONDS) {
+      if (last && !last.views.some((v) => v.video === s.video) && s.t - last.time <= SNAP_TOLERANCE_SECONDS) {
         last.views.push({ video: s.video, snap: s.snap });
         last.time = (last.time * (last.views.length - 1) + s.t) / last.views.length;
       } else {
         plays.push({ time: s.t, views: [{ video: s.video, snap: s.snap }] });
       }
     }
-    // The primary view first within each play (its angle sets the card's formation and routes).
     for (const p of plays) p.views.sort((x, y) => (x.video === primary ? -1 : y.video === primary ? 1 : x.video - y.video));
-    groups.push({ videos: [primary, ...ids.filter((i) => i !== primary)], plays });
-  }
-  return groups.sort((x, y) => x.videos[0] - y.videos[0]);
+    return { primary, videos: [primary, ...g.ids.filter((i) => i !== primary)], toPrimary, plays };
+  });
+  return out.sort((x, y) => Math.min(...x.videos) - Math.min(...y.videos));
 }

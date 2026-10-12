@@ -14,16 +14,14 @@
  * the plays whose routes the reader wasn't sure of, which are also marked on the cards.
  */
 
-import { readFileSync, writeFileSync } from "node:fs";
-import { basename } from "node:path";
+import { readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { basename, join } from "node:path";
 import { planBatch } from "../src/lib/batchMatcher";
 import { parseHudlCsvText } from "../src/lib/hudlParser";
 import { applyDefenseRead, frontsByFormation, readDefense, secondaryFromFilm, type DefenseRead } from "../src/lib/defenseRead";
 import type { HudlPlayCard } from "../src/lib/hudlParser";
 import { applyRunRead, readRun } from "../src/lib/runRead";
 import { cardFromTracks, type TrackedPlayFile } from "../src/lib/trackedPlay";
-import { deriveCard } from "../src/lib/hudlParser";
-import { loadTrackDir } from "./trackDir";
 
 const args = process.argv.slice(2);
 const flag = (name: string) => {
@@ -37,8 +35,10 @@ if (!dir) {
 }
 const out = flag("--out") ?? "game.json";
 
-// One play per snap: a play filmed from two places (`play_007.json` + `play_007_b.json`) is merged into one.
-const { names: files, plays, notes: viewNotes, merged: mergedPlays } = loadTrackDir(dir);
+const files = readdirSync(dir)
+  .filter((f) => f.endsWith(".json"))
+  .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+const plays = new Map(files.map((f) => [f, JSON.parse(readFileSync(join(dir, f), "utf8")) as TrackedPlayFile]));
 
 // What the pre-snap reader wrote (`eval.presnap`'s ours.csv: PLAY #, OFF FORM, OFF STR), by play number.
 const formations = new Map<number, string>();
@@ -50,8 +50,7 @@ if (formationsPath) {
   for (const line of lines) {
     const cells = line.split(",");
     const n = Number.parseInt(cells[num] ?? "", 10);
-    // A play seen from two angles has a line each; the first is the one the worker chose.
-    if (Number.isFinite(n) && cells[form] && !formations.has(n)) formations.set(n, `${cells[form]} ${str >= 0 ? cells[str] ?? "" : ""}`.trim());
+    if (Number.isFinite(n) && cells[form]) formations.set(n, `${cells[form]} ${str >= 0 ? cells[str] ?? "" : ""}`.trim());
   }
 }
 const playNumberOf = (stem: string, fallback: number) => {
@@ -65,9 +64,7 @@ const checks: string[] = [];
 const warnings: string[] = [];
 // Scout D: each play's defense at the snap, kept to roll up by formation.
 const defenses: { card: HudlPlayCard; read: DefenseRead }[] = [];
-const withDefense = (card: HudlPlayCard, file: TrackedPlayFile, name = ""): HudlPlayCard => {
-  const viewNote = viewNotes.get(name);
-  if (viewNote) card = deriveCard({ ...card, notes: card.notes.trim() ? `${card.notes.trim()} ${viewNote}` : viewNote });
+const withDefense = (card: HudlPlayCard, file: TrackedPlayFile): HudlPlayCard => {
   const read = readDefense(file);
   if (!read) return card;
   const next = applyDefenseRead(card, read);
@@ -80,14 +77,13 @@ if (sheetPath) {
   const plan = planBatch(files.map((f) => f.replace(/\.json$/, ".mp4")), parsed.cards);
   warnings.push(...parsed.warnings);
   for (const row of plan.rows) {
-    const trackName = row.clip?.replace(/\.mp4$/, ".json") ?? "";
-    const file = plays.get(trackName);
+    const file = row.clip ? plays.get(row.clip.replace(/\.mp4$/, ".json")) : undefined;
     if (!file) {
       cards.push(row.card); // no film for this row: the sheet draws it, as always
       continue;
     }
     const { card, unsure } = cardFromTracks(file, row.card, { source: basename(sheetPath) });
-    cards.push(withDefense(card, file, trackName));
+    cards.push(withDefense(card, file));
     if (unsure.length) checks.push(`Play ${card.playNumber}: ${unsure.map((u) => u.letter).join(", ")}`);
   }
   for (const clip of plan.unmatchedClips) warnings.push(`${clip}: no row in the sheet for this play`);
@@ -103,7 +99,7 @@ if (sheetPath) {
     });
     const card = run.kind === "run" ? applyRunRead({ ...built.card, playCall: "" }, run) : built.card;
     const unsure = run.kind === "run" ? [] : built.unsure;
-    cards.push(withDefense(card, plays.get(f)!, f));
+    cards.push(withDefense(card, plays.get(f)!));
     if (unsure.length) checks.push(`Play ${i + 1} (${stem}): ${unsure.map((u) => u.letter).join(", ")}`);
   });
 }
@@ -114,7 +110,6 @@ const dbAlignments = secondaryFromFilm(defenses.map(({ card, read }) => ({ forma
 const script = { fileName: title, films: [title], savedAt: new Date().toISOString(), cards, warnings, dbAlignments };
 writeFileSync(out, JSON.stringify(script));
 console.log(`${cards.length} cards → ${out}`);
-if (mergedPlays) console.log(`${mergedPlays} ${mergedPlays === 1 ? "play was" : "plays were"} read from two angles and merged.`);
 if (checks.length) console.log(`Routes to check:\n  ${checks.join("\n  ")}`);
 if (defenses.length) {
   console.log(`Defense read on ${defenses.filter((d) => d.read.plausible).length} of ${cards.length} plays (the rest are marked "Check D" on the card).`);

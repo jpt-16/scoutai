@@ -27,7 +27,7 @@ export const filmApi = {
   async list(): Promise<JobView[]> {
     return (await call<{ jobs: JobView[] }>("/api/film/jobs", { cache: "no-store" })).jobs;
   },
-  create(files: { name: string; size: number }[], kind: "clips" | "video" = "clips"): Promise<{ job: JobView; uploads: Upload[] }> {
+  create(files: { name: string; size: number; read?: boolean }[], kind: "clips" | "video" = "clips"): Promise<{ job: JobView; uploads: Upload[] }> {
     return call("/api/film/jobs", json({ files, kind }));
   },
   async start(id: string): Promise<JobView> {

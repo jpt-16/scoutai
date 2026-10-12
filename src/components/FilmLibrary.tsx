@@ -26,6 +26,14 @@ interface Pending {
   files: File[];
 }
 
+/** A guess at which video is the press box from its name (the coach can change it): "end zone" is not, "press"/"box" is, else the first. */
+function guessPressBox(name: string, index: number): boolean {
+  const n = name.toLowerCase();
+  if (/end[\s_-]*zone|endzone|(^|[\s_-])(ez|end)([\s_.-]|$)/.test(n)) return false;
+  if (/press|box|sideline|high/.test(n)) return true;
+  return index === 0;
+}
+
 function when(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
@@ -37,6 +45,8 @@ export function FilmLibrary() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [mode, setMode] = useState<"clips" | "video">("clips");
   const [picked, setPicked] = useState<File[]>([]);
+  /** For a game picked as several videos: which one is the press box (read); the rest are other angles, used only to match plays. */
+  const [reads, setReads] = useState<boolean[]>([]);
   const [skipped, setSkipped] = useState<string[]>([]);
   const [busy, setBusy] = useState<"idle" | "creating" | "uploading" | "starting">("idle");
   const [progress, setProgress] = useState<UploadProgress | null>(null);
@@ -70,6 +80,7 @@ export function FilmLibrary() {
     if (working || next === mode) return;
     setMode(next);
     setPicked([]);
+    setReads([]);
     setSkipped([]);
     setError(null);
     setFailedClips([]);
@@ -81,6 +92,7 @@ export function FilmLibrary() {
     const videos = all.filter((f) => VIDEO.test(f.name));
     setSkipped(all.filter((f) => !VIDEO.test(f.name)).map((f) => f.name));
     setPicked(videos);
+    setReads(videos.map((f, i) => guessPressBox(f.name, i)));
     setError(null);
     setFailedClips([]);
     setPending(null);
@@ -129,7 +141,7 @@ export function FilmLibrary() {
     setFailedClips([]);
     try {
       setBusy("creating");
-      const { job, uploads } = await filmApi.create(picked.map((f) => ({ name: f.name, size: f.size })), mode);
+      const { job, uploads } = await filmApi.create(picked.map((f, i) => ({ name: f.name, size: f.size, ...(mode === "video" ? { read: reads[i] ?? true } : {}) })), mode);
       const items: UploadItem[] = uploads.map((u) => ({ index: u.index, name: u.name, pathname: u.pathname, size: picked[u.index].size }));
       await sendAll({ id: job.id, items, files: picked });
     } catch (e) {
@@ -186,7 +198,7 @@ export function FilmLibrary() {
           <p className="text-[15px] leading-relaxed text-muted-foreground">
             {mode === "clips"
               ? `Pick one game's clips, one per play (.mp4, .mov or .m4v, up to ${MAX_CLIP_BYTES / 1024 / 1024} MB each). `
-              : `Pick the whole game as one recording, or in halves (up to ${MAX_VIDEOS} .mp4, .mov or .m4v files, ${MAX_VIDEO_BYTES / 1024 / 1024 / 1024} GB each). We find every snap and cut the plays ourselves. If you have more than one angle of the game (the press box and the end zone), pick them all together: we match the same play across them and read it from both. It reads best from a recording that shows the field, with the offense lined up and still before each snap. `}
+              : `Pick the whole game as one recording, or in halves (up to ${MAX_VIDEOS} .mp4, .mov or .m4v files, ${MAX_VIDEO_BYTES / 1024 / 1024 / 1024} GB each). We find every snap and cut the plays ourselves. If you also have another angle (the end zone), pick it with the press-box video: we match the plays up so none is counted twice, and read the press-box film only. It reads best from a recording that shows the field, with the offense lined up and still before each snap. `}
             We read every play and build the scout cards. The film is deleted {CLIP_RETENTION_DAYS} days after you upload it; the
             cards stay.
           </p>
@@ -255,6 +267,38 @@ export function FilmLibrary() {
           <p className="text-sm text-destructive" role="alert">
             Up to {MAX_VIDEOS} videos at once. Pick fewer.
           </p>
+        )}
+
+        {mode === "video" && picked.length > 1 && !pending && (
+          <fieldset className="flex flex-col gap-2 rounded-2xl border p-4">
+            <legend className="px-1 text-sm font-bold">Which one is the press box?</legend>
+            <p className="text-sm text-muted-foreground">
+              We read the press-box film. The other angle (the end zone, say) is only used to match each play, so a play isn&apos;t counted
+              twice and one the press box missed can be found.
+            </p>
+            {picked.map((f, i) => (
+              <div key={`${f.name}-${i}`} className="flex flex-wrap items-center justify-between gap-2">
+                <span className="min-w-0 truncate text-sm font-semibold">{f.name}</span>
+                <div className="inline-flex rounded-lg border p-0.5" role="group" aria-label={`What is ${f.name}?`}>
+                  {([true, false] as const).map((isRead) => (
+                    <button
+                      key={String(isRead)}
+                      type="button"
+                      aria-pressed={(reads[i] ?? true) === isRead}
+                      disabled={working}
+                      onClick={() => setReads((r) => picked.map((_, k) => (k === i ? isRead : r[k] ?? true)))}
+                      className={cn(
+                        "min-h-11 rounded-md px-3 text-xs font-bold transition-colors disabled:opacity-50",
+                        (reads[i] ?? true) === isRead ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground",
+                      )}
+                    >
+                      {isRead ? "Press box (read)" : "Other angle (not read)"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </fieldset>
         )}
 
         {picked.length > 0 && !pending && (
@@ -346,11 +390,19 @@ function GameCard({ job, opening, onOpen, onDelete }: { job: JobView; opening: b
       {job.stage === "uploading" && (
         <p className="text-sm text-muted-foreground">The upload didn&apos;t finish. Delete this and upload the game again.</p>
       )}
-      {job.plan && job.plan.angleVideos > 0 && (
+      {job.plan && job.plan.otherAngles > 0 && (
         <p className="text-sm text-muted-foreground">
-          {job.plan.matched === job.plan.plays
-            ? `Every play was matched across the ${job.plan.angleVideos + 1} angles.`
-            : `${job.plan.matched} of ${job.plan.plays} plays were seen from more than one angle and matched; the rest were caught by one camera.`}
+          Matched {job.plan.otherAngles === 1 ? "the other angle" : `${job.plan.otherAngles} other angles`} to the press box: {job.plan.matched} of{" "}
+          {job.plan.plays} plays were seen by both
+          {job.plan.recovered > 0 ? `. The press box missed ${job.plan.recovered} ${job.plan.recovered === 1 ? "play" : "plays"}; ${job.plan.recovered === 1 ? "it was" : "they were"} found from the other angle and cut from the press-box film` : ""}
+          {job.plan.skipped > 0 ? `. ${job.plan.skipped} more ${job.plan.skipped === 1 ? "play was" : "plays were"} only on the other angle, and the press-box recording doesn't reach ${job.plan.skipped === 1 ? "it" : "them"}` : ""}. Only the
+          press box was read.
+        </p>
+      )}
+      {job.plan && job.plan.readAlone > 0 && (
+        <p className="text-sm text-muted-foreground">
+          {job.plan.readAlone === 1 ? "A video marked \"other angle\" matched" : `${job.plan.readAlone} videos marked "other angle" matched`} no press-box video, so{" "}
+          {job.plan.readAlone === 1 ? "it was" : "they were"} read on {job.plan.readAlone === 1 ? "its" : "their"} own.
         </p>
       )}
       {job.stage === "splitting" && (
@@ -363,9 +415,7 @@ function GameCard({ job, opening, onOpen, onDelete }: { job: JobView; opening: b
           <div className="h-2 overflow-hidden rounded-full bg-muted">
             <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${pct}%` }} />
           </div>
-          <p className="text-sm text-muted-foreground">
-            {job.plan && job.plan.views > job.plan.plays ? `Reading camera views: ${job.reported} of ${job.total}` : `Reading plays: ${job.reported} of ${job.total}`}
-          </p>
+          <p className="text-sm text-muted-foreground">Reading plays: {job.reported} of {job.total}</p>
         </div>
       )}
       {job.stage === "building" && (

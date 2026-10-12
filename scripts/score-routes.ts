@@ -11,15 +11,15 @@
  * committed to and how many of those were right, blocks, and the most common mistakes.
  */
 
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { planBatch } from "../src/lib/batchMatcher";
 import { parseHudlCsvText } from "../src/lib/hudlParser";
 import { readDefense } from "../src/lib/defenseRead";
 import { playKind, runScheme } from "../src/lib/formations";
 import { readRun } from "../src/lib/runRead";
 import { keyRoutes, report, scorePlay, summarize, type RouteVerdict } from "../src/lib/routeScore";
-import { cardFromTracks } from "../src/lib/trackedPlay";
-import { loadTrackDir } from "./trackDir";
+import { cardFromTracks, type TrackedPlayFile } from "../src/lib/trackedPlay";
 
 const args = process.argv.slice(2);
 const flag = (name: string) => {
@@ -33,8 +33,9 @@ if (!dir || !keyPath) {
   process.exit(2);
 }
 
-// A play filmed from two angles (`play_007.json` + `play_007_b.json`) is scored as one play, merged.
-const { names: files, plays: playFiles } = loadTrackDir(dir);
+const files = readdirSync(dir)
+  .filter((f) => f.endsWith(".json"))
+  .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
 const sheet = parseHudlCsvText(readFileSync(keyPath, "utf8"));
 const plan = planBatch(files.map((f) => f.replace(/\.json$/, ".mp4")), sheet.cards);
 
@@ -49,8 +50,7 @@ let frontsRight = 0;
 const frontMisses: string[] = [];
 for (const row of plan.rows) {
   if (!row.clip) continue;
-  const file = playFiles.get(row.clip.replace(/\.mp4$/, ".json"));
-  if (!file) continue;
+  const file = JSON.parse(readFileSync(join(dir, row.clip.replace(/\.mp4$/, ".json")), "utf8")) as TrackedPlayFile;
   const key = keyRoutes(row.card);
   unkeyed += [...key.values()].filter((k) => k === null).length;
   const { reads: routeReads } = cardFromTracks(file, row.card);

@@ -219,9 +219,9 @@ describe("retention", () => {
 describe("a whole game's video", () => {
   const video = (name: string, gb = 2) => ({ name, size: gb * 1024 * 1024 * 1024 });
 
-  it("takes up to a few videos, numbered in the order picked", () => {
-    const r = checkNewVideoJob([video("first_half.mp4"), video("second_half.mp4")], limits, [], NOW);
-    expect(r.ok && r.value.map((v) => [v.index, v.name])).toEqual([[0, "first_half.mp4"], [1, "second_half.mp4"]]);
+  it("takes up to a few videos, numbered in the order picked, each to be read unless marked otherwise", () => {
+    const r = checkNewVideoJob([video("first_half.mp4"), { ...video("end_zone.mp4"), read: false }], limits, [], NOW);
+    expect(r.ok && r.value.map((v) => [v.index, v.name, v.read])).toEqual([[0, "first_half.mp4", true], [1, "end_zone.mp4", false]]);
   });
 
   it.each([
@@ -251,10 +251,10 @@ describe("a whole game's video", () => {
   });
 
   it("is 'splitting' while the worker looks for the plays, then reads like any game", () => {
-    const waiting = job({ kind: "video", videos: [{ index: 0, name: "a.mp4", size: 5 }], clips: [] });
+    const waiting = job({ kind: "video", videos: [{ index: 0, name: "a.mp4", size: 5, read: true }], clips: [] });
     expect(viewOf(waiting, [])).toMatchObject({ stage: "splitting", kind: "video", videos: 1, total: 0 });
     expect(readyToAssemble(waiting, [])).toBe("wait"); // nothing to assemble before there are plays
-    expect(viewOf(job({ kind: "video", videos: [{ index: 0, name: "a.mp4", size: 5 }] }), []).stage).toBe("reading");
+    expect(viewOf(job({ kind: "video", videos: [{ index: 0, name: "a.mp4", size: 5, read: true }] }), []).stage).toBe("reading");
   });
 });
 
@@ -289,13 +289,13 @@ describe("the plays the worker found", () => {
     const second = cleanSplit(1, 3000, [play(5, 8, 17)])!;
     const first = cleanSplit(0, 3000, [play(30, 33, 42), play(90, 93, 102)])!;
     const r = planGame([second, first], 150);
-    expect(r.ok && r.value.clips.map((c) => [c.name, c.source, c.play, c.view])).toEqual([
-      ["play_001.mp4", { video: 0, start: 30, end: 42 }, 1, 0],
-      ["play_002.mp4", { video: 0, start: 90, end: 102 }, 2, 0],
-      ["play_003.mp4", { video: 1, start: 5, end: 17 }, 3, 0],
+    expect(r.ok && r.value.clips.map((c) => [c.name, c.source])).toEqual([
+      ["play_001.mp4", { video: 0, start: 30, end: 42 }],
+      ["play_002.mp4", { video: 0, start: 90, end: 102 }],
+      ["play_003.mp4", { video: 1, start: 5, end: 17 }],
     ]);
     expect(r.ok && r.value.clips.map((c) => c.index)).toEqual([0, 1, 2]);
-    expect(r.ok && r.value.summary).toEqual({ plays: 3, matched: 0, views: 3, angleVideos: 0 });
+    expect(r.ok && r.value.summary).toEqual({ plays: 3, matched: 0, recovered: 0, skipped: 0, otherAngles: 0, readAlone: 0 });
   });
 
   it("fails clearly when there are no plays, or more than the plan allows", () => {
@@ -306,48 +306,82 @@ describe("the plays the worker found", () => {
   });
 });
 
-describe("two angles of one game", () => {
+describe("two angles of one game: the press box is read, the other angle only recognizes the plays", () => {
   const play = (start: number, snap: number, end: number) => ({ start, snap, end, score: 0.9 });
   // 12 plays 40 s apart in the press box; the end zone camera started 25 s later and saw each snap a half second late
   const press = cleanSplit(0, 3000, Array.from({ length: 12 }, (_, i) => play(60 + i * 40, 63 + i * 40, 72 + i * 40)))!;
   const endZone = cleanSplit(1, 3000, Array.from({ length: 12 }, (_, i) => play(60 + i * 40 - 25, 63 + i * 40 - 25 + 0.5, 72 + i * 40 - 25)))!;
 
-  it("is one play with a clip per angle, the second named _b", () => {
-    expect(clipName(7, 0)).toBe("play_007.mp4");
-    expect(clipName(7, 1)).toBe("play_007_b.mp4");
-    const r = planGame([press, endZone], 150);
-    expect(r.ok && r.value.summary).toEqual({ plays: 12, matched: 12, views: 24, angleVideos: 1 });
+  it("names a play's clip by its number", () => {
+    expect(clipName(7)).toBe("play_007.mp4");
+    expect(clipName(112)).toBe("play_112.mp4");
+  });
+
+  it("makes one play of the two views, read from the press box only", () => {
+    const r = planGame([press, endZone], 150, new Set([0]));
+    expect(r.ok && r.value.summary).toEqual({ plays: 12, matched: 12, recovered: 0, skipped: 0, otherAngles: 1, readAlone: 0 });
     const clips = r.ok ? r.value.clips : [];
-    expect(clips.slice(0, 4).map((c) => [c.name, c.play, c.view, c.source?.video])).toEqual([
-      ["play_001.mp4", 1, 0, 0],
-      ["play_001_b.mp4", 1, 1, 1],
-      ["play_002.mp4", 2, 0, 0],
-      ["play_002_b.mp4", 2, 1, 1],
+    expect(clips).toHaveLength(12); // not 24: the end zone isn't read
+    expect(clips.every((c) => c.source?.video === 0)).toBe(true);
+    expect(clips.slice(0, 2).map((c) => [c.name, c.source])).toEqual([
+      ["play_001.mp4", { video: 0, start: 60, end: 72 }],
+      ["play_002.mp4", { video: 0, start: 100, end: 112 }],
     ]);
-    // each view is cut from its own video's time of the same play
-    expect(clips[0].source).toMatchObject({ start: 60, end: 72 });
-    expect(clips[1].source).toMatchObject({ start: 35, end: 47 });
     expect(clips.map((c) => c.index)).toEqual(clips.map((_, i) => i));
   });
 
-  it("counts the limit in plays, not in views", () => {
-    expect(planGame([press, endZone], 12).ok).toBe(true);
-    expect(planGame([press, endZone], 11)).toMatchObject({ ok: false, message: /12 plays, more than the 11/ });
+  it("reads whichever video is marked, wherever it was uploaded", () => {
+    // the end zone is video 0 here, marked as the one to read
+    const swapped = [{ ...endZone, index: 0 }, { ...press, index: 1 }];
+    const r = planGame(swapped, 150, new Set([1]));
+    const clips = r.ok ? r.value.clips : [];
+    expect(clips).toHaveLength(12);
+    expect(clips.every((c) => c.source?.video === 1)).toBe(true);
+    expect(clips[0].source).toMatchObject({ start: 60, end: 72 }); // the press box's own times
   });
 
-  it("names the second angle's play the first when the first camera missed it", () => {
-    const missed = cleanSplit(0, 3000, press.plays.filter((_, i) => i !== 4).map((p) => ({ ...p })))!;
-    const r = planGame([missed, endZone], 150);
+  it("with nothing marked reads the first video of the group", () => {
+    const r = planGame([press, endZone], 150);
+    expect(r.ok && r.value.clips.every((c) => c.source?.video === 0)).toBe(true);
+  });
+
+  it("counts the limit in plays", () => {
+    expect(planGame([press, endZone], 12, new Set([0])).ok).toBe(true);
+    expect(planGame([press, endZone], 11, new Set([0]))).toMatchObject({ ok: false, message: /12 plays, more than the 11/ });
+  });
+
+  it("cuts a play only the other angle caught from the press-box recording, at the same moment", () => {
+    const missed = cleanSplit(0, 3000, press.plays.filter((_, i) => i !== 4))!; // the press box splitter missed play 5
+    const r = planGame([missed, endZone], 150, new Set([0]));
     const clips = r.ok ? r.value.clips : [];
-    const five = clips.filter((c) => c.play === 5);
-    expect(five).toHaveLength(1);
-    expect(five[0]).toMatchObject({ name: "play_005.mp4", view: 0, source: { video: 1 } });
-    expect(r.ok && r.value.summary).toMatchObject({ plays: 12, matched: 11, views: 23 });
+    expect(clips).toHaveLength(12);
+    expect(clips.every((c) => c.source?.video === 0)).toBe(true); // still the press-box film
+    const recovered = clips[4].source!;
+    // the end zone's start (60 + 4*40 - 25) back on the press box's clock, within the half second the cameras differ by
+    expect(Math.abs(recovered.start - (60 + 4 * 40))).toBeLessThan(1);
+    expect(Math.abs(recovered.end - (72 + 4 * 40))).toBeLessThan(1);
+    expect(r.ok && r.value.summary).toMatchObject({ plays: 12, matched: 11, recovered: 1, skipped: 0 });
+  });
+
+  it("doesn't read a play only the other angle caught if the press-box recording doesn't reach it", () => {
+    // the press box recording stopped at 400 s (after its 5th play); the end zone kept going to the 12th
+    const short = cleanSplit(0, 400, press.plays.slice(0, 5))!;
+    const r = planGame([short, endZone], 150, new Set([0]));
+    // plays 6-9 are inside the press box recording (cut from it at the matching time); 10-12 are past its end
+    expect(r.ok && r.value.summary).toMatchObject({ plays: 9, matched: 5, recovered: 4, skipped: 3 });
+    expect(r.ok && r.value.clips.every((c) => (c.source?.end ?? 0) <= 401)).toBe(true);
+  });
+
+  it("reads a video marked 'other angle' that matched no press box, and says so", () => {
+    const secondHalf = cleanSplit(1, 3000, Array.from({ length: 12 }, (_, i) => play(30 + i * 31, 33 + i * 31, 42 + i * 31)))!;
+    const r = planGame([press, secondHalf], 150, new Set([0]));
+    expect(r.ok && r.value.summary).toEqual({ plays: 24, matched: 0, recovered: 0, skipped: 0, otherAngles: 0, readAlone: 1 });
+    expect(r.ok && r.value.clips.filter((c) => c.source?.video === 1)).toHaveLength(12);
   });
 
   it("does not match halves of a game", () => {
     const secondHalf = cleanSplit(1, 3000, Array.from({ length: 12 }, (_, i) => play(30 + i * 31, 33 + i * 31, 42 + i * 31)))!;
     const r = planGame([press, secondHalf], 150);
-    expect(r.ok && r.value.summary).toEqual({ plays: 24, matched: 0, views: 24, angleVideos: 0 });
+    expect(r.ok && r.value.summary).toMatchObject({ plays: 24, matched: 0, otherAngles: 0 });
   });
 });

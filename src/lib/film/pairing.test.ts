@@ -106,6 +106,9 @@ describe("groupVideos", () => {
     const [g, ...rest] = groupVideos([{ index: 0, snaps: press }, { index: 1, snaps: endZone }]);
     expect(rest).toEqual([]);
     expect(g.videos).toEqual([0, 1]);
+    expect(g.primary).toBe(0);
+    expect(g.toPrimary[0]).toBe(0);
+    expect(Math.abs(g.toPrimary[1] + 63)).toBeLessThan(0.6); // the end zone's clock back onto the primary's
     expect(g.plays).toHaveLength(40);
     expect(g.plays.every((p) => p.views.length === 2 && p.views[0].video === 0 && p.views[1].video === 1)).toBe(true);
     // the play's time is on the primary's clock, in order
@@ -136,6 +139,20 @@ describe("groupVideos", () => {
     expect(groups.map((g) => g.videos)).toEqual([[0, 2], [1, 3]]);
     expect(groups.map((g) => g.plays.length)).toEqual([35, 35]);
     expect(groups.every((g) => g.plays.every((p) => p.views.length === 2))).toBe(true);
+  });
+
+  it("makes the marked video the primary, wherever it was uploaded, and puts the others on its clock", () => {
+    const press = game(23, 30);
+    const endZone = otherAngle(press, 40, 4, { miss: 0, extra: 0, jitter: 0.3 });
+    // the end zone was uploaded first
+    const [g] = groupVideos([{ index: 0, snaps: endZone }, { index: 1, snaps: press }], new Set([1]));
+    expect(g.primary).toBe(1);
+    expect(g.videos).toEqual([1, 0]);
+    expect(g.toPrimary[1]).toBe(0);
+    expect(Math.abs(g.toPrimary[0] - -40)).toBeLessThan(0.6); // end zone time -> press box time
+    expect(g.plays.every((p) => p.views[0].video === 1)).toBe(true); // the press box's view first in every play
+    // not marked: the first uploaded
+    expect(groupVideos([{ index: 0, snaps: endZone }, { index: 1, snaps: press }])[0].primary).toBe(0);
   });
 
   it("leaves a single video as a single group of single views", () => {
