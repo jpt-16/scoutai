@@ -239,6 +239,8 @@ export const FRONT_LABELS: Record<FrontKey, string> = {
 };
 
 export interface Defender {
+  /** Scout D from film: what he was doing ("→ X", "FLAT", "DEEP THIRD", "RUSH"). */
+  assignment?: string;
   /** Stable id: the label plus its count ("C1", "C2", "FS1"), used to save moved defenders. */
   id: string;
   /** E, T, N (line), W, M, S, B (backers), C, FS, SS (secondary). */
@@ -1512,6 +1514,7 @@ export function buildDiagram(
     | "frontKey"
     | "defenseOverrides"
     | "defenseMoves"
+    | "defenseAssignments"
     | "secondary"
     | "yardLine"
     | "routeOverrides"
@@ -1571,7 +1574,9 @@ export function buildDiagram(
           card.defenseAlignment,
         )
       : null;
-  const defense = aligned?.defenders ?? [];
+  const defense = (aligned?.defenders ?? []).map((d) =>
+    card.defenseAssignments?.[d.id] ? { ...d, assignment: card.defenseAssignments[d.id] } : d,
+  );
   const defenseArrows: Pt[][] = defense.flatMap((d) => {
     const move = card.defenseMoves?.[d.id];
     return move ? [[[d.x, d.y], [d.x + move.x, d.y + move.y]] as Pt[]] : [];

@@ -100,6 +100,8 @@ export interface HudlPlayCard {
    * `defenseOverrides`, as a move in the card's own coordinates (un-flipped, before the hash shift).
    */
   defenseMoves?: Record<string, { x: number; y: number }>;
+  /** Scout D from film: what each defender was doing, keyed like `defenseOverrides`: "→ X" (his man), "FLAT", "DEEP THIRD", "RUSH". */
+  defenseAssignments?: Record<string, string>;
   /**
    * Where each offensive player (by letter, Q included) really lined up, read
    * from film: yards to the offense's right (+) / left (−) of the ball, and

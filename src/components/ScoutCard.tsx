@@ -750,6 +750,23 @@ export function ScoutCard({
               >
                 {p.label}
               </text>
+              {p.assignment && (
+                <text
+                  x={Math.min(Math.max(p.x, 34), FIELD.width - 34)}
+                  y={diagram.flipped ? p.y + 31 : p.y - 23}
+                  textAnchor="middle"
+                  fontSize={9}
+                  fontWeight={800}
+                  fontFamily="'Barlow Condensed', sans-serif"
+                  letterSpacing={0.4}
+                  fill={c.defense}
+                  stroke={c.field}
+                  strokeWidth={3}
+                  paintOrder="stroke"
+                >
+                  {p.assignment}
+                </text>
+              )}
             </g>
           );
         })}

@@ -24,7 +24,9 @@
  */
 
 import { deriveCard, type HudlPlayCard } from "./hudlParser";
-import { readDefense, type DefRole } from "./defenseRead";
+import { matchFilmToCard, readDefense, type DefenseRead, type DefRole } from "./defenseRead";
+import { isPressureTag } from "./pressure";
+import { matchDetectedLetters, type DetectedPlayer } from "./videoImport";
 import { snapTime, type TrackedPlayer, type TrackedPlayFile } from "./trackedPlay";
 
 /** How long after the snap the read looks (the ball is usually out by then, and a man coverage has shown itself). */
@@ -71,12 +73,27 @@ const MATCH_YARDS = 3;
 const VERTICAL_YARDS = 10;
 /** A defender who ended up this close to the line (or behind it) rushed the passer: no coverage to read from him. */
 const RUSH_DEPTH = 1.5;
+/** Deep zones: the middle one is within this many yards of the ball; a short zone inside this is a hook, outside it a curl. */
+const DEEP_MIDDLE_WIDTH = 6;
+const HOOK_WIDTH = 7;
 /** Linemen and the quarterback, by where they stood: inside this half-width of the box, this close to the line. */
 const BOX_HALF_WIDTH = 4;
 const LINE_DEPTH = 1.6;
 
 export type CoverageFamily = "0" | "1" | "2" | "2-man" | "tampa-2" | "3" | "4";
 export type FlatPlayer = "cloud" | "sky" | "buzz" | "none";
+
+/** What one defender was doing: covering a man, holding a zone, or rushing. */
+export interface DefenderAssignment {
+  /** Where he stood at the snap (yards from the ball), to find him again among the defense read's men. */
+  start: { x: number; y: number };
+  role: DefRole;
+  kind: "man" | "zone" | "rush";
+  /** Man: where the receiver he covered stood at the snap. */
+  target?: { x: number; y: number };
+  /** Zone: "FLAT", "HOOK", "CURL", "DEEP HALF", "DEEP THIRD", "DEEP QUARTER", "DEEP MIDDLE". */
+  zone?: string;
+}
 
 export interface CoverageRead {
   family: CoverageFamily;
@@ -97,6 +114,8 @@ export interface CoverageRead {
   sure: boolean;
   /** What the answer rests on, a line each. */
   evidence: string[];
+  /** Who each coverage defender covered or where he dropped, and who rushed. */
+  assignments: DefenderAssignment[];
 }
 
 /** A read this unsure is noted for a coach, not written on the card. */
@@ -337,7 +356,27 @@ export function readCoverage(file: TrackedPlayFile): CoverageRead | null {
     : family === "4" ? (match ? "COVER 4 MATCH" : "COVER 4")
     : `COVER 3${flatTag === "none" ? "" : ` ${flatTag.toUpperCase()}`}`;
   confidence = Math.max(0, Math.min(1, confidence));
-  return { family, label, man, deep: deep.length, flats, match, shell, rotated, confidence, sure: confidence >= SURE_COVERAGE, evidence };
+  // Who has whom: a man defender his receiver; a zone defender the area he ended in; a rusher the quarterback.
+  const zoneName = (e: P, role: DefRole): string => {
+    if (e.y >= DEEP_YARDS) {
+      if (family === "2" || family === "2-man" || family === "tampa-2") return role === "lb" ? "DEEP MIDDLE" : "DEEP HALF";
+      if (family === "4") return "DEEP QUARTER";
+      if (family === "1") return "DEEP MIDDLE";
+      return Math.abs(e.x) < DEEP_MIDDLE_WIDTH ? "DEEP MIDDLE" : "DEEP THIRD";
+    }
+    if (Math.abs(e.x) >= FLAT_MIN_WIDTH && e.y <= FLAT_MAX_DEPTH) return "FLAT";
+    return Math.abs(e.x) < HOOK_WIDTH ? "HOOK" : "CURL";
+  };
+  const assignments: DefenderAssignment[] = [
+    ...rushers.map(({ path: d, role }): DefenderAssignment => ({ start: d.start, role, kind: "rush" })),
+    ...cover.flatMap(({ path: d, role }): DefenderAssignment[] => {
+      const receiver = man ? covering.get(d) : undefined;
+      if (receiver) return [{ start: d.start, role, kind: "man", target: receiver.start }];
+      if (man && last(d).y < DEEP_YARDS) return []; // a man defender who had no one to follow: no assignment to say
+      return [{ start: d.start, role, kind: "zone", zone: zoneName(last(d), role) }];
+    }),
+  ];
+  return { family, label, man, deep: deep.length, flats, match, shell, rotated, confidence, sure: confidence >= SURE_COVERAGE, evidence, assignments };
 }
 
 /**
@@ -360,10 +399,38 @@ export function coverageFamilyOf(tag: string): CoverageFamily | null {
  * A card with the film's coverage: written when the sheet left COVERAGE blank and the read is sure (the coach's tag
  * always wins), noted either way so a coach can see what the film said.
  */
-export function applyCoverageRead(card: HudlPlayCard, read: CoverageRead | null): HudlPlayCard {
+export function applyCoverageRead(card: HudlPlayCard, read: CoverageRead | null, defense?: DefenseRead | null): HudlPlayCard {
   if (!read) return card;
   const note = read.sure ? `Film coverage: ${read.label}.` : `Check coverage: film says ${read.label}, unsure.`;
   const notes = [card.notes, note].filter(Boolean).join(" ");
   const coverage = !card.coverage.trim() && read.sure ? read.label : card.coverage;
-  return deriveCard({ ...card, coverage, notes });
+  // Who covered whom / where each dropped: written only on a sure read of a defense that adds up, and where the sheet's COVERAGE is
+  // blank or a blitz call (a coach's own coverage tag could contradict the film's, so it keeps the column to itself).
+  const assign = read.sure && defense?.plausible && (!card.coverage.trim() || isPressureTag(card.coverage));
+  const defenseAssignments = assign ? defenseAssignmentsFor(card, defense!, read) : undefined;
+  return deriveCard({ ...card, coverage, notes, ...(defenseAssignments && Object.keys(defenseAssignments).length ? { defenseAssignments } : {}) });
+}
+
+/**
+ * What each defender was doing, in words for the card, keyed by the card's own defender id: "→ X" for the receiver he
+ * covered (the card's own letter for him), a zone ("FLAT", "DEEP THIRD", "HOOK"), or "RUSH". Only men the defense read
+ * placed on the card.
+ */
+export function defenseAssignmentsFor(card: HudlPlayCard, defense: DefenseRead, read: CoverageRead): Record<string, string> {
+  // The receivers covered, put on the card's own letters by where they lined up (like a film card's routes).
+  const targets = read.assignments.flatMap((a) => (a.target ? [a.target] : []));
+  const players: DetectedPlayer[] = targets.map((t) => ({ label: "?", start: t, waypoints: [], endpoint: t }));
+  const letters = players.length ? matchDetectedLetters({ playName: "", formation: "", units: "yards", players }, card) : new Map();
+  const letterOf = new Map(targets.map((t, i) => [t, letters.get(players[i])] as const));
+  const ids = matchFilmToCard(card, defense);
+  const out: Record<string, string> = {};
+  for (const a of read.assignments) {
+    const index = defense.defenders.findIndex((d) => Math.hypot(d.x - a.start.x, d.y - a.start.y) < 1);
+    const id = [...ids].find(([, i]) => i === index)?.[0];
+    if (!id) continue;
+    if (a.kind === "rush") out[id] = "RUSH";
+    else if (a.kind === "zone" && a.zone) out[id] = a.zone;
+    else if (a.target && letterOf.get(a.target)) out[id] = `→ ${letterOf.get(a.target)}`;
+  }
+  return out;
 }

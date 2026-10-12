@@ -175,7 +175,7 @@ export function defenseMovesFor(card: HudlPlayCard, read: DefenseRead): Record<s
 }
 
 /** Each of the card's defender ids paired with the film defender (index into `read.defenders`) nearest it, of the same kind first. */
-function matchFilmToCard(card: HudlPlayCard, read: DefenseRead): Map<string, number> {
+export function matchFilmToCard(card: HudlPlayCard, read: DefenseRead): Map<string, number> {
   const diagram = buildDiagram({ ...card, defenseOverrides: undefined, defenseMoves: undefined }, "team", "defense");
   const slots = diagram.defense.map((d) => {
     const p = fromCardPoint(diagram, { x: d.x, y: d.y });

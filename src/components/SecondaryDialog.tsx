@@ -79,7 +79,7 @@ export function SecondaryDialog({
 
   const preview = useMemo(() => {
     const sample = cards.find((c) => c.formationKey === formation) ?? cards[0];
-    return sample ? { ...sample, secondary: draft, defenseOverrides: undefined, defenseMoves: undefined } : null;
+    return sample ? { ...sample, secondary: draft, defenseOverrides: undefined, defenseMoves: undefined, defenseAssignments: undefined } : null;
   }, [cards, formation, draft]);
 
   const applyText = () => {

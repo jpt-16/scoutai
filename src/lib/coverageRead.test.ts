@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { applyCoverageRead, coverageFamilyOf, readCoverage } from "./coverageRead";
+import { applyCoverageRead, coverageFamilyOf, defenseAssignmentsFor, readCoverage } from "./coverageRead";
+import { applyDefenseRead, readDefense } from "./defenseRead";
+import { buildDiagram } from "./formations";
 import { parseHudlCsvText } from "./hudlParser";
 import type { TrackedPlayer, TrackedPlayFile } from "./trackedPlay";
 
@@ -276,5 +278,74 @@ describe("coverage tags", () => {
     expect(applyCoverageRead(blank, read).coverage).toBe("COVER 1");
     expect(applyCoverageRead(blank, read).notes).toContain("Film coverage: COVER 1.");
     expect(applyCoverageRead(tagged, read).coverage).toBe("COVER 2");
+  });
+});
+
+describe("who each defender had, and where he was to go", () => {
+  const row = () => parseHudlCsvText("PLAY #,OFF FORM,OFF PLAY,COVERAGE\n1,DUCES,MESH,\n").cards[0];
+  const assigned = (file: ReturnType<typeof play>) => {
+    const defense = readDefense(file)!;
+    const read = readCoverage(file)!;
+    return { read, defense, by: defenseAssignmentsFor(row(), defense, read) };
+  };
+
+  it("Cover 1: each man-up defender is on his receiver's letter, the free safety deep in the middle, the backer rushing", () => {
+    const { by } = assigned(
+      play(MESH, (o) => [
+        man(CB_L, o.X), man(CB_R, o.Z), man(NICKEL, o.Y), man(ONE_HIGH[0], o.F), man(MIKE, o.H),
+        rush(WILL), drop(ONE_HIGH[1], [0, 16]),
+      ]),
+    );
+    const values = Object.values(by);
+    expect(values.filter((v) => v.startsWith("→")).sort()).toEqual(["→ F", "→ X", "→ Y", "→ Z"]);
+    expect(values).toContain("DEEP MIDDLE");
+    expect(values).toContain("RUSH");
+    // The corner over X is on X, the nickel on Y.
+    expect(by.C1).toBe("→ X");
+    expect(by.C2).toBe("→ Z");
+  });
+
+  it("Cover 2: corners in the flats, safeties deep halves, backers in hook and curl zones", () => {
+    const { by } = assigned(
+      play(MESH, () => [
+        drop(CB_L, [-15, 4]), drop(CB_R, [15, 4]), drop(NICKEL, [8, 8]), drop(WILL, [-4, 8]), drop(MIKE, [3, 8]),
+        drop(TWO_HIGH[0], [-11, 17]), drop(TWO_HIGH[1], [11, 17]),
+      ]),
+    );
+    expect(by.C1).toBe("FLAT");
+    expect(by.C2).toBe("FLAT");
+    expect(Object.values(by).filter((v) => v === "DEEP HALF")).toHaveLength(2);
+    expect(by.W1).toBe("HOOK");
+  });
+
+  it("Cover 3: three deep thirds", () => {
+    const { by } = assigned(
+      play(MESH, () => [
+        drop(CB_L, [-17, 15]), drop(CB_R, [17, 15]), drop(NICKEL, [6, 8]), drop(WILL, [-4, 8]), drop(MIKE, [1, 8]),
+        drop(TWO_HIGH[0], [0, 16], 7), drop(TWO_HIGH[1], [12, 5]),
+      ]),
+    );
+    expect(Object.values(by).filter((v) => v === "DEEP THIRD" || v === "DEEP MIDDLE")).toHaveLength(3);
+  });
+
+  it("goes on the card (and its Scout D picture) only for a sure read of a defense that adds up", () => {
+    const file = play(MESH, (o) => [
+      man(CB_L, o.X), man(CB_R, o.Z), man(NICKEL, o.Y), man(ONE_HIGH[0], o.F), man(MIKE, o.H),
+      rush(WILL), drop(ONE_HIGH[1], [0, 16]),
+    ]);
+    const defense = readDefense(file)!;
+    const card = applyCoverageRead(applyDefenseRead(row(), defense), readCoverage(file), defense);
+    expect(card.defenseAssignments?.C1).toBe("→ X");
+    const shown = buildDiagram(card, "team", "defense").defense;
+    expect(shown.find((d) => d.id === "C1")?.assignment).toBe("→ X");
+    // A coach's own COVERAGE tag keeps the column, and the assignments wait.
+    const tagged = parseHudlCsvText("PLAY #,OFF FORM,OFF PLAY,COVERAGE\n1,DUCES,MESH,COVER 3\n").cards[0];
+    expect(applyCoverageRead(tagged, readCoverage(file), defense).defenseAssignments).toBeUndefined();
+    // And so does an unsure read.
+    const bare = play({ ...VERTS, H: [[0, -1]] }, () => [
+      drop(CB_L, [-17, 15]), drop(CB_R, [17, 15]), drop(NICKEL, [6, 8]), drop(WILL, [-4, 8]), drop(MIKE, [1, 8]),
+      drop(TWO_HIGH[0], [0, 16], 7), drop(TWO_HIGH[1], [12, 5]),
+    ]);
+    expect(applyCoverageRead(row(), readCoverage(bare), readDefense(bare)).defenseAssignments).toBeUndefined();
   });
 });

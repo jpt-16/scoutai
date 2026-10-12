@@ -253,6 +253,13 @@ Free-text tags are classified by keyword (`classifyFormation`, `classifyFront`,
   his spot at it, in yards; none under `MIN_MOVE_YARDS` (1.5), capped at `MAX_MOVE_YARDS` (14)) on `FilmDefender`,
   `defenseMovesFor` hands each to the card's own defender id (the same nearest-of-the-same-kind match as `defenseOverrides`) in
   card coordinates, and a blitz tag's drawn rush stands in only on a card with no film arrows. **Reset X's** clears both.
+  **Who each defender had** (`card.defenseAssignments`, `Defender.assignment`): `readCoverage` also says what each defender
+  was doing (`DefenderAssignment`): a man defender who ran with a receiver is "→ X" (the card's own letter for that receiver, put
+  on it by where he lined up, `defenseAssignmentsFor`), a zone defender the area he ended in ("FLAT", "HOOK", "CURL", "DEEP HALF",
+  "DEEP THIRD", "DEEP MIDDLE", "DEEP QUARTER", named from the coverage family and where he stood), a rusher "RUSH". The card prints
+  it under the defender's label. Written only on a sure coverage read of a defense that adds up, and where the sheet's COVERAGE is
+  blank or a blitz call (a coach's own coverage tag keeps the column, and the film's assignments wait). The alignment itself comes from
+  `defenseOverrides` as before. **Reset X's** clears it with the arrows. Tested on drawn plays (Cover 1, 2, 3).
   Scout defense cards are **flipped 180°** (`Diagram.flipped`, `losY` = 160). The defense is at
   the bottom and the offense on top, as the scout defense sees it, so the offense's right is on
   their left. Text stays upright. The header's `HASH` stays as recorded in Hudl.
