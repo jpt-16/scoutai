@@ -106,7 +106,7 @@ if (sheetPath) {
 
 const title = sheetPath ? basename(sheetPath) : basename(dir);
 // How the defense lined its corners and safeties up against each formation: the Secondary table, from film.
-const dbAlignments = secondaryFromFilm(defenses.map(({ card, read }) => ({ formationKey: card.formationKey, read })));
+const dbAlignments = secondaryFromFilm(defenses.map(({ card, read }) => ({ formationKey: card.formationKey, formation: card.formation, read })));
 const script = { fileName: title, films: [title], savedAt: new Date().toISOString(), cards, warnings, dbAlignments };
 writeFileSync(out, JSON.stringify(script));
 console.log(`${cards.length} cards → ${out}`);

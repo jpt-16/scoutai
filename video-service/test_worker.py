@@ -81,7 +81,8 @@ def test_a_shard_reads_each_clip_reports_it_and_leaves_no_film_behind(tmp_path):
     )
     by_name = {r.name: r for r in results}
     assert by_name["play_03.mp4"].status == "done"
-    assert (by_name["play_03.mp4"].formation, by_name["play_03.mp4"].strength) == ("trips", "right")
+    # the staff's own name for what stood there (a 3-by-1 in the gun is their TRIO), the side written once
+    assert (by_name["play_03.mp4"].formation, by_name["play_03.mp4"].strength) == ("trio gun right", "")
     assert by_name["play_04.mp4"].status == "needs_hand"
     assert by_name["play_05.mp4"].status == "failed" and "404" in by_name["play_05.mp4"].reason
 
@@ -92,7 +93,7 @@ def test_a_shard_reads_each_clip_reports_it_and_leaves_no_film_behind(tmp_path):
     posted = {p["index"]: p for _, p, _ in http.posts}
     assert {i: p["status"] for i, p in posted.items()} == {0: "done", 1: "needs_hand", 2: "failed"}
     assert all(url.endswith("/job12345") and token == "tok" for url, _, token in http.posts)
-    assert posted[0]["formation"] == "trips" and posted[0]["strength"] == "right"
+    assert posted[0]["formation"] == "trio gun right" and posted[0]["strength"] == ""
     # The film itself is gone as soon as it was read (these are minors).
     assert not list((work / "clips").glob("*.mp4"))
 
@@ -443,3 +444,15 @@ def test_the_server_accepts_a_split_dispatch_and_refuses_one_without_a_video(mon
     good = {"type": "split", "jobId": "j", "callbackUrl": "c", "token": "t", "video": {"index": 0, "name": "a.mp4", "url": "u"}}
     assert client.post("/jobs", json={k: v for k, v in good.items() if k != "video"}, headers=ok).status_code == 400
     assert client.post("/jobs", json=good, headers=ok).status_code == 202 and submitted == [good]
+
+
+def test_the_formation_column_carries_the_staffs_name_with_the_side_written_once():
+    from types import SimpleNamespace as F
+
+    from eval.clipjob import formation_line
+
+    assert formation_line(F(key="trips", strength="right", staff="trio gun right")) == ("trio gun right", "")
+    assert formation_line(F(key="pro", strength="left", staff="twins left")) == ("twins left", "")
+    assert formation_line(F(key="spread", strength="right", staff="aces gun")) == ("aces gun", "right")  # no side in the name: kept
+    assert formation_line(F(key="spread", strength=None, staff="deuces gun")) == ("deuces gun", "")
+    assert formation_line(F(key="pro", strength="right", staff="")) == ("pro", "right")  # none of the staff's names: the shape

@@ -64,6 +64,7 @@ src/
     practicePlan.ts        Practice playsheet: line parser, opponent looks, rep → Scout D card
     conceptMapper.ts       Named pass concepts → a route per position; RAIL / WHEEL back tags
     secondary.ts           Scout D secondary per formation: typed line / film read → DB spots
+    formationFamily.ts     The staff's formation names (Pro, Twins, Aces, Duces, Trio...) as a family the defense is matched on
     defensiveAligner.ts    Scout D alignment rules: split receivers, safety roll, backers match numbers
     generatedCard.ts       Text-to-card: Gemini prompt, answer validation, grid → card overrides
     batchMatcher.ts        Batch plan: sort clips from the sheet, match clip ↔ row, route each row
@@ -285,6 +286,17 @@ Free-text tags are classified by keyword (`classifyFormation`, `classifyFront`,
   script (`StoredScript.dbAlignments`), attached to cards for display only (`card.secondary`,
   stripped before saving cards), applied in `buildDefense` via `placeDb`; a per-play Adjust X's
   drag still wins. The film read is gated and rate limited like single clips.
+
+  **Formation families** (`src/lib/formationFamily.ts`): `FormationKey` is the shape the app *draws* (Twins draws as Pro,
+  Aces and Duces both as Spread, Bunch as Trips), but a defense lines up differently against each, so everything that asks
+  "what did they do against this formation?" keys on the family the staff names (`formationFamily(text, key)`: pro, twins,
+  aces, duces, trio, empty, bunch, i-form, double-eagle, split-pro, spread; `fam:<family>` in tables) and falls back to the
+  shape only where there's no film of that exact formation. The practice script, the opponent's breakdown and the film
+  analyzer's own name for what it saw (`staff_name`: "deuces gun", "trio gun right", "aces", "twins right") all land on the
+  same family. The film analyzer now writes that name in the formation column (`clipjob.formation_line`), so a film card keeps
+  "Twins" instead of just "Pro". `secondaryFromFilm` writes a table per family (with a `plays` count) *and* one per shape
+  (the pooled fallback); `dbAlignmentFor(alignments, formationText, key)` picks one: a table the coach set (family, else
+  shape) beats film, then family beats shape. The Secondary dialog still sets shape tables only.
 - **7v7** drops the linemen on both sides. `inPeriod` decides which plays each period lists:
   - Scout O 7v7: every pass/RPO/PA from team, plus untagged plays as formation reps (the card
     says "no routes tagged").
@@ -474,12 +486,19 @@ Each period says which side is ours, and the scout team is the converse:
     breakdown tags ODK, else every row with a front/coverage (like normal Scout D cards).
   - `assignLooks` matches each rep to what they showed against that same formation **and kind of play**
     (`repKind`: run or pass; used once there are `MIN_KIND_REPS` (3) snaps of it, since a defense calls
-    runs and passes differently), else that formation, else their overall mix, and spreads reps in proportion (smooth weighted round-robin, deterministic), so
+    runs and passes differently), else that formation, else the shape it draws as (Aces with no Aces film uses their
+    Spread looks), else their overall mix (the `basis` it returns says which; `ScoutLook.vs` / `vsKind` are keyed by both
+    shape and `fam:` family). It spreads reps in proportion (smooth weighted round-robin, deterministic), so
     a 60/40 defense gets 6 and 4 of 10 reps, mixed in. A look written on the line always wins.
     The editor's per-rep dropdown rewrites the line's `vs …` (`setLineLook`), so the pasted text
     stays the single source of truth.
   - The staff's own formation names ("REX") that the classifier doesn't know get a one-time
     "draw it as" pick, stored in `formationAliases` by the call's first word.
+  - **Their defense vs your formations** (`defenseVsScript`, the panel at the top of `/practice`, replacing the old film
+    list): for each formation in the day's script, the reps, their front and coverage (with %), where their corners and
+    safeties line up (`describeAlignment`), and what each is based on: "from 6 snaps against Twins", "no Aces film: using their
+    Spread looks", "set by your staff in Secondary", or "no film: a 4-3". Rep cards carry `formationName` (the formation part
+    of the call) so the secondary is looked up by the right family. Drawn data only so far; not run on real film.
 - **Our D → Scout O.** The defensive coach calls his own defense, so there's no list: Scout O
   runs the opponent's plays for that period type as usual (`periodScoutOCards`, which also drops
   ODK `D` snaps).

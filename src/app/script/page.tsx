@@ -32,6 +32,7 @@ import { ImportNotice } from "@/components/ImportNotice";
 import { PrintGrid } from "@/components/PrintGrid";
 import { ScoutCard, SCOUT_CARD_ASPECT } from "@/components/ScoutCard";
 import { computeTendencies } from "@/lib/tendencies";
+import { dbAlignmentFor } from "@/lib/secondary";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MOCK_HUDL_CSV, DEMO_FILE_NAME } from "@/lib/demoScript";
@@ -260,7 +261,10 @@ function ScriptApp({ demoMode = false }: { demoMode?: boolean }) {
         );
     // Scout D: the staff's secondary for each card's formation (src/lib/secondary.ts).
     if (unit !== "defense" || !dbAlignments) return list;
-    return list.map((c) => (dbAlignments[c.formationKey] ? { ...c, secondary: dbAlignments[c.formationKey] } : c));
+    return list.map((c) => {
+      const secondary = dbAlignmentFor(dbAlignments, c.formationName ?? c.formation, c.formationKey);
+      return secondary ? { ...c, secondary } : c;
+    });
   }, [modeCards, down, formation, practicePeriod, unit, dbAlignments, reviewing, onlyUnchecked]);
   const cardMode = mode === "7v7" ? "7v7" : "team";
 

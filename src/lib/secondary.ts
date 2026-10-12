@@ -15,6 +15,7 @@
  * Framework-free, no imports from formations.ts (which imports this).
  */
 
+import { familyKey, formationFamily } from "./formationFamily";
 import type { FormationKey } from "./hudlParser";
 
 export type DbSlot = "cs" | "cw" | "fs" | "ss";
@@ -32,8 +33,16 @@ export interface DbSpot {
   side?: DbSide;
 }
 
-export type DbAlignment = Partial<Record<DbSlot, DbSpot>> & { source?: "coach" | "film" };
-export type DbAlignments = Partial<Record<FormationKey, DbAlignment>>;
+export type DbAlignment = Partial<Record<DbSlot, DbSpot>> & {
+  source?: "coach" | "film";
+  /** Film tables: how many plays the spots were read from. */
+  plays?: number;
+};
+/**
+ * Tables by formation. A key is a drawn shape (`"pro"`, a `FormationKey`) or a formation family (`"fam:twins"`, see
+ * formationFamily.ts): a defense lines up differently against Twins than Pro, though the card draws both as Pro.
+ */
+export type DbAlignments = Partial<Record<string, DbAlignment>>;
 
 export const DB_SLOTS: DbSlot[] = ["cs", "cw", "fs", "ss"];
 export const DB_SLOT_LABELS: Record<DbSlot, string> = {
@@ -54,6 +63,23 @@ export const DB_SHADES: { value: DbShade; label: string }[] = [
   { value: "head-up", label: "Head up" },
   { value: "outside", label: "Outside" },
 ];
+
+/**
+ * The table for a card: what the coach set (for its family, else its shape) beats what film read, and a family beats the
+ * shape it draws as. `formation` is the card's formation text ("Twins Rt"), `key` the shape it draws as.
+ */
+export function dbAlignmentFor(
+  alignments: DbAlignments | undefined,
+  formation: string,
+  key: FormationKey,
+): DbAlignment | undefined {
+  if (!alignments) return undefined;
+  const family = alignments[familyKey(formationFamily(formation, key))];
+  const shape = alignments[key];
+  if (family?.source === "coach") return family;
+  if (shape?.source === "coach") return shape;
+  return family ?? shape;
+}
 
 /** Deepest a DB can be drawn: the card shows 20 yards past the line. */
 export const MAX_DB_DEPTH = 19;

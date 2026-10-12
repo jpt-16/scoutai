@@ -11,6 +11,7 @@
 
 import { buildDiagram, FIELD, fromCardPoint, YARD_PX, YARD_X } from "./formations";
 import { deriveCard, type FormationKey, type FrontKey, type HudlPlayCard } from "./hudlParser";
+import { FAMILY_LABELS, familyKey, formationFamily } from "./formationFamily";
 import type { DbAlignment, DbAlignments, DbAnchor, DbShade, DbSlot, DbSpot } from "./secondary";
 import { snapTime, type TrackedPlayer, type TrackedPlayFile } from "./trackedPlay";
 
@@ -252,41 +253,56 @@ function typical(spots: DbSpot[]): DbSpot {
   };
 }
 
+/** The table for a list of plays' spots: the typical spot of each DB. */
+function tableFrom(list: Partial<Record<DbSlot, DbSpot>>[]): DbAlignment {
+  const table: DbAlignment = { source: "film", plays: list.length };
+  for (const slot of ["cs", "cw", "fs", "ss"] as DbSlot[]) {
+    const spots = list.map((s) => s[slot]).filter((s): s is DbSpot => !!s);
+    if (spots.length) table[slot] = typical(spots);
+  }
+  return table;
+}
+
 /**
  * How this defense lines its corners and safeties up against each formation, from every play read:
- * the Secondary table, marked `source: "film"`. A formation the coach already set keeps the coach's.
+ * the Secondary table, marked `source: "film"`. Two kinds of table are written: one per formation the staff names
+ * (`fam:twins`, `fam:aces`: Twins and Aces are drawn as Pro and Spread, but a defense treats them differently) and one
+ * per drawn shape, which pools them and is what a formation with no film of its own falls back to. A table the coach
+ * already set keeps the coach's. `formation` is the play's formation text (the film analyzer's own name for it).
  */
 export function secondaryFromFilm(
-  plays: { formationKey: FormationKey; read: DefenseRead }[],
+  plays: { formationKey: FormationKey; formation?: string; read: DefenseRead }[],
   existing: DbAlignments = {},
 ): DbAlignments {
-  const byFormation = new Map<FormationKey, Partial<Record<DbSlot, DbSpot>>[]>();
-  for (const { formationKey, read } of plays) {
-    if (formationKey === "unknown" || !read.plausible) continue;
-    const list = byFormation.get(formationKey) ?? [];
-    list.push(dbSpots(read));
-    byFormation.set(formationKey, list);
+  const byTable = new Map<string, Partial<Record<DbSlot, DbSpot>>[]>();
+  for (const { formationKey, formation, read } of plays) {
+    if (!read.plausible) continue;
+    const spots = dbSpots(read);
+    const keys = new Set<string>();
+    if (formationKey !== "unknown") keys.add(formationKey);
+    const family = formationFamily(formation ?? "", formationKey);
+    if (family !== "unknown") keys.add(familyKey(family));
+    for (const key of keys) byTable.set(key, [...(byTable.get(key) ?? []), spots]);
   }
   const out: DbAlignments = { ...existing };
-  for (const [key, list] of byFormation) {
+  for (const [key, list] of byTable) {
     if (existing[key]?.source === "coach") continue;
-    const table: DbAlignment = { source: "film" };
-    for (const slot of ["cs", "cw", "fs", "ss"] as DbSlot[]) {
-      const spots = list.map((s) => s[slot]).filter((s): s is DbSpot => !!s);
-      if (spots.length) table[slot] = typical(spots);
-    }
-    out[key] = table;
+    out[key] = tableFrom(list);
   }
   return out;
 }
 
-/** "Trips: 4-2-5 (3 of 4), 2-high" — the fronts this defense showed against each formation. */
+/** "Twins: 4-2-5 (3 of 4), 2-high" — the fronts this defense showed against each formation the staff names. */
 export function frontsByFormation(plays: { formation: string; read: DefenseRead }[]): string[] {
   const by = new Map<string, DefenseRead[]>();
-  for (const { formation, read } of plays) if (read.plausible) by.set(formation, [...(by.get(formation) ?? []), read]);
-  return [...by].map(([formation, reads]) => {
+  for (const { formation, read } of plays) {
+    if (!read.plausible) continue;
+    const label = FAMILY_LABELS[formationFamily(formation)];
+    by.set(label, [...(by.get(label) ?? []), read]);
+  }
+  return [...by].map(([label, reads]) => {
     const front = mode(reads.map((r) => r.label));
     const shell = mode(reads.map((r) => r.shell));
-    return `${formation || "Other"}: ${front} (${reads.filter((r) => r.label === front).length} of ${reads.length}), ${shell}`;
+    return `${label}: ${front} (${reads.filter((r) => r.label === front).length} of ${reads.length}), ${shell}`;
   });
 }

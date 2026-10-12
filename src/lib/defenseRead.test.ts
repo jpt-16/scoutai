@@ -116,7 +116,7 @@ describe("the secondary per formation", () => {
     expect(tables.spread?.source).toBe("film");
     expect(tables.spread?.cs?.depth).toBe(7);
     expect(tables.trips?.source).toBe("coach");
-    expect(frontsByFormation([{ formation: "Deuces", read }, { formation: "Deuces", read }])[0]).toBe("Deuces: 4-2-5 (2 of 2), 2-high");
+    expect(frontsByFormation([{ formation: "Deuces", read }, { formation: "Deuces", read }])[0]).toBe("Duces: 4-2-5 (2 of 2), 2-high");
   });
 });
 

@@ -133,6 +133,11 @@ export interface HudlPlayCard {
    * never saved on the card itself.
    */
   secondary?: DbAlignment;
+  /**
+   * Playsheet rep cards: the formation part of the call as the staff wrote it ("Twins Rt"), apart from the play ("Split
+   * Zone"), which `formation` holds whole. Tables per formation family read this (src/lib/formationFamily.ts).
+   */
+  formationName?: string;
 
   /**
    * The play's tags exactly as they came in (Hudl Assist's, or the staff's own sheet), kept

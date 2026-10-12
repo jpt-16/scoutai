@@ -16,11 +16,14 @@ import { AppGate } from "@/components/AppGate";
 import { SyncBadge } from "@/components/CloudSync";
 import { BrandMark } from "@/components/BrandMark";
 import { Button } from "@/components/ui/button";
+import { FAMILY_LABELS } from "@/lib/formationFamily";
 import { FORMATION_LABELS } from "@/lib/formations";
 import type { FormationKey, HudlPlayCard } from "@/lib/hudlParser";
 import {
   aliasKey,
   assignLooks,
+  defenseVsScript,
+  familyOf,
   loadPlan,
   lookKey,
   lookLabel,
@@ -31,6 +34,7 @@ import {
   opponentLooks,
   parsePlaysheet,
   periodScoutOCards,
+  repFamily,
   repFormationKey,
   repKind,
   savePlan,
@@ -42,6 +46,7 @@ import {
   type PracticePlan,
   type ScoutLook,
 } from "@/lib/practicePlan";
+import { describeAlignment } from "@/lib/secondary";
 import { loadScript, type StoredScript } from "@/lib/scriptStore";
 import { useRemoteApplied } from "@/lib/useRemoteApplied";
 import { cn } from "@/lib/utils";
@@ -113,6 +118,7 @@ function OffensePeriod({
       parsePlaysheet(period.text).map((r) => ({
         ...r,
         formationKey: repFormationKey(r, aliases),
+        family: familyOf(r, aliases),
         kind: repKind(r.call),
       })),
     [period.text, aliases],
@@ -179,8 +185,9 @@ function OffensePeriod({
                   <span className="flex min-w-0 flex-col">
                     <span className="truncate text-base font-bold uppercase">{rep.call}</span>
                     <span className="truncate text-xs font-semibold text-muted-foreground">
-                      {FORMATION_LABELS[rep.formationKey === "unknown" ? "spread" : rep.formationKey]}
-                      {rep.formationKey === "unknown" && " (not recognized)"}
+                      {rep.formationKey === "unknown"
+                        ? `${FORMATION_LABELS.spread} (not recognized)`
+                        : FAMILY_LABELS[repFamily(rep, aliases)]}
                       {rep.hash && ` · ${rep.hash} hash`}
                       {rep.kind && ` · ${rep.kind}`}
                       {rep.personnel && ` · ${rep.personnel}`}
@@ -199,7 +206,7 @@ function OffensePeriod({
                   >
                     <option value="auto">
                       {pick?.fromFilm
-                        ? `Film: ${lookLabel(pick)}`
+                        ? `Film${pick.basis === "shape" ? " (shape)" : ""}: ${lookLabel(pick)}`
                         : looks.length
                           ? "Film tendency"
                           : "4-3 (no film)"}
@@ -247,40 +254,68 @@ function OffensePeriod({
   );
 }
 
-/** What the opponent's defense showed against each formation: the film the matches come from. */
-function FilmByFormation({ looks }: { looks: ScoutLook[] }) {
-  const rows = useMemo(() => {
-    const byFormation = new Map<FormationKey, { look: ScoutLook; n: number }[]>();
-    for (const look of looks) {
-      for (const [key, n] of Object.entries(look.vs) as [FormationKey, number][]) {
-        byFormation.set(key, [...(byFormation.get(key) ?? []), { look, n }]);
-      }
-    }
-    return [...byFormation.entries()]
-      .map(([key, list]) => ({
-        key,
-        total: list.reduce((sum, x) => sum + x.n, 0),
-        list: list.sort((a, b) => b.n - a.n),
-      }))
-      .sort((a, b) => b.total - a.total);
-  }, [looks]);
+const BASIS_TEXT = {
+  formation: (label: string, n: number) => `from ${n} ${n === 1 ? "snap" : "snaps"} against ${label}`,
+  shape: (label: string, _n: number, shape: string) => `no ${label} film: using their ${shape} looks`,
+  overall: () => "no film against this shape: their overall mix",
+  none: () => "no film loaded: a 4-3",
+};
+
+/**
+ * For each formation in the day's script: their front and coverage, where their corners and safeties line up, and
+ * what each is based on (this formation's film, the shape it draws as, or nothing yet).
+ */
+function DefenseVsFormations({
+  rows,
+}: {
+  rows: ReturnType<typeof defenseVsScript>;
+}) {
+  if (rows.length === 0) return null;
   return (
-    <details className="group rounded-xl border bg-card px-4 py-3">
+    <details open className="group rounded-xl border bg-card px-4 py-3">
       <summary className="cursor-pointer text-sm font-bold tracking-[0.08em] text-muted-foreground select-none">
-        FILM: WHAT THEY PLAYED AGAINST EACH FORMATION
+        THEIR DEFENSE VS YOUR FORMATIONS
       </summary>
-      <ul className="mt-3 grid gap-x-6 gap-y-2 sm:grid-cols-2">
-        {rows.map((r) => (
-          <li key={r.key} className="flex flex-col text-sm">
-            <span className="font-bold">
-              {FORMATION_LABELS[r.key === "unknown" ? "spread" : r.key]}
-              {r.key === "unknown" && " (not recognized)"} · {r.total}
-            </span>
-            <span className="text-muted-foreground">
-              {r.list.map((x) => `${lookLabel(x.look)} ×${x.n}`).join("  ·  ")}
-            </span>
-          </li>
-        ))}
+      <ul className="mt-3 grid gap-3 lg:grid-cols-2">
+        {rows.map((r) => {
+          const total = r.looks.reduce((sum, x) => sum + x.count, 0);
+          const shapeLabel = FORMATION_LABELS[r.shape === "unknown" ? "spread" : r.shape];
+          const note = (BASIS_TEXT[r.looksBasis] as (l: string, n: number, s: string) => string)(
+            r.label,
+            r.filmSnaps,
+            shapeLabel,
+          );
+          return (
+            <li key={r.family} className="flex flex-col gap-1.5 rounded-lg border bg-background/40 p-3 text-sm">
+              <span className="font-bold">
+                {r.label} <span className="font-semibold text-muted-foreground">· {r.reps} {r.reps === 1 ? "rep" : "reps"}</span>
+              </span>
+              <span>
+                <span className="font-semibold text-muted-foreground">Front: </span>
+                {r.looks.length
+                  ? r.looks
+                      .slice(0, 3)
+                      .map((x) => `${lookLabel(x.look)} ${Math.round((x.count / total) * 100)}%`)
+                      .join("  ·  ")
+                  : "4-3 (no film)"}
+              </span>
+              <span className="text-xs text-muted-foreground">{note}</span>
+              <span>
+                <span className="font-semibold text-muted-foreground">Corners / safeties: </span>
+                {r.secondary ? describeAlignment(r.secondary) : "standard alignment"}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                {r.secondaryBasis === "formation"
+                  ? `from film of ${r.label}${r.secondary?.plays ? ` (${r.secondary.plays} plays)` : ""}`
+                  : r.secondaryBasis === "shape"
+                    ? `no ${r.label} film: using their ${shapeLabel} table`
+                    : r.secondaryBasis === "coach"
+                      ? "set by your staff in Secondary"
+                      : "no secondary read yet: the alignment rules place them"}
+              </span>
+            </li>
+          );
+        })}
       </ul>
     </details>
   );
@@ -316,6 +351,18 @@ function PracticeApp() {
 
   const cards: HudlPlayCard[] = useMemo(() => script?.cards ?? [], [script]);
   const looks = useMemo(() => opponentLooks(cards), [cards]);
+  const formationDefense = useMemo(
+    () =>
+      plan
+        ? defenseVsScript(
+            (plan.days.find((d) => d.id === dayId) ?? plan.days[0]).periods,
+            looks,
+            script?.dbAlignments,
+            plan.formationAliases,
+          )
+        : [],
+    [plan, dayId, looks, script],
+  );
 
   if (!plan) return <div className="min-h-dvh" />;
   const day = plan.days.find((d) => d.id === dayId) ?? plan.days[0];
@@ -446,7 +493,7 @@ function PracticeApp() {
           </p>
         )}
 
-        {looks.length > 0 && <FilmByFormation looks={looks} />}
+        <DefenseVsFormations rows={formationDefense} />
 
         <ol className="flex flex-col gap-4">
           {day.periods.map((period, i) => {

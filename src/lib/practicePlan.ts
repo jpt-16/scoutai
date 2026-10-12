@@ -1,4 +1,6 @@
+import { FAMILY_LABELS, familyKey, formationFamily, type FormationFamily } from "./formationFamily";
 import { inPeriod, playKind } from "./formations";
+import { dbAlignmentFor, type DbAlignment, type DbAlignments } from "./secondary";
 import { notifyLocalChange } from "./syncMeta";
 import {
   classifyConcept,
@@ -80,9 +82,9 @@ export interface ScoutLook {
   front: string;
   coverage: string;
   count: number;
-  /** How often it showed up against each formation. */
-  vs: Partial<Record<FormationKey, number>>;
-  /** Against each formation and kind of play: key `"trips|pass"`. */
+  /** How often it showed up against each formation: by drawn shape (`"trips"`) and by formation family (`"fam:trio"`). */
+  vs: Record<string, number>;
+  /** Against each formation and kind of play: key `"trips|pass"` or `"fam:trio|pass"`. */
   vsKind: Record<string, number>;
 }
 
@@ -332,6 +334,14 @@ export function repFormationKey(
   return aliases[aliasKey(rep.call)] ?? "unknown";
 }
 
+/** The formation family a rep names ("Twins Rt" → twins), else the family of the shape it draws as. */
+export function repFamily(
+  rep: Pick<PlaysheetRep, "formation" | "call">,
+  aliases: Record<string, FormationKey>,
+): FormationFamily {
+  return formationFamily(rep.formation, repFormationKey(rep, aliases));
+}
+
 /* -------------------------------------------------------------------------- */
 /*                               Opponent looks                               */
 /* -------------------------------------------------------------------------- */
@@ -367,46 +377,70 @@ export function opponentLooks(cards: HudlPlayCard[]): ScoutLook[] {
       vsKind: {},
     };
     look.count += 1;
-    look.vs[c.formationKey] = (look.vs[c.formationKey] ?? 0) + 1;
     const kind = repKind(c.playCall);
-    if (kind) look.vsKind[`${c.formationKey}|${kind}`] = (look.vsKind[`${c.formationKey}|${kind}`] ?? 0) + 1;
+    // Against the exact formation the staff names (Twins, Aces, Duces...) and against the shape it draws as.
+    const family = formationFamily(c.formation, c.formationKey);
+    const buckets = new Set([c.formationKey, ...(family === "unknown" ? [] : [familyKey(family)])]);
+    for (const bucket of buckets) {
+      look.vs[bucket] = (look.vs[bucket] ?? 0) + 1;
+      if (kind) look.vsKind[`${bucket}|${kind}`] = (look.vsKind[`${bucket}|${kind}`] ?? 0) + 1;
+    }
     looks.set(key, look);
   }
   return [...looks.values()].sort((a, b) => b.count - a.count || a.key.localeCompare(b.key));
 }
 
+/** What a rep's look was matched on: the exact formation, the shape it draws as, or the opponent's overall mix. */
+export type LookBasis = "formation" | "shape" | "overall";
+
+/** A rep as `assignLooks` needs it. `family` is the formation family key (`"fam:twins"`), when the rep names one. */
+export interface LookRep {
+  formationKey: FormationKey;
+  family?: string | null;
+  look: PlaysheetRep["look"];
+  kind?: RepKind | null;
+}
+
 /**
  * Picks a look for every rep that didn't have one written in. Reps are matched
- * to what the opponent showed against that same formation when there's film of
- * it, otherwise to their overall tendencies, and spread in proportion (smooth
+ * to what the opponent showed against that same formation (Twins, not just Pro)
+ * and kind of play when there's film of it, then that formation, then the shape
+ * it draws as, then their overall tendencies, and spread in proportion (smooth
  * weighted round-robin), so a 60/40 defense gets 6 and 4 reps out of 10, mixed
  * in rather than bunched. Same input, same picks.
  */
 export function assignLooks(
-  reps: { formationKey: FormationKey; look: PlaysheetRep["look"]; kind?: RepKind | null }[],
+  reps: LookRep[],
   looks: ScoutLook[],
-): ({ front: string; coverage: string; fromFilm: boolean } | null)[] {
+): ({ front: string; coverage: string; fromFilm: boolean; basis?: LookBasis } | null)[] {
   const state = new Map<string, Map<string, number>>();
   return reps.map((rep) => {
     if (rep.look) return { ...rep.look, fromFilm: false };
     if (looks.length === 0) return null;
-    const known = rep.formationKey !== "unknown";
-    // Narrowest pool with enough film: this formation and kind of play, this formation, then everything.
-    const kindKey = rep.kind ? `${rep.formationKey}|${rep.kind}` : null;
-    const vsKind = kindKey ? looks.filter((l) => (l.vsKind[kindKey] ?? 0) > 0) : [];
-    const kindTotal = kindKey ? vsKind.reduce((sum, l) => sum + (l.vsKind[kindKey] ?? 0), 0) : 0;
-    const vsThis = looks.filter((l) => (l.vs[rep.formationKey] ?? 0) > 0);
+    // Narrowest pool with enough film first: formation + kind of play, formation, shape + kind, shape, then everything.
+    const tiers: { key: string; kind: boolean; basis: LookBasis }[] = [];
+    if (rep.family) {
+      if (rep.kind) tiers.push({ key: `${rep.family}|${rep.kind}`, kind: true, basis: "formation" });
+      tiers.push({ key: rep.family, kind: false, basis: "formation" });
+    }
+    if (rep.formationKey !== "unknown") {
+      if (rep.kind) tiers.push({ key: `${rep.formationKey}|${rep.kind}`, kind: true, basis: "shape" });
+      tiers.push({ key: rep.formationKey, kind: false, basis: "shape" });
+    }
     let candidates = looks;
     let weight = (l: ScoutLook) => l.count;
     let bucket = "*";
-    if (known && kindKey && kindTotal >= MIN_KIND_REPS) {
-      candidates = vsKind;
-      weight = (l) => l.vsKind[kindKey] ?? 0;
-      bucket = kindKey;
-    } else if (known && vsThis.length > 0) {
-      candidates = vsThis;
-      weight = (l) => l.vs[rep.formationKey] ?? 0;
-      bucket = rep.formationKey;
+    let basis: LookBasis = "overall";
+    for (const tier of tiers) {
+      const field = tier.kind ? "vsKind" : "vs";
+      const pool = looks.filter((l) => (l[field][tier.key] ?? 0) > 0);
+      const total = pool.reduce((sum, l) => sum + (l[field][tier.key] ?? 0), 0);
+      if (pool.length === 0 || (tier.kind && total < MIN_KIND_REPS)) continue;
+      candidates = pool;
+      weight = (l) => l[field][tier.key] ?? 0;
+      bucket = tier.key;
+      basis = tier.basis;
+      break;
     }
     const current = state.get(bucket) ?? new Map<string, number>();
     state.set(bucket, current);
@@ -422,13 +456,19 @@ export function assignLooks(
       }
     }
     current.set(best.key, (current.get(best.key) ?? 0) - total);
-    return { front: best.front, coverage: best.coverage, fromFilm: true };
+    return { front: best.front, coverage: best.coverage, fromFilm: true, basis };
   });
 }
 
 /* -------------------------------------------------------------------------- */
 /*                                   Cards                                    */
 /* -------------------------------------------------------------------------- */
+
+/** The family key a rep's look is matched on, or null where its formation names none. */
+export function familyOf(rep: Pick<PlaysheetRep, "formation" | "call">, aliases: Record<string, FormationKey>): string | null {
+  const family = repFamily(rep, aliases);
+  return family === "unknown" ? null : familyKey(family);
+}
 
 export const PLAYSHEET_SOURCE = "Playsheet";
 
@@ -448,6 +488,7 @@ export function periodRepCards(
   const reps = parsePlaysheet(period.text).map((rep) => ({
     ...rep,
     formationKey: repFormationKey(rep, aliases),
+    family: familyOf(rep, aliases),
     kind: repKind(rep.call),
   }));
   const picks = assignLooks(reps, opponentLooks(scriptCards));
@@ -478,9 +519,10 @@ export function periodRepCards(
       raw: {},
     });
     // The staff's own name for a formation the classifier doesn't know.
+    const named = { ...card, formationName: rep.formation };
     return card.formationKey === "unknown" && rep.formationKey !== "unknown"
-      ? { ...card, formationKey: rep.formationKey }
-      : card;
+      ? { ...named, formationKey: rep.formationKey }
+      : named;
   });
 }
 
@@ -494,6 +536,95 @@ export function periodScoutOCards(
   scriptCards: HudlPlayCard[],
 ): HudlPlayCard[] {
   return scriptCards.filter((c) => odk(c) !== "D" && inPeriod(c, period.kind, "offense"));
+}
+
+/* -------------------------------------------------------------------------- */
+/*                      Their defense vs the formations we run                 */
+/* -------------------------------------------------------------------------- */
+
+/** What the opponent's defense does against one formation in our script. */
+export interface FormationDefense {
+  family: FormationFamily;
+  label: string;
+  /** Reps of it in the script. */
+  reps: number;
+  /** Their snaps against this exact formation in the film. */
+  filmSnaps: number;
+  /** The fronts and coverages they showed, most common first (against the exact formation, else the shape it draws as). */
+  looks: { look: ScoutLook; count: number }[];
+  /** What `looks` are based on: this formation's film, the shape's film (this formation never appeared), or neither. */
+  looksBasis: LookBasis | "none";
+  /** Where their corners and safeties line up, and what that table is for. */
+  secondary: DbAlignment | null;
+  secondaryBasis: "formation" | "shape" | "coach" | "none";
+  /** The shape it draws as, for the "using their Spread looks" wording. */
+  shape: FormationKey;
+}
+
+/**
+ * For every formation in our script (the offense periods of `periods`), what the opponent's defense does against it:
+ * the fronts and coverages and where the corners and safeties stand, and whether that came from film of this very
+ * formation, from the shape it draws as (no Aces film, so their Spread looks), or is a 4-3 default.
+ */
+export function defenseVsScript(
+  periods: Pick<PracticePeriod, "side" | "text">[],
+  looks: ScoutLook[],
+  alignments: DbAlignments | undefined,
+  aliases: Record<string, FormationKey>,
+): FormationDefense[] {
+  const by = new Map<FormationFamily, { reps: number; shape: FormationKey }>();
+  for (const period of periods) {
+    if (period.side !== "offense") continue;
+    for (const rep of parsePlaysheet(period.text)) {
+      const shape = repFormationKey(rep, aliases);
+      const family = repFamily(rep, aliases);
+      const entry = by.get(family) ?? { reps: 0, shape };
+      entry.reps += 1;
+      by.set(family, entry);
+    }
+  }
+  const out: FormationDefense[] = [];
+  for (const [family, { reps, shape }] of by) {
+    const fam = family === "unknown" ? null : familyKey(family);
+    const pick = (key: string | null) =>
+      key
+        ? looks
+            .map((look) => ({ look, count: look.vs[key] ?? 0 }))
+            .filter((x) => x.count > 0)
+            .sort((a, b) => b.count - a.count || a.look.key.localeCompare(b.look.key))
+        : [];
+    const exact = pick(fam);
+    const shaped = pick(shape === "unknown" ? null : shape);
+    const overall = looks.map((look) => ({ look, count: look.count })).sort((a, b) => b.count - a.count);
+    const [lookList, looksBasis]: [{ look: ScoutLook; count: number }[], FormationDefense["looksBasis"]] = exact.length
+      ? [exact, "formation"]
+      : shaped.length
+        ? [shaped, "shape"]
+        : overall.length
+          ? [overall, "overall"]
+          : [[], "none"];
+    const table = alignments?.[fam ?? ""];
+    const found = dbAlignmentFor(alignments, FAMILY_LABELS[family], shape);
+    const secondaryBasis: FormationDefense["secondaryBasis"] = !found
+      ? "none"
+      : found.source === "coach"
+        ? "coach"
+        : table && found === table
+          ? "formation"
+          : "shape";
+    out.push({
+      family,
+      label: FAMILY_LABELS[family],
+      reps,
+      filmSnaps: exact.reduce((sum, x) => sum + x.count, 0),
+      looks: lookList,
+      looksBasis,
+      secondary: found ?? null,
+      secondaryBasis,
+      shape,
+    });
+  }
+  return out.sort((a, b) => b.reps - a.reps || a.label.localeCompare(b.label));
 }
 
 /** Rewrites one line's "vs" look (or removes it, for Auto), keeping the rest of the line. */

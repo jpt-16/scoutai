@@ -39,6 +39,17 @@ class ClipResult:
         return {"PLAY #": play_number(Path(self.name), index), "OFF FORM": self.formation, "OFF STR": self.strength}
 
 
+def formation_line(formation) -> tuple[str, str]:
+    """What the formation column says: the staff's own name for the shape ("deuces gun", "trio gun right", "twins right",
+    "aces") where the analyzer has one, because a defense lines up differently against Twins than against Pro and the app draws
+    both as Pro; else the shape's key. The side is written once: the staff names already carry it where it matters."""
+    side = formation.strength or ""
+    if formation.staff:
+        carries_side = any(word in formation.staff.split() for word in ("left", "right"))
+        return formation.staff, "" if carries_side else side
+    return formation.key, side
+
+
 def process_clip(
     clip: Path,
     detector,
@@ -72,11 +83,12 @@ def process_clip(
                 from .trackdebug import write_detections
 
                 write_detections(debug, detections_dir, clip.stem)
+        name, strength = formation_line(formation)
         return ClipResult(
             clip.name,
             DONE,
-            formation=formation.key,
-            strength=formation.strength or "",
+            formation=name,
+            strength=strength,
             seconds=time.monotonic() - started,
             tracks=out,
             timing=timing,
