@@ -480,3 +480,15 @@ def test_bunch_then_a_man_zaps_across_reads_bunch_at_the_set_and_deuces_at_the_s
     assert got["set"]["key"] != got["snap"]["key"] or got["set"]["staff"] != got["snap"]["staff"]
     assert got["set"]["staff"].startswith("bunch")
     assert got["snap"]["staff"].startswith("deuces")
+
+
+def test_a_man_on_the_track_beside_the_sideline_is_off_the_field_but_one_on_grass_is_not():
+    from eval.people import GROUND_MIN_GREEN, ground_green_fraction
+
+    img = np.zeros((200, 300, 3), np.uint8)
+    img[:] = (40, 120, 40)  # grass (BGR)
+    img[:60] = (40, 60, 150)  # a red-brown track along the top
+    on_grass = (120.0, 80.0, 140.0, 150.0, 0.9)  # feet at y=150, on the grass
+    on_track = (200.0, 10.0, 220.0, 55.0, 0.9)  # feet at y=55, on the track
+    assert ground_green_fraction(img, on_grass) > 0.9
+    assert ground_green_fraction(img, on_track) < GROUND_MIN_GREEN

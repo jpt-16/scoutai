@@ -45,7 +45,28 @@ CROWD_ZONE_YARDS = 4.5
 CROWD_YARDS = 3.5
 CROWD_OTHERS = 4
 
+# The ground under a man beside a sideline says whether he is on the field: the far sideline is lined with coaches, officials and a bench
+# standing on the track or the bare ground, which is not grass. Within `GROUND_ZONE_YARDS` of a sideline, someone with (almost) no grass
+# around his feet is off the field. Not asked of men further in, where bodies and shadows hide the grass from a perfectly good player
+# (measured on real film: 14 of 98 boxes in the middle of the field show no grass at their feet).
+GROUND_ZONE_YARDS = 7.0
+GROUND_MIN_GREEN = 0.12
+
 Box = tuple[float, float, float, float, float]
+
+
+def ground_green_fraction(frame_bgr: np.ndarray, box: Box) -> float:
+    """The share of the strip of ground at a box's feet (a little wider than he is) that is grass-colored."""
+    x0, y0, x1, y1 = (float(v) for v in box[:4])
+    h, w = y1 - y0, x1 - x0
+    top, bottom = int(y1 - 0.04 * h), int(y1 + max(3.0, 0.12 * h))
+    left, right = int(x0 - 0.25 * w), int(x1 + 0.25 * w)
+    rows, cols = frame_bgr.shape[:2]
+    top, bottom, left, right = max(0, top), min(rows, bottom), max(0, left), min(cols, right)
+    if bottom <= top or right <= left:
+        return 1.0
+    hsv = cv2.cvtColor(frame_bgr[top:bottom, left:right], cv2.COLOR_BGR2HSV)
+    return float((cv2.inRange(hsv, (30, 40, 25), (95, 255, 255)) > 0).mean())
 
 
 def sideline_crowd(spots: list[tuple[float, float]]) -> set[int]:

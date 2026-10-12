@@ -31,7 +31,7 @@ from geometry import CalibrationPoints, build_homography, transform_point
 
 from .formation import Spot, classify
 from .officials import looks_like_official
-from .people import feet_locator, on_the_field, sideline_crowd
+from .people import GROUND_MIN_GREEN, GROUND_ZONE_YARDS, FIELD_WIDTH as _FIELD_WIDTH, feet_locator, ground_green_fraction, on_the_field, sideline_crowd
 from .teams import split_teams
 
 CHECKPOINT = os.environ.get("MODEL_CHECKPOINT", "PekingU/rtdetr_v2_r18vd")
@@ -192,6 +192,8 @@ def read_clip(path: Path, detector: Detector, tiles: int, debug_dir: Path | None
         fx, fy = feet_on_field(box)
         if not on_the_field(fx, fy, ball[1], MAX_DEPTH):
             continue
+        if min(fx, _FIELD_WIDTH - fx) < GROUND_ZONE_YARDS and ground_green_fraction(frame, box) < GROUND_MIN_GREEN:
+            continue  # on the track or bare ground beside the sideline: not on the field
         players.append((box, (fx - ball[0]) * direction, (fy - ball[1]) * direction))
 
     players = drop_duplicates(players)

@@ -37,7 +37,7 @@ from geometry import CalibrationPoints, build_homography, transform_point
 
 from . import field as fieldmod
 from .officials import looks_like_official
-from .people import EDGE_YARDS, FIELD_WIDTH, FULL_BOX_RATIO, WEAK_BOX_RATIO, SHORT_EDGE_YARDS, SIDELINE_ZONE_YARDS, feet_locator, on_the_field, sideline_crowd
+from .people import EDGE_YARDS, FIELD_WIDTH, FULL_BOX_RATIO, WEAK_BOX_RATIO, SHORT_EDGE_YARDS, SIDELINE_ZONE_YARDS, feet_locator, ground_green_fraction, on_the_field, sideline_crowd, GROUND_MIN_GREEN, GROUND_ZONE_YARDS
 from .teams import split_teams
 
 Box = tuple[float, float, float, float, float]  # x1, y1, x2, y2, score
@@ -325,6 +325,8 @@ def people_on_the_field(
         # Not a whole man, but more than a head: kept for now as "weak", and dropped later unless he moves (the bench
         # stands still; a receiver sprinting up the sideline, blurred and leaning, is not a whole box either).
         weak = False
+        if frame_bgr is not None and min(fx, FIELD_WIDTH - fx) < GROUND_ZONE_YARDS and ground_green_fraction(frame_bgr, b) < GROUND_MIN_GREEN:
+            continue  # standing on the track or bare ground beside the sideline: staff, officials, bench
         if min(fx, FIELD_WIDTH - fx) < SIDELINE_ZONE_YARDS and ratio < FULL_BOX_RATIO:
             if ratio < WEAK_BOX_RATIO:
                 continue
@@ -512,6 +514,72 @@ def formation_reads(tracks: list[dict]) -> dict:
     return {"set": read(first), "snap": read(at_snap), "snapSeconds": round(at_snap, 2)}
 
 
+# Seeding the tracks where the men are *separated*: a clip starts at the set, and the set can be a bunch (three men inside three yards,
+# merged into a blob by the detector) or still shifting (a man zapping across). Tracks started there lose the men who matter most, and
+# routes are read from the snap anyway. So the play is followed twice: once from the set (what the formation was, who went in motion)
+# and once from `PRESNAP_LEAD_FRAMES` before the snap (the receivers are where they will start, apart from each other); the second's
+# tracks are the play's, each with the first's pre-snap path put in front of it so the motion can still be read.
+# Off by default (`TWO_PASS=1` turns it on): replayed on the first three real plays it did not score better than one pass from the set (0 of 5 and 1 of 3
+# against 1 of 5 and 1 of 3), so it stays an experiment until there are more plays to measure on.
+TWO_PASS = os.environ.get("TWO_PASS", "") not in ("", "0")
+PRESNAP_LEAD_FRAMES = 6
+MIN_SECOND_PASS_FRAMES = 12
+JOIN_YARDS = 2.0
+
+
+def _shift(tracks, by: int) -> None:
+    for t in tracks:
+        t.points = [(f + by, x, y) for f, x, y in t.points]
+        t.matched = [(f + by, j) for f, j in t.matched]
+
+
+def follow_two_pass(per_frame, colors, tracker: str, fps: float, signatures=None, labels_for=None):
+    """(tracks, labels): the play followed from the set, then again from just before the snap (see above). `labels_for(frame, spots)`
+    names each person at that frame "offense" / "defense" for the frame-to-frame tracker (the tracklet tracker names its own)."""
+
+    def one(start: int):
+        spots = per_frame[start:]
+        if tracker == "tracklets":
+            from .tracklets import follow_tracklets
+
+            tracks = follow_tracklets(spots, signatures[start:], fps)  # type: ignore[index]
+            labels = [t.team for t in tracks]  # type: ignore[attr-defined]
+        else:
+            tracks = follow(spots[0], spots, colors[start:])
+            labels = labels_for(start, spots[0]) if labels_for else ["offense"] * len(tracks)
+        _shift(tracks, start)
+        return tracks, labels
+
+    first, first_labels = one(0)
+    if not TWO_PASS:
+        return first, first_labels
+    as_json = [
+        {"team": first_labels[t.id], "points": [[f / fps, x, y] for f, x, y in t.points]} for t in first if len(t.points) >= 2
+    ]
+    k = int(round(snap_seconds(as_json) * fps)) - PRESNAP_LEAD_FRAMES
+    if k < MIN_SECOND_PASS_FRAMES or k >= len(per_frame) - MIN_SECOND_PASS_FRAMES:
+        return first, first_labels
+    second, second_labels = one(k)
+    for t in second:
+        if second_labels[t.id] != "offense":
+            continue
+        best = None
+        for a in first:
+            if first_labels[a.id] != "offense":
+                continue
+            at = [p for p in a.points if p[0] <= k]
+            if not at:
+                continue
+            gap = float(np.hypot(at[-1][1] - t.start[0], at[-1][2] - t.start[1])) if False else float(np.hypot(at[-1][1] - t.points[0][1], at[-1][2] - t.points[0][2]))
+            if k - at[-1][0] <= 20 and gap <= JOIN_YARDS and (best is None or gap < best[0]):
+                best = (gap, a)
+        if best:
+            before = [p for p in best[1].points if p[0] < k]
+            t.points = before + t.points
+            t.matched = [m for m in best[1].matched if m[0] < k] + t.matched
+    return second, second_labels
+
+
 # A track that runs into the 4 yards beside a sideline from inside is cut there: past it the "player" is far more often the
 # bench, a coach or an official the track was handed to than a receiver (a fade ends 3-6 yards in, so its shape is kept).
 SIDELINE_CUT_YARDS = 4.0
@@ -569,15 +637,15 @@ def track_play(
         weak.append(wk)
     drop_standing_weak(per_frame, kept_boxes, colors, weak)
     drop_standing_sideline(per_frame, kept_boxes, colors, ball[0], direction)
-    if (tracker or TRACKER) == "tracklets":
-        from .tracklets import follow_tracklets, jersey_signature
+    kind = tracker or TRACKER
+    signatures = None
+    if kind == "tracklets":
+        from .tracklets import jersey_signature
 
         signatures = [[jersey_signature(frames_bgr[snap + f], b) for b in kept] for f, kept in enumerate(kept_boxes)]
-        tracks = follow_tracklets(per_frame, signatures, fps)  # type: ignore[assignment]
-        labels = [t.team for t in tracks]  # type: ignore[attr-defined]
-    else:
-        tracks = follow(per_frame[0], per_frame, colors)
-        labels = team_of(frames_bgr[snap], kept_boxes[0], per_frame[0])
+    tracks, labels = follow_two_pass(
+        per_frame, colors, kind, fps, signatures, lambda k, spots: team_of(frames_bgr[snap + k], kept_boxes[k], spots)
+    )
     trim_at_sideline(tracks, ball[0], direction)
     if debug is not None:  # what a picture of the tracking needs
         debug.update(frames=frames_bgr[snap:], boxes=kept_boxes, tracks=tracks, labels=labels, fps=fps, to_snap=to_snap, per_frame=per_frame, colors=colors, raw_boxes=boxes[snap:], calibration=calibration, ball=ball, direction=direction)

@@ -17,7 +17,7 @@ import numpy as np
 from geometry import CalibrationPoints, build_homography
 
 from .people import feet_locator
-from .tracks import drop_standing_sideline, drop_standing_weak, trim_at_sideline, follow, people_on_the_field, track_play  # noqa: F401
+from .tracks import follow_two_pass, drop_standing_sideline, drop_standing_weak, trim_at_sideline, follow, people_on_the_field, track_play  # noqa: F401
 
 
 def replay(dump: dict, tracker: str = "greedy", signatures_from=None) -> dict:
@@ -40,9 +40,8 @@ def replay(dump: dict, tracker: str = "greedy", signatures_from=None) -> dict:
         weak.append(wk)
     drop_standing_weak(per_frame, kept_boxes, colors, weak)
     drop_standing_sideline(per_frame, kept_boxes, colors, ball[0], direction)
+    signatures = None
     if tracker == "tracklets":
-        from .tracklets import follow_tracklets
-
         signatures = []
         for f, kept in enumerate(kept_boxes):
             jersey = {tuple(r["box"]): r.get("jersey") for r in dump["raw"][f]}
@@ -54,11 +53,9 @@ def replay(dump: dict, tracker: str = "greedy", signatures_from=None) -> dict:
                     for b in kept
                 ]
             )
-        tracks = follow_tracklets(per_frame, signatures, dump.get("fps", 30.0))
-    else:
-        tracks = follow(per_frame[0], per_frame, colors)
+    tracks, labels = follow_two_pass(per_frame, colors, tracker, dump.get("fps", 30.0), signatures, None)
     trim_at_sideline(tracks, ball[0], direction)
-    return {"per_frame": per_frame, "colors": colors, "tracks": tracks, "boxes": kept_boxes}
+    return {"per_frame": per_frame, "colors": colors, "tracks": tracks, "labels": labels, "boxes": kept_boxes}
 
 
 def main() -> None:

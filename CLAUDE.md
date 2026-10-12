@@ -960,6 +960,15 @@ as the routes and only lists the film's reads in the notes ("Film's route reads 
 app's template draws Z post / X corner (Duces going left), so a sheet call of MESH draws two outside routes wrong for this staff until `CONCEPT_DICTIONARY.MESH` is changed to theirs (waiting on whether it
 is by letter or by play side).
 
+**What counts as the playing field (`eval/people.py`, `tracks.people_on_the_field`).** The field is the calibrated rectangle (the homography's sidelines), minus a 3 yd margin (`EDGE_YARDS`), plus
+four image / behaviour checks for the people the calibration alone lets through: (1) **grass under his feet** (`ground_green_fraction`: within 7 yd of a sideline, a man with almost no grass at his feet is
+on the track or bare ground, i.e. staff, officials, the far bench; on play 8 this removes the 11 far-sideline boxes), (2) **a crowd** along a sideline (`sideline_crowd`), (3) **standing** the whole play near a
+sideline (`drop_standing_sideline`), (4) a track is cut where it enters the 4 yd beside a sideline (`trim_at_sideline`). The near bench stands on grass, so only (2)-(4) catch it. **Known weak:** the
+calibration itself. On play 34 the near-side receivers (13 yd out, on the line) read 4 yd *downfield* of the ball: the yard lines there are few and nearly along the camera's view, so a hand
+fit from rows and five worn lines skews across the field (residual 0.2 yd, error 4 yd at the edge). A 4-yd skew makes a receiver on the line look like a defender, so he is never seeded, whatever the tracker does.
+Fix by calibrating with more points (the in-app four-click tool, not built) or checking the fit against the offense itself (the men on the line must sit at one depth). Also found: tight clusters (a bunch, two backs
+stacked) come out of the detector as one box; and `TWO_PASS=1` (seed the tracks at the snap, with the set's path put in front for the motion) is built but unproven (`follow_two_pass`).
+
 ## Game film upload (the hosted pipeline: `/film`, `src/lib/film/`, `video-service/eval/worker*.py`)
 
 A coach uploads a game's clips on **`/film`** (`FilmLibrary.tsx`), a hosted worker reads them, and the finished game
