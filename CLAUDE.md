@@ -326,6 +326,15 @@ Free-text tags are classified by keyword (`classifyFormation`, `classifyFront`,
   the play's tools (Draw, Adjust, Secondary) are off while it is on. **Print Grid / CoachPad export** follow it: each play
   comes out as its Scout O card then its Scout D card (`exportUtils.ts`'s `cardViews`, so a 2-up sheet holds the pair; export
   files are named `…-scout-o-d-…` and `01-play-14-trips-right-o.png` / `-d.png`). Practice playsheet periods keep their one lens.
+- **Pre-snap motion** (`card.motionFrom`, `Diagram.motions`, Scout O): a receiver or back who moves before the ball is snapped is
+  drawn with a **squiggly line** (`squiggle.ts`'s `squigglePath`, black, an arrowhead short of his circle) from where he was set
+  to where he ended up; his circle and his route are at the spot he ended in, which is what the defense saw. From film:
+  `trackedPlay.ts`'s `motionFromTrack` reads the whole track (the file starts a few seconds before the snap): his mean position
+  over his first points against his mean at the snap, 2.5+ yards apart (`MOTION_MIN_YARDS`), needs 0.5 s of film before the
+  snap, and a track that ran over 14 yd/s in 0.3 s (slid onto another man) isn't motion. The snap is still found from the fourth
+  man to move, so a man in motion doesn't move it. `DetectedPlayer.motionFrom` → `detectionMotions` → the letter's spot, kept with
+  `offenseSpots` (dropped with them by **Use standard spots** or a new formation). Motion shorter than about 3 yards isn't drawn.
+  Not on the sheet: no Hudl column carries it. Drawn tracks only.
 - **7v7** drops the linemen on both sides. `inPeriod` decides which plays each period lists:
   - Scout O 7v7: every pass/RPO/PA from team, plus untagged plays as formation reps (the card
     says "no routes tagged").

@@ -69,6 +69,8 @@ export interface DetectedPlayer {
   endpoint: PercentPoint;
   /** Free-text route name the model guessed ("SLANT"), shown as a tag on the card. */
   routeType?: string;
+  /** He was in motion before the snap: where he stood before it (yards, like `start`, which is where he ended up). */
+  motionFrom?: PercentPoint;
 }
 
 /** The vision model's response shape for one play. */
@@ -181,6 +183,24 @@ let counter = 0;
 
 /** Fewest players the film must place before its spots replace the formation's own. */
 const MIN_FILM_SPOTS = 3;
+
+/**
+ * Who went in motion before the snap (`card.motionFrom`): each matched letter's spot before he moved, in yards from the
+ * ball. Only for a detection in field yards, and only for a man who ended up on a spot the card also places.
+ */
+export function detectionMotions(detection: DetectedPlay, card: HudlPlayCard): HudlPlayCard["motionFrom"] | undefined {
+  if (detection.units !== "yards" || !detection.players.some((p) => p.motionFrom)) return undefined;
+  const letters = matchDetectedLetters(detection, card);
+  const out: NonNullable<HudlPlayCard["motionFrom"]> = {};
+  for (const player of detection.players) {
+    const letter = letters.get(player);
+    const from = player.motionFrom;
+    if (!from || !letter || !DETECTED_PLAYER_LABELS.includes(letter as DetectedPlayerLabel)) continue;
+    if (!Number.isFinite(from.x) || !Number.isFinite(from.y) || Math.abs(from.x) > 27 || from.y > 2 || from.y < -15) continue;
+    out[letter] = { x: Math.round(from.x * 10) / 10, y: Math.round(from.y * 10) / 10 };
+  }
+  return Object.keys(out).length ? out : undefined;
+}
 
 /**
  * Where each matched letter lined up on film (`card.offenseSpots`), in yards
@@ -418,7 +438,7 @@ export function buildCardFromDetection(
   const ball = ballFromDetection(detection, detection.units === "yards" ? matchDetectedLetters(detection, shell) : undefined);
   const withBall = deriveCard({ ...base, playDir: bar.playDir || ball.playDir, notes: ball.note });
   // Players go where they stood on film first, so named routes are drawn from those spots.
-  const card = { ...withBall, offenseSpots: detectionSpots(detection, withBall) };
+  const card = { ...withBall, offenseSpots: detectionSpots(detection, withBall), motionFrom: detectionMotions(detection, withBall) };
   return deriveCard({ ...card, routeOverrides: detectionToRouteOverrides(detection, card) });
 }
 
@@ -434,7 +454,7 @@ export function applyDetectionToCard(card: HudlPlayCard, detection: DetectedPlay
   const ball = ballFromDetection(detection, detection.units === "yards" ? matchDetectedLetters(detection, card) : undefined);
   // The CSV names the formation; the film shows where each man actually stood.
   const offenseSpots = detectionSpots(detection, card) ?? card.offenseSpots;
-  const placed = { ...card, offenseSpots };
+  const placed = { ...card, offenseSpots, motionFrom: detectionMotions(detection, card) ?? card.motionFrom };
   const updated = updateCard(placed, {
     routeOverrides: detectionToRouteOverrides(detection, placed, card.routeOverrides),
     // The CSV is ground truth: the film only fills a PLAY DIR or note the row left blank.

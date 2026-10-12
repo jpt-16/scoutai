@@ -14,6 +14,7 @@ import {
   type ScoutUnit,
 } from "@/lib/formations";
 import { formationSharePct, preferredDirection, situationRunPct, type ScriptTendencies } from "@/lib/tendencies";
+import { squigglePath } from "@/lib/squiggle";
 import { cn } from "@/lib/utils";
 
 export type ScoutCardVariant = "field" | "print";
@@ -487,6 +488,15 @@ export function ScoutCard({
             player's front edge (skill players at 150 less SKILL_R, linemen at 148 less LINE_R) is
             flush with its back edge. */}
         <rect x={0} y={diagram.flipped ? diagram.losY - 1 : diagram.losY - 4} width={FIELD.width} height={5} fill={c.los} />
+
+        {/* Pre-snap motion: a squiggly line from where he was set to where he ended up. */}
+        {diagram.motions.length > 0 && (
+          <g fill="none" stroke={c.block} strokeWidth={w(2)} strokeLinecap="round" strokeLinejoin="round" aria-label="Motion">
+            {diagram.motions.map((m, i) => (
+              <path key={`mo${i}`} d={squigglePath(m[0], m[1], SKILL_R + 3)} markerEnd={marker("block")} />
+            ))}
+          </g>
+        )}
 
         {/* Blocks, pulls, fakes, routes, ball carrier. */}
         <g fill="none" stroke={c.block} strokeWidth={w(2.2)} strokeLinecap="butt" strokeLinejoin="miter">

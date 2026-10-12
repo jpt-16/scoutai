@@ -112,6 +112,11 @@ export interface HudlPlayCard {
    */
   offenseSpots?: Record<string, { x: number; y: number }>;
   /**
+   * Film: who went in motion before the snap, keyed by letter: where he stood before he moved, in yards from the ball
+   * (his `offenseSpots` entry is where he ended up). Drawn as a squiggly line from there to his spot.
+   */
+  motionFrom?: Record<string, { x: number; y: number }>;
+  /**
    * Scout defense: this play's safety depth and how the slots are played
    * (src/lib/defensiveAligner.ts), set from the Scout D toolbar or the AI card.
    */
@@ -836,7 +841,9 @@ export function updateCard(card: HudlPlayCard, edits: CardEdits): HudlPlayCard {
     (edits.formation !== undefined && edits.formation !== card.formation) ||
     (edits.offStrength !== undefined && edits.offStrength !== card.offStrength);
   const offenseSpots = reformed ? undefined : "offenseSpots" in edits ? edits.offenseSpots : card.offenseSpots;
-  return deriveCard({ ...card, ...edits, routeOverrides, aiHints, offenseSpots, edited: true });
+  // Motion is measured to those spots: it goes with them.
+  const motionFrom = offenseSpots ? card.motionFrom : undefined;
+  return deriveCard({ ...card, ...edits, routeOverrides, aiHints, offenseSpots, motionFrom, edited: true });
 }
 
 /** Turns one keyed CSV row into a card. Exposed for tests. */

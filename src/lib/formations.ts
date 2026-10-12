@@ -694,6 +694,8 @@ export interface Diagram {
   fakes: Point[][];
   /** Scout defense cards only: where each defender lines up. */
   defense: Defender[];
+  /** Scout offense from film: each man who went in motion before the snap, a line from where he was set to where he ended up (drawn squiggly). */
+  motions: Point[][];
   /** Scout defense cards from film: an arrow from each defender to where he went after the snap. */
   defenseArrows: Point[][];
   /** Scout defense cards only: the blitzers' rush arrows, when the COVERAGE column is a blitz ("6 - DOUBLE FIRE"). */
@@ -728,6 +730,9 @@ type Placed = Player & { at: Pt };
 type LabeledPath = { path: Pt[]; label: string; videoLetter?: string; curve?: boolean };
 /** What each skill player does on the play, by label: "9 Fade", "Stalk", "Block LB". */
 type Jobs = Record<string, string>;
+
+/** Motion shorter than this on the card (px, about 3 yards) isn't drawn. */
+const MOTION_MIN_DRAWN_PX = 20;
 
 const clampX = (x: number) => Math.min(488, Math.max(12, x));
 const clampY = (y: number) => Math.max(22, y);
@@ -1519,7 +1524,7 @@ export function buildDiagram(
     | "yardLine"
     | "routeOverrides"
   > &
-    Partial<Pick<HudlPlayCard, "coverage" | "defenseAlignment" | "formation" | "offenseSpots">>,
+    Partial<Pick<HudlPlayCard, "coverage" | "defenseAlignment" | "formation" | "offenseSpots" | "motionFrom">>,
   mode: DiagramMode = "team",
   unit: ScoutUnit = "offense",
 ): Diagram {
@@ -1763,6 +1768,19 @@ export function buildDiagram(
     }
   }
 
+  // Pre-snap motion (from film): from where he was set to where he ended up.
+  const motions: Pt[][] =
+    unit === "offense"
+      ? Object.entries(card.motionFrom ?? {}).flatMap(([letter, from]) => {
+          const man = [...skill, ...backs].find((p) => p.label === letter);
+          if (!man || !Number.isFinite(from.x) || !Number.isFinite(from.y)) return [];
+          const x = Math.min(FIELD.width - 14, Math.max(14, FIELD.center.x + from.x * YARD_X));
+          const y = from.y > -0.6 ? 150 : Math.min(200, Math.max(160, FIELD.los - from.y * YARD_PX));
+          // A man who ended up where he began (a hair of film noise) didn't go anywhere.
+          return Math.hypot(man.x - x, man.y - y) < MOTION_MIN_DRAWN_PX ? [] : [[[x, y], [man.x, man.y]] as Pt[]];
+        })
+      : [];
+
   const skeleton = mode === "7v7";
   const players: Player[] = [...(skeleton ? [] : line), qb, ...backs, ...skill].map(
     ({ label, role, x, y, ball }) => ({ label, role, x, y, ...(ball ? { ball } : {}) }),
@@ -1802,6 +1820,7 @@ export function buildDiagram(
     routeSummary: unit === "offense" ? summarizeRoutes(card, kind, jobs) : null,
     jobs,
     scheme,
+    motions: turnAll(motions.map((m) => m.map(toPoint))),
     blocks: turnAll(points(blocks)),
     targetBlocks: targetBlocks.map(({ path, target }) => ({
       path: path.map(toPoint).map(turn),

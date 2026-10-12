@@ -83,6 +83,42 @@ const MIN_ROUTE_YARDS = 4;
  */
 export const ROUTE_SECONDS = 3;
 
+/** A man who moved this far (yards) between where he was set and where he stood at the snap went in motion. */
+export const MOTION_MIN_YARDS = 2.5;
+/** Pre-snap film needed to tell: this many seconds before the snap, and this many points of the man in it. */
+const MOTION_MIN_SECONDS = 0.5;
+const MOTION_MIN_POINTS = 6;
+/** He is "set" at the mean of his first points and "at the snap" at the mean of his last, so a box's jitter isn't motion. */
+const MOTION_AVERAGE_POINTS = 4;
+/** Nobody runs faster than this (yards a second, over 0.3 s) before the snap: a track that did slid onto another man. */
+const MOTION_MAX_YARDS_PER_SECOND = 14;
+const MOTION_WINDOW_SECONDS = 0.3;
+
+/**
+ * Where a man was set before he went in motion, or null if he didn't. The track file starts a few seconds before the snap
+ * (the calibrated frame), when everyone is still; a man who is somewhere else by the snap, further than a box's jitter,
+ * went there. `fromTheSnap` cuts everything before the snap, so this reads the whole track.
+ */
+export function motionFromTrack(track: TrackedPlayer, snap: number): { x: number; y: number } | null {
+  if (snap < MOTION_MIN_SECONDS) return null;
+  const before = track.points.filter(([s]) => s <= snap);
+  if (before.length < MOTION_MIN_POINTS || before[0][0] > snap - MOTION_MIN_SECONDS) return null;
+  const mean = (pts: [number, number, number][]) => ({
+    x: pts.reduce((a, p) => a + p[1], 0) / pts.length,
+    y: pts.reduce((a, p) => a + p[2], 0) / pts.length,
+  });
+  const set = mean(before.slice(0, MOTION_AVERAGE_POINTS));
+  const end = mean(before.slice(-MOTION_AVERAGE_POINTS));
+  const moved = Math.hypot(end.x - set.x, end.y - set.y);
+  if (moved < MOTION_MIN_YARDS) return null;
+  for (let i = 1, j = 0; i < before.length; i++) {
+    while (j < i - 1 && before[i][0] - before[j + 1][0] >= MOTION_WINDOW_SECONDS) j++;
+    const dt = before[i][0] - before[j][0];
+    if (dt >= MOTION_WINDOW_SECONDS && Math.hypot(before[i][1] - before[j][1], before[i][2] - before[j][2]) / dt > MOTION_MAX_YARDS_PER_SECOND) return null;
+  }
+  return { x: Math.round(set.x * 10) / 10, y: Math.round(set.y * 10) / 10 };
+}
+
 type ReadKind = RouteKind | "block" | "unknown";
 
 /**
@@ -219,6 +255,7 @@ export function detectionFromTracks(
   file: TrackedPlayFile,
   opts: { formation?: string; playName?: string } = {},
 ): { detection: DetectedPlay; reads: RawRead[] } {
+  const snap = snapTime(file);
   const followed = fromTheSnap(file).tracks.filter((t) => t.team === "offense" && t.points.length >= 2);
   const qb = pickQuarterback(followed);
   const cutoff = lineCutoff(followed);
@@ -249,9 +286,11 @@ export function detectionFromTracks(
       raw.kind !== "block" && pathLength(route) < MIN_ROUTE_YARDS
         ? { ...raw, kind: "unknown" as const, confidence: 0 }
         : raw;
+    const motion = motionFromTrack(file.tracks.find((o) => o.id === t.id) ?? t, snap);
     const player: DetectedPlayer = {
       label: "?",
       start,
+      ...(motion ? { motionFrom: motion } : {}),
       waypoints: path.slice(1, -1),
       endpoint: path[path.length - 1],
       ...(read.kind === "unknown" ? {} : { routeType: routeName(read.kind) }),
