@@ -23,14 +23,11 @@ from __future__ import annotations
 
 import argparse
 import csv
-import json
 import subprocess
 from pathlib import Path
 
-from .autocalib import SceneFailure, auto_calibrate
-from .field import FieldFailure
-from .presnap import Detector, play_number, read_clip
-from .tracks import track_clip
+from .clipjob import FAILED, NEEDS_HAND, process_clip
+from .presnap import Detector
 
 REPO = Path(__file__).resolve().parents[2]
 VIDEOS = {".mp4", ".mov", ".m4v"}
@@ -59,30 +56,22 @@ def main() -> None:
 
     needs_hand: list[tuple[str, str]] = []
     forms: list[dict] = []
+    detections = args.work / "detections" if args.detections else None
     for i, clip in enumerate(clips, start=1):
-        calib = clip.with_suffix(".json")
-        if not calib.exists():
-            result = auto_calibrate(clip, detector, args.tiles, debug_dir)
-            if isinstance(result, (FieldFailure, SceneFailure)):
-                needs_hand.append((clip.name, result.reason))
-                print(f"[{i}/{len(clips)}] {clip.name}: needs a hand ({result.reason})")
-                continue
-            calib.write_text(json.dumps(result, indent=2))
-        formation = read_clip(clip, detector, args.tiles, debug_dir)["formation"]
-        forms.append({"PLAY #": play_number(clip, i), "OFF FORM": formation.key, "OFF STR": formation.strength or ""})
-        out = tracks_dir / f"{clip.stem}.json"
-        timing = ""
-        if not out.exists():
-            debug: dict | None = {} if args.detections else None
-            result = track_clip(clip, detector, args.seconds, args.tiles, debug, args.region)
-            out.write_text(json.dumps(result))
-            if debug is not None:
-                from .trackdebug import write_detections
-
-                write_detections(debug, args.work / "detections", clip.stem)
-            t = result.get("timing", {})
-            timing = f"  ({sum(v for k, v in t.items() if k.endswith('_seconds')):.0f} s)"
-        print(f"[{i}/{len(clips)}] {clip.name}: {formation.key} {formation.strength or ''}{timing}")
+        result = process_clip(
+            clip, detector, tracks_dir, debug_dir,
+            seconds=args.seconds, tiles=args.tiles, region=args.region, detections_dir=detections,
+        )
+        if result.status == NEEDS_HAND:
+            needs_hand.append((clip.name, result.reason))
+            print(f"[{i}/{len(clips)}] {clip.name}: needs a hand ({result.reason})")
+            continue
+        if result.status == FAILED:
+            raise SystemExit(f"{clip.name}: {result.reason}")
+        forms.append(result.row(i))
+        took = sum(v for k, v in result.timing.items() if k.endswith("_seconds"))
+        timing = f"  ({took:.0f} s)" if took else ""
+        print(f"[{i}/{len(clips)}] {clip.name}: {result.formation} {result.strength}{timing}")
 
     formations = args.work / "ours.csv"
     with formations.open("w", newline="") as fh:

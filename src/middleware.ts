@@ -1,7 +1,7 @@
 /**
  * Bare Clerk session middleware — required for `auth()`/`clerkClient()` to
  * have request context in the route handlers that call them
- * (/api/generate-scout-card, /api/blob-upload,
+ * (/api/generate-scout-card, /api/blob-upload, /api/film/jobs, /api/film/upload,
  * /api/stripe/checkout, /api/stripe/portal, /api/sync). It does no route gating itself: `createRouteMatcher`
  * + auth.protect() is Clerk's own now-deprecated pattern in favor of
  * resource-based checks, so the actual sign-in/entitlement check happens
@@ -31,6 +31,8 @@ export const config = {
     "/api/review-import",
     "/api/read-secondary",
     "/api/blob-upload",
+    "/api/film/jobs/:path*",
+    "/api/film/upload",
     "/api/stripe/checkout",
     "/api/stripe/portal",
     "/account/:path*",

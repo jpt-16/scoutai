@@ -1,0 +1,12 @@
+node_modules
+.next
+.git
+**/__pycache__
+**/.pytest_cache
+video-service/.venv
+video-service/clips
+video-service/debug
+video-service/tracks
+video-service/game-work
+*.mp4
+*.mov

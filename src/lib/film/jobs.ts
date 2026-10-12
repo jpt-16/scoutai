@@ -1,0 +1,265 @@
+/**
+ * Film jobs: a coach uploads a game's clips, the hosted worker (`video-service/eval/worker.py`)
+ * reads them, and the scout cards come back as a game file in the staff's library.
+ *
+ * Everything here is pure (no storage, no network) so it can be tested alone: the shape of a job,
+ * where each piece lives in the private Blob store, the token a worker proves itself with, how a game
+ * is split into shards, what a job looks like to the coach, and when its film is deleted.
+ *
+ * Where things live, per staff (`<team>` = a hash of the team id, so a path never names a team) and job:
+ *
+ *   filmjobs/<team>/<job>.json            the job (written when it is created, started and finished); a
+ *                                         separate prefix so listing a staff's games never pages through clips
+ *   film/<team>/<job>/clips/<n>/<name>    the uploaded film (deleted after `CLIP_RETENTION_DAYS`)
+ *   film/<team>/<job>/status/<n>-<kind>.json  one clip's report from the worker (one writer each, no races);
+ *                                         the outcome is in the name so progress is a listing, not N reads
+ *   film/<team>/<job>/tracks/<n>.json     one clip's tracks, for the assemble step (deleted with the film)
+ *   film/<team>/<job>/assembling          a marker: whichever clip reported last starts the assemble, once
+ *   film/<team>/<job>/game.json           the finished game file, kept
+ */
+
+import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import type { TierLimits } from "../usageLimits";
+import { CLIP_RETENTION_DAYS, MAX_CLIP_BYTES, isValidClipName } from "./shared";
+
+export { CLIP_RETENTION_DAYS, MAX_CLIP_BYTES, isValidClipName } from "./shared";
+/** A job still waiting for its uploads this long is abandoned and removed. */
+export const ABANDONED_UPLOAD_DAYS = 2;
+/** A job the worker never finished in this long is marked failed (the worker died, or lost the job). */
+export const STUCK_JOB_HOURS = 6;
+/** Clips per dispatch. A host that scales out works on shards at once; one box queues them. */
+export const SHARD_SIZE = 6;
+
+const DAY = 24 * 60 * 60 * 1000;
+const HOUR = 60 * 60 * 1000;
+
+export type JobState = "uploading" | "processing" | "ready" | "failed";
+
+export interface JobClip {
+  index: number;
+  name: string;
+  size: number;
+}
+
+export interface FilmJob {
+  id: string;
+  state: JobState;
+  createdAt: string;
+  updatedAt: string;
+  clips: JobClip[];
+  /** Cards in the finished game. */
+  plays?: number;
+  error?: string;
+  /** When the film was deleted (by retention, or by the coach). The game file stays. */
+  clipsDeletedAt?: string;
+}
+
+export type ClipStatusKind = "done" | "needs_hand" | "failed";
+
+/** One clip's report from the worker. */
+export interface ClipStatus {
+  index: number;
+  name: string;
+  status: ClipStatusKind;
+  reason: string;
+  formation: string;
+  strength: string;
+  seconds: number;
+  at: string;
+}
+
+/** What the coach sees. */
+export interface JobView {
+  id: string;
+  state: JobState;
+  createdAt: string;
+  total: number;
+  /** Clips the worker has reported on so far. */
+  reported: number;
+  /** Clips read properly. */
+  read: number;
+  needsHand: { name: string; reason: string }[];
+  failed: { name: string; reason: string }[];
+  /** "uploading", "reading" (clips being read), "building" (all reported, cards being made), "ready", "failed". */
+  stage: "uploading" | "reading" | "building" | "ready" | "failed";
+  plays?: number;
+  error?: string;
+  /** When the film is deleted (null once it has been). */
+  filmDeletedAt: string | null;
+  filmExpiresAt: string | null;
+}
+
+/* ------------------------------------------------------------------ names and paths */
+
+export function teamKey(owner: string): string {
+  return createHash("sha256").update(owner).digest("hex").slice(0, 24);
+}
+
+export function newJobId(): string {
+  return randomBytes(9).toString("hex");
+}
+
+export function isValidTeamKey(value: unknown): value is string {
+  return typeof value === "string" && /^[0-9a-f]{24}$/.test(value);
+}
+
+export function isValidJobId(value: unknown): value is string {
+  return typeof value === "string" && /^[0-9a-f]{18}$/.test(value);
+}
+
+const prefix = (team: string, job: string) => `film/${team}/${job}/`;
+export const paths = {
+  prefix,
+  job: (team: string, job: string) => `filmjobs/${team}/${job}.json`,
+  jobs: (team: string) => `filmjobs/${team}/`,
+  allJobs: "filmjobs/",
+  clip: (team: string, job: string, index: number, name: string) => `${prefix(team, job)}clips/${index}/${name}`,
+  clips: (team: string, job: string) => `${prefix(team, job)}clips/`,
+  status: (team: string, job: string, index: number, kind: ClipStatusKind) => `${prefix(team, job)}status/${index}-${kind}.json`,
+  statuses: (team: string, job: string) => `${prefix(team, job)}status/`,
+  tracks: (team: string, job: string, index: number) => `${prefix(team, job)}tracks/${index}.json`,
+  tracksDir: (team: string, job: string) => `${prefix(team, job)}tracks/`,
+  assembling: (team: string, job: string) => `${prefix(team, job)}assembling`,
+  game: (team: string, job: string) => `${prefix(team, job)}game.json`,
+};
+
+/** `…/status/<n>-<kind>.json`, or null. */
+export function parseStatusPath(pathname: string): { index: number; kind: ClipStatusKind } | null {
+  const m = pathname.match(/\/status\/(\d{1,4})-(done|needs_hand|failed)\.json$/);
+  return m ? { index: Number(m[1]), kind: m[2] as ClipStatusKind } : null;
+}
+
+/** `filmjobs/<team>/<job>.json`, or null. */
+export function parseJobPath(pathname: string): { team: string; job: string } | null {
+  const m = pathname.match(/^filmjobs\/([0-9a-f]{24})\/([0-9a-f]{18})\.json$/);
+  return m ? { team: m[1], job: m[2] } : null;
+}
+
+/** `film/<team>/<job>/clips/<n>/<name>`, or null. */
+export function parseClipPath(pathname: string): { team: string; job: string; index: number; name: string } | null {
+  const m = pathname.match(/^film\/([0-9a-f]{24})\/([0-9a-f]{18})\/clips\/(\d{1,4})\/([^/]+)$/);
+  if (!m || !isValidClipName(m[4])) return null;
+  return { team: m[1], job: m[2], index: Number(m[3]), name: m[4] };
+}
+
+/* ------------------------------------------------------------------ the worker's token */
+
+/** What a worker proves itself with: tied to one job of one team, so a leaked token reaches nothing else. */
+export function workerToken(secret: string, team: string, job: string): string {
+  return createHmac("sha256", secret).update(`${team}:${job}`).digest("hex");
+}
+
+export function verifyWorkerToken(secret: string | undefined, team: string, job: string, given: string | null): boolean {
+  if (!secret || !given) return false;
+  const expected = Buffer.from(workerToken(secret, team, job));
+  const got = Buffer.from(given);
+  return expected.length === got.length && timingSafeEqual(expected, got);
+}
+
+/* ------------------------------------------------------------------ making a job */
+
+export type Checked<T> = { ok: true; value: T } | { ok: false; message: string };
+
+/** The files a coach picked, checked against the tier's limits and each other. */
+export function checkNewJob(
+  files: unknown,
+  limits: TierLimits["film"],
+  existing: FilmJob[],
+  now: number,
+): Checked<JobClip[]> {
+  if (!Array.isArray(files) || files.length === 0) return { ok: false, message: "Pick the clips to upload." };
+  if (files.length > limits.maxPlays) {
+    return { ok: false, message: `A game can have at most ${limits.maxPlays} plays; you picked ${files.length}. Split it into two uploads.` };
+  }
+  const seen = new Set<string>();
+  const clips: JobClip[] = [];
+  for (const f of files as { name?: unknown; size?: unknown }[]) {
+    if (!isValidClipName(f?.name)) {
+      return { ok: false, message: `"${String(f?.name).slice(0, 60)}" isn't a clip the analyzer can read. Use .mp4, .mov or .m4v files with plain names.` };
+    }
+    const size = Number(f.size);
+    if (!Number.isFinite(size) || size <= 0) return { ok: false, message: `${f.name} is empty.` };
+    if (size > MAX_CLIP_BYTES) {
+      return { ok: false, message: `${f.name} is ${Math.round(size / 1024 / 1024)} MB. A single play can be up to ${MAX_CLIP_BYTES / 1024 / 1024} MB.` };
+    }
+    const key = f.name.toLowerCase();
+    if (seen.has(key)) return { ok: false, message: `Two clips are named ${f.name}. Rename one.` };
+    seen.add(key);
+    clips.push({ index: clips.length, name: f.name, size });
+  }
+  const active = existing.filter((j) => (j.state === "uploading" || j.state === "processing") && now - Date.parse(j.updatedAt) < STUCK_JOB_HOURS * HOUR);
+  if (active.length >= limits.activeJobs) {
+    return {
+      ok: false,
+      message: `Your staff already has ${active.length} ${active.length === 1 ? "game" : "games"} processing (limit ${limits.activeJobs} at a time). Try again when ${active.length === 1 ? "it finishes" : "one finishes"}.`,
+    };
+  }
+  const recent = existing.filter((j) => now - Date.parse(j.createdAt) < 7 * DAY);
+  if (recent.length >= limits.jobsPerWeek) {
+    return { ok: false, message: `That's ${limits.jobsPerWeek} games in the last week, the limit for now. Ask us if you need more.` };
+  }
+  return { ok: true, value: clips };
+}
+
+/** Clips split into dispatches of `size`, in order. */
+export function planShards<T>(items: T[], size: number = SHARD_SIZE): T[][] {
+  const shards: T[][] = [];
+  for (let i = 0; i < items.length; i += size) shards.push(items.slice(i, i + size));
+  return shards;
+}
+
+/* ------------------------------------------------------------------ what the coach sees */
+
+export function viewOf(job: FilmJob, statuses: ClipStatus[]): JobView {
+  const total = job.clips.length;
+  const byIndex = new Map(statuses.map((s) => [s.index, s]));
+  const reported = job.clips.filter((c) => byIndex.has(c.index)).length;
+  const bad = (kind: ClipStatusKind) =>
+    job.clips.flatMap((c) => {
+      const s = byIndex.get(c.index);
+      return s && s.status === kind ? [{ name: c.name, reason: s.reason }] : [];
+    });
+  const read = job.clips.filter((c) => byIndex.get(c.index)?.status === "done").length;
+  const stage: JobView["stage"] =
+    job.state === "uploading" ? "uploading"
+    : job.state === "ready" ? "ready"
+    : job.state === "failed" ? "failed"
+    : reported >= total ? "building" : "reading";
+  return {
+    id: job.id,
+    state: job.state,
+    createdAt: job.createdAt,
+    total,
+    reported,
+    read,
+    needsHand: bad("needs_hand"),
+    failed: bad("failed"),
+    stage,
+    plays: job.plays,
+    error: job.error,
+    filmDeletedAt: job.clipsDeletedAt ?? null,
+    filmExpiresAt: job.clipsDeletedAt ? null : new Date(Date.parse(job.createdAt) + CLIP_RETENTION_DAYS * DAY).toISOString(),
+  };
+}
+
+/** Every clip has reported and at least one was read: time to build the cards. */
+export function readyToAssemble(job: FilmJob, statuses: ClipStatus[]): "assemble" | "fail" | "wait" {
+  if (job.state !== "processing") return "wait";
+  const reported = new Set(statuses.map((s) => s.index));
+  if (!job.clips.every((c) => reported.has(c.index))) return "wait";
+  return statuses.some((s) => s.status === "done") ? "assemble" : "fail";
+}
+
+/* ------------------------------------------------------------------ deleting the film */
+
+export type Cleanup = "keep" | "delete-film" | "delete-all" | "mark-stuck";
+
+/** What retention does to a job at `now`. The game file is never deleted by retention. */
+export function cleanupFor(job: FilmJob, now: number): Cleanup {
+  const age = now - Date.parse(job.createdAt);
+  if (job.state === "uploading") return age > ABANDONED_UPLOAD_DAYS * DAY ? "delete-all" : "keep";
+  if (job.state === "processing" && now - Date.parse(job.updatedAt) > STUCK_JOB_HOURS * HOUR) return "mark-stuck";
+  if (job.clipsDeletedAt) return "keep";
+  if (job.state === "processing") return "keep";
+  return age > CLIP_RETENTION_DAYS * DAY ? "delete-film" : "keep";
+}

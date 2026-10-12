@@ -1,0 +1,36 @@
+# The film worker (eval/worker_server.py): what a coach's upload is processed on.
+#
+#   docker build -f video-service/Dockerfile.worker -t scoutcard-worker .     # from the repo root
+#   docker run --gpus all -p 8080:8080 -e FILM_WORKER_SECRET=... scoutcard-worker
+#
+# It needs a GPU host that keeps running after it has answered the app (a plain GPU box, or a
+# serverless GPU service set to keep its CPU on between the request and the finish).
+FROM pytorch/pytorch:2.5.1-cuda12.4-cudnn9-runtime
+
+ENV PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 HF_HOME=/models
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends curl ca-certificates libglib2.0-0 \
+ && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+ && apt-get install -y --no-install-recommends nodejs \
+ && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# OpenCV 5: the camera alignment is tuned on it (the tests fail under 4.x).
+RUN pip install "opencv-python-headless>=5" numpy pydantic fastapi "uvicorn[standard]" transformers pillow timm
+
+# The card builder (scripts/tracks-to-cards.ts) only needs the app's pure libraries, papaparse and jiti.
+RUN npm install --no-save --no-package-lock papaparse@5 jiti@2
+
+COPY src/lib src/lib
+COPY scripts scripts
+COPY video-service video-service
+
+WORKDIR /app/video-service
+
+# Bake the detector's weights in, so a cold start doesn't download them.
+RUN python -c "from transformers import AutoImageProcessor, RTDetrV2ForObjectDetection as M; from eval.presnap import CHECKPOINT as C; AutoImageProcessor.from_pretrained(C); M.from_pretrained(C)"
+
+EXPOSE 8080
+CMD ["sh", "-c", "uvicorn eval.worker_server:app --host 0.0.0.0 --port ${PORT:-8080}"]

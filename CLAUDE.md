@@ -44,6 +44,7 @@ src/
     script/page.tsx        iPad reader: Scout O/D + All/7v7/Team toggles, filters, swiper, Print Grid;
                            practice mode (?practice=<day>&period=<n>) runs a day's playsheet
     practice/page.tsx      Practice playsheet editor: days → periods (7v7/Team, our O or our D) → calls
+    film/page.tsx          Game film: upload a game's clips, watch them read, open the scout cards
   components/
     ScoutCard.tsx          PlayIQ-style card: title header, white-field SVG, assignment table
     PrintGrid.tsx          Letter-size sheets, 2-up portrait / 4-up landscape, window.print()
@@ -68,6 +69,7 @@ src/
     batchMatcher.ts        Batch plan: sort clips from the sheet, match clip ↔ row, route each row
     gemini.ts              The one Gemini JSON call: model fallback, schema fallback, real error reasons
     exportUtils.ts         Export targets (CoachPad 13.3" 4:3, iPad, letter), card fit, file names
+    film/                  Hosted film pipeline: jobs, service, storage, upload plan (see "Game film upload")
   types/
     playbook.ts            Re-exports the playbook types under one roof (PlayCard = HudlPlayCard, …)
     hudlParser.test.ts     Vitest suite
@@ -570,7 +572,8 @@ checking it), **Undo** un-checks, **Unchecked only** filters the list, and **Sco
 The CSV/scout-card core needs no server code; without Clerk keys the app is open (local, preview
 with the bypass). The sign-in gate and AI features need: `GEMINI_API_KEY`, `BLOB_READ_WRITE_TOKEN`,
 `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`, `STRIPE_SECRET_KEY`,
-`STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_ID` — set in Vercel project settings and mirrored in
+`STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_ID`, and for game film upload `FILM_WORKER_URL`, `FILM_WORKER_SECRET`,
+`CRON_SECRET` (and `FILM_CALLBACK_ORIGIN` if the worker can't reach the request's own address) — set in Vercel project settings and mirrored in
 `.env.local` for dev (`.env*` is gitignored). The app still builds and the CSV path still works
 with none of these set; only the video feature's routes need them.
 
@@ -605,8 +608,8 @@ or break isn't lost between frames: about 10-25k input tokens for a 5-12 second 
 The product is moving from "upload Hudl Assist's CSV" to "upload the film and get the scout cards",
 because Assist's tags are often wrong and it can't read routes. The real analyzer is the Python
 pipeline in `video-service/` (formation, tracker, route reader), run on a Mac for now, which writes a
-`game.json`; the landing page's **`#upload`** section is a button to open that file
-(`parseScriptFile`) plus the 5-play demo. The hosted **Gemini film uploader is gone** (the
+`game.json`; the landing page's **`#upload`** section is an **Upload a game** button (`/film`, below), a button to open a
+game file (`parseScriptFile`) and the 5-play demo. The hosted **Gemini film uploader is gone** (the
 single-clip card, the one-click game zip import and `/api/parse-video`, `/api/parse-video-batch`,
 removed on the staff's call): film no longer goes to Gemini to draw cards. Still in the repo, on
 purpose: the CSV parser and everything built on it (review mode's tags, practice playsheets), the secondary read
@@ -782,6 +785,55 @@ prove bench hops are gone. **Third run:** the far-sideline receivers are now fol
 is unchanged: on the clean sprint it still reads wheel (fade next) at low confidence, and smoothing the jittery 30 fps path
 before reading changed the answer in odd ways (it made a straight sprint read as a comeback because of the frozen tail),
 so it was left alone until there are more real tracks to tune on.
+
+## Game film upload (the hosted pipeline: `/film`, `src/lib/film/`, `video-service/eval/worker*.py`)
+
+A coach uploads a game's clips on **`/film`** (`FilmLibrary.tsx`), a hosted worker reads them, and the finished game
+file lands in their library to **Open** (it goes through `parseScriptFile` / `storeScript`, like opening a game file).
+Nothing here runs on a Mac or a Colab notebook; those stay for measuring accuracy.
+
+**The flow.** (1) `POST /api/film/jobs` checks the picked files (`checkNewJob`: names, sizes, the tier's `film` limits in
+`usageLimits.ts`: games at once, plays a game, games a week) and writes a job. (2) The browser uploads each clip straight
+to the private Blob store, three at a time, retried (`uploadPlan.ts`), through `/api/film/upload`, which signs only the exact
+paths step 1 handed out, for this staff, at the declared size. (3) `POST .../start` checks every clip landed whole, marks the
+job `processing` and POSTs the clips to the worker in **shards** of 6 (`FILM_WORKER_URL`, `Authorization: Bearer
+FILM_WORKER_SECRET`). (4) The worker reads each clip and reports it (`POST /api/film/worker/<team>/<job>`); the report that
+completes the set sends one **assemble** dispatch (an exclusive `assembling` marker makes it once; polling the status also
+nudges it, so two reports landing together can't strand a game). (5) The worker builds `game.json` with
+`scripts/tracks-to-cards.ts` and sends it back; the job turns `ready`. The coach's screen polls `GET /api/film/jobs`.
+
+**Where things live** (private Blob): `filmjobs/<team>/<job>.json` (the record, a separate prefix so listing a staff's games
+never pages through clips), `film/<team>/<job>/clips/<n>/<name>`, `.../status/<n>-<kind>.json` (one report per clip, the
+outcome in the name so progress is a listing), `.../tracks/<n>.json`, `.../assembling`, `.../game.json`. `<team>` is a hash
+of the Clerk org (or `user-<id>`), so a path never names a team.
+
+**The worker never holds a storage key.** It gets, per job, a token (`workerToken`: HMAC of team + job under
+`FILM_WORKER_SECRET`, so a leaked token reaches one game) and every clip download, tracks upload and result upload goes
+through the app's own `/api/film/worker/...` routes (`workerGate`), gzipped on the way up (functions take 4.5 MB). The app
+is the only thing that touches the store. Coach routes are off wherever the AI gate is bypassed (one library for anyone
+holding the URL) and need `BLOB_READ_WRITE_TOKEN`.
+
+**Deleting the film.** A daily cron (`vercel.json` → `/api/film/cleanup`, `Bearer CRON_SECRET`) deletes the clips, tracks
+and reports `CLIP_RETENTION_DAYS` (14) after upload (the game file stays, the card shows "Film deleted"), removes an upload
+nobody finished after 2 days, and marks a game the worker never finished (6 h) failed so it frees its slot. A coach can
+**Delete game** at once. The worker also deletes each clip as soon as it has been read and its whole folder at the end of a
+shard. The privacy page says all of this: keep it in step.
+
+**The worker** (`eval/worker.py`, `eval/worker_server.py`, `eval/clipjob.py`, `video-service/Dockerfile.worker`): a FastAPI
+service, `POST /jobs` answers 202 and works on background threads (so the host must keep running after it replies: a GPU box,
+or a serverless GPU set to keep its CPU on). A **shard** downloads its clips, runs `process_clip` on a thread each (camera
+alignment and tracking overlap on the CPU; `SharedDetector` serializes the GPU) and reports each clip (`done` /
+`needs_hand` / `failed`, never raising for one bad clip). `eval.game` loops over the same `process_clip`. An **assemble**
+downloads the tracks, runs the card builder and uploads `game.json`. One box queues the shards; a host that scales out per
+request works on them at once, which is how a game gets toward 30 minutes (one T4 reads a clip in roughly a minute or two).
+`pytest test_worker.py` runs it end to end on the drawn game clip with a stand-in detector, the real card builder and a real
+local HTTP server; `src/lib/film/*.test.ts` run the whole job flow on an in-memory store (`memoryStorage.ts`).
+
+**Not verified against the real thing:** the Blob store (the storage class is a thin wrapper over the `get` / `put` / `list` /
+`del` calls the sync route already uses, but this flow hasn't run against a live store), the container image build, the real
+detector inside it, and a GPU host. **Not built:** the in-browser four-click calibration for a clip that `needs_hand` (the screen
+lists them and says to send them to us), an email when a game is ready (the screen polls), billing per game, and cutting one
+long game video into plays (clips are one play each, as Hudl exports them).
 
 ## Shared film libraries and rate limiting
 
@@ -967,7 +1019,7 @@ describe what the product does today, so **update them whenever data handling ch
 team (script, playsheet in private Blob, shared by everyone on the team, kept until replaced or
 deleted on request), what each AI feature
 sends to Gemini (import review rows as text, typed AI-card calls, the secondary-read clip), that
-uploaded clips sit in private Blob storage with no deletion schedule, the usage counters, the
+secondary-read clips sit in private Blob storage with no deletion schedule while game film uploaded for scout cards is deleted after 14 days, the usage counters, the
 Clerk / Stripe / Google / Vercel processors, and the private-pilot sign-in. The AI game-film import is
 off, and the pages say so. The support email is `jake@jtbuildsco.com` (for now). Still a placeholder to fill in by hand: the governing
 law (state / country). They're a draft, not legal advice.

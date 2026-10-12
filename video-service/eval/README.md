@@ -184,3 +184,24 @@ app's own TypeScript, so Node runs there too), upload, Run all, download `game.j
 calibrates each clip (a hand `.json` wins), reads the formation, tracks with `--region`, then
 `scripts/tracks-to-cards.ts` reads routes, runs (`src/lib/runRead.ts`) and the defense (`src/lib/defenseRead.ts`) and
 `scripts/score-routes.ts` prints routes right, run or pass right, run schemes and direction right, and fronts right.
+
+
+## The hosted worker (what a coach's upload runs on)
+
+`python -m eval.game` is for you at a desk. The app's **Game film** page (`/film`) uses the same per-clip step
+(`eval.clipjob.process_clip`) behind a web server, so a coach never runs a notebook:
+
+```bash
+# from the repo root: build and run it on a GPU machine
+docker build -f video-service/Dockerfile.worker -t scoutcard-worker .
+docker run --gpus all -p 8080:8080 -e FILM_WORKER_SECRET=<a long random string> scoutcard-worker
+
+# or without Docker, from video-service/ (needs Node and `npm install papaparse jiti` at the repo root)
+FILM_WORKER_SECRET=... uvicorn eval.worker_server:app --host 0.0.0.0 --port 8080
+```
+
+Then set `FILM_WORKER_URL` (where it listens) and the same `FILM_WORKER_SECRET` in Vercel, plus `CRON_SECRET` for the daily
+film cleanup. The app sends the worker **shards** (a few clips each) and, once every clip has reported, one **assemble**; see
+`CLAUDE.md`'s "Game film upload" for the whole flow. Knobs: `WORKER_THREADS` (clips at once inside a shard, default up to
+4), `SHARDS_AT_ONCE` (shards a box works on together, default 2). `GET /health` says whether the detector is loaded and
+on what device. Tests: `pytest test_worker.py` (no GPU needed).

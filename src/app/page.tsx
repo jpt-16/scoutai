@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   Check,
@@ -304,9 +305,12 @@ export default function UploadPage() {
             </Reveal>
             <Reveal delay={200} className="mx-auto mt-8 flex max-w-5xl flex-wrap items-center justify-between gap-4 rounded-2xl border bg-background/50 p-5">
               <p className="text-sm text-muted-foreground">
-                In the pilot, film analysis is set up with each staff directly. Have a game file from the analyzer? Open it here.
+                Upload a game&apos;s clips and the scout cards come back to your library. Already have a game file from the analyzer? Open it here.
               </p>
               <div className="flex flex-wrap items-center gap-3">
+                <Button asChild size="lg">
+                  <Link href="/film">Upload a game</Link>
+                </Button>
                 <Button variant="outline" size="lg" disabled={busy} onClick={() => gameInput.current?.click()}>
                   Open a game file (.json)
                 </Button>

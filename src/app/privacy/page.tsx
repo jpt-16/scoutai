@@ -87,9 +87,10 @@ export default function PrivacyPage() {
         <p>
           A clip you upload for the secondary read is stored in a private cloud file (Vercel Blob),
           which is not publicly accessible, and sent to Google&apos;s Gemini API to read where the
-          defensive backs line up. We don&apos;t currently run an automatic deletion schedule for
-          uploaded clips; they remain in private storage tied to your account. To have a clip
-          removed, contact us using the details below.
+          defensive backs line up. We don&apos;t run an automatic deletion schedule for these
+          clips; they remain in private storage tied to your account. To have a clip
+          removed, contact us using the details below. (Game film uploaded for scout cards is
+          different: it is deleted automatically, as described next.)
         </p>
         <p>
           <strong className="text-foreground">
@@ -99,6 +100,26 @@ export default function PrivacyPage() {
           You&apos;re responsible for any consent or authorization your school, league or conference
           requires before you upload or share film through this service. Don&apos;t upload film
           you&apos;re not authorized to share off your device.
+        </p>
+      </LegalSection>
+
+      <LegalSection title="Game film you upload for scout cards">
+        <p>
+          Game film you upload on the Game film page goes straight from your browser into a private
+          cloud file (Vercel Blob) that isn&apos;t publicly accessible, and only this app can read.
+          To build your scout cards it is sent to our film-analysis server, a GPU machine we run or
+          rent, which reads each clip, keeps nothing once the clip has been read, and returns only
+          the results: where each player stood and moved, as positions on the field, and the cards
+          drawn from them. This film is <strong className="text-foreground">not</strong> sent to
+          Google&apos;s Gemini API.
+        </p>
+        <p>
+          <strong className="text-foreground">Deletion is automatic.</strong> The uploaded clips, and
+          the positions read from them, are deleted 14 days after you upload the game. A game that
+          never finishes uploading is removed after two days. You can delete a game, its film and its
+          scout cards yourself at any time from the Game film page. The scout cards (the finished
+          game file, which holds positions and play calls, no video) stay in your team&apos;s library
+          until you delete the game or ask us to.
         </p>
       </LegalSection>
 
@@ -138,6 +159,11 @@ export default function PrivacyPage() {
             <strong className="text-foreground">Vercel</strong> — hosts the app and stores your
             team&apos;s shared script and playsheet, uploaded clips and usage counters in
             private cloud storage.
+          </li>
+          <li>
+            <strong className="text-foreground">Our film-analysis server</strong> — a GPU machine
+            that reads the game film you upload to build scout cards (see above). It receives the
+            clips for the length of the job and deletes them as soon as they&apos;ve been read.
           </li>
         </ul>
         <p>We don&apos;t sell your data, and we don&apos;t share it for advertising.</p>
