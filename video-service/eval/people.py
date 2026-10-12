@@ -38,7 +38,26 @@ FULL_BOX_RATIO = 0.8
 # Below this fraction of a man's height a box near a sideline is never a player (a head over the bench row).
 WEAK_BOX_RATIO = 0.4
 
+# The bench, the coaches and the officials stand in a bunch along a sideline: within this many yards of one (about where the calibrated line puts the bench), a person with at least
+# `CROWD_OTHERS` others within `CROWD_YARDS` is in that crowd. No formation puts five men inside three and a half yards at the sideline (a bunch is
+# three), and the first real film from behind the bench read five of the home bench as offensive players on the sideline.
+CROWD_ZONE_YARDS = 4.5
+CROWD_YARDS = 3.5
+CROWD_OTHERS = 4
+
 Box = tuple[float, float, float, float, float]
+
+
+def sideline_crowd(spots: list[tuple[float, float]]) -> set[int]:
+    """Indexes of the people (field yards: x across, y along) who stand in a crowd beside a sideline."""
+    gone: set[int] = set()
+    for i, (x, y) in enumerate(spots):
+        if min(x, FIELD_WIDTH - x) >= CROWD_ZONE_YARDS:
+            continue
+        near = sum(1 for j, (a, b) in enumerate(spots) if j != i and (a - x) ** 2 + (b - y) ** 2 <= CROWD_YARDS**2)
+        if near >= CROWD_OTHERS:
+            gone.add(i)
+    return gone
 
 
 def feet_locator(matrix: np.ndarray) -> Callable[[Box], tuple[float, float]]:

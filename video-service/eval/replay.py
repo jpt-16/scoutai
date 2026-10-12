@@ -17,7 +17,7 @@ import numpy as np
 from geometry import CalibrationPoints, build_homography
 
 from .people import feet_locator
-from .tracks import drop_standing_weak, follow, people_on_the_field, track_play  # noqa: F401
+from .tracks import drop_standing_sideline, drop_standing_weak, trim_at_sideline, follow, people_on_the_field, track_play  # noqa: F401
 
 
 def replay(dump: dict, tracker: str = "greedy", signatures_from=None) -> dict:
@@ -39,6 +39,7 @@ def replay(dump: dict, tracker: str = "greedy", signatures_from=None) -> dict:
         colors.append(col)
         weak.append(wk)
     drop_standing_weak(per_frame, kept_boxes, colors, weak)
+    drop_standing_sideline(per_frame, kept_boxes, colors, ball[0], direction)
     if tracker == "tracklets":
         from .tracklets import follow_tracklets
 
@@ -56,6 +57,7 @@ def replay(dump: dict, tracker: str = "greedy", signatures_from=None) -> dict:
         tracks = follow_tracklets(per_frame, signatures, dump.get("fps", 30.0))
     else:
         tracks = follow(per_frame[0], per_frame, colors)
+    trim_at_sideline(tracks, ball[0], direction)
     return {"per_frame": per_frame, "colors": colors, "tracks": tracks, "boxes": kept_boxes}
 
 

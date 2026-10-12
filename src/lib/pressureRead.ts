@@ -18,6 +18,11 @@ import { snapTime, type TrackedPlayer, type TrackedPlayFile } from "./trackedPla
 const RUSH_SECONDS = 1.5;
 /** Reaching this close to the line (yards past it, or behind it) is rushing. */
 const AT_LINE_YARDS = 1.0;
+/** A backer or DB who blitzed started at least this far off the line: a press corner or a backer standing at it is already
+ * there at the snap, which is no blitz (the first real film called a pressed corner a "4 - BLITZ"). */
+const BLITZ_FROM_YARDS = AT_LINE_YARDS + 1.5;
+/** A corner or safety rushing from closer than this is more likely a tracking slip than a call. */
+const DB_BLITZ_FROM_YARDS = 4;
 /** A down lineman who got this far back off the line dropped into coverage. */
 const DROP_YARDS = 4;
 /** Crossing the line this far from the ball or wider is off the edge (the tackle stands about 4.7 yards out). */
@@ -70,8 +75,10 @@ export function readPressure(file: TrackedPlayFile): PressureRead | null {
       else rushers++;
       continue;
     }
+    if (start.y <= BLITZ_FROM_YARDS) continue;
     const crossed = reachedLine(track, snap, end);
     if (!crossed) continue;
+    if ((def.role === "cb" || def.role === "s") && start.y < DB_BLITZ_FROM_YARDS) continue;
     rushers++;
     if (def.role === "cb" || def.role === "s") {
       blitzers.push({ role: def.role, how: "db" });

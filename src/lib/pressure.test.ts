@@ -140,6 +140,13 @@ describe("readPressure on drawn plays", () => {
     expect(readPressure(file(defense(stay(WILL), stay(MIKE), stay(NICKEL))))!.tag).toBeNull();
   });
 
+  it("a pressed corner already at the line is no blitz (first real film called one a \"4 - BLITZ\")", () => {
+    const d = defense(stay(WILL), stay(MIKE), stay(NICKEL)).map((t) => (t.id === 120 ? track(120, "defense", walk([-18, 1.5], [-18, -4], 6)) : t));
+    const read = readPressure(file(d))!;
+    expect(read.tag).toBeNull();
+    expect(read.blitzers).toEqual([]);
+  });
+
   it("a down lineman who drops into coverage doesn't count as a rusher", () => {
     const read = readPressure(file(defense(walk(WILL, [-6, -3], 7), stay(MIKE), stay(NICKEL), true)))!;
     expect(read.rushers).toBe(4);

@@ -31,7 +31,7 @@ from geometry import CalibrationPoints, build_homography, transform_point
 
 from .formation import Spot, classify
 from .officials import looks_like_official
-from .people import feet_locator, on_the_field
+from .people import feet_locator, on_the_field, sideline_crowd
 from .teams import split_teams
 
 CHECKPOINT = os.environ.get("MODEL_CHECKPOINT", "PekingU/rtdetr_v2_r18vd")
@@ -195,6 +195,8 @@ def read_clip(path: Path, detector: Detector, tiles: int, debug_dir: Path | None
         players.append((box, (fx - ball[0]) * direction, (fy - ball[1]) * direction))
 
     players = drop_duplicates(players)
+    crowd = sideline_crowd([(ball[0] + x / direction, ball[1] + y / direction) for _, x, y in players])
+    players = [p for i, p in enumerate(players) if i not in crowd]  # the bench, coaches and officials along a sideline
     officials = [p for p in players if looks_like_official(frame, p[0])]
     players = [p for p in players if not any(p is o for o in officials)]
     labels, offense_label = split_teams([torso_color(frame, b) for b, _, _ in players], [y for _, _, y in players])

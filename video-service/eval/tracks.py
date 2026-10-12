@@ -37,7 +37,7 @@ from geometry import CalibrationPoints, build_homography, transform_point
 
 from . import field as fieldmod
 from .officials import looks_like_official
-from .people import EDGE_YARDS, FIELD_WIDTH, FULL_BOX_RATIO, WEAK_BOX_RATIO, SHORT_EDGE_YARDS, SIDELINE_ZONE_YARDS, feet_locator, on_the_field
+from .people import EDGE_YARDS, FIELD_WIDTH, FULL_BOX_RATIO, WEAK_BOX_RATIO, SHORT_EDGE_YARDS, SIDELINE_ZONE_YARDS, feet_locator, on_the_field, sideline_crowd
 from .teams import split_teams
 
 Box = tuple[float, float, float, float, float]  # x1, y1, x2, y2, score
@@ -333,6 +333,8 @@ def people_on_the_field(
             found.append((b, fx, fy))
             weak_of[id(b)] = weak
             colors_of[id(b)] = info[bi][0] if info is not None else None  # type: ignore[assignment]
+    crowd = sideline_crowd([(f[1], f[2]) for f in found])
+    found = [f for i, f in enumerate(found) if i not in crowd]
     kept: list[tuple[Box, float, float]] = []
     for item in sorted(found, key=lambda p: -p[0][4]):
         if all((item[1] - k[1]) ** 2 + (item[2] - k[2]) ** 2 > SAME_PERSON_YARDS**2 for k in kept):
@@ -378,6 +380,63 @@ def drop_standing_weak(per_frame, kept_boxes, colors, weak):
     return per_frame, kept_boxes, colors
 
 
+# Standing people near a sideline are the bench, coaches and officials, not players: the first real film from a camera
+# behind the bench had tracks that slid off a receiver onto them (in two of three plays, half the tracks ended on the far or
+# near sideline). Calibration is a yard or two off out there, so the 3-yard edge margin lets them in.
+SIDELINE_STILL_YARDS = 7.0
+STILL_YARDS = 0.7  # a man who never gets this far from where he was, through a play, is standing
+STILL_OFFSETS = (8, 16, 24, 40)  # frames before and after
+
+
+def drop_standing_sideline(per_frame, kept_boxes, colors, ball_x: float, direction: int):
+    """Drops people within `SIDELINE_STILL_YARDS` of a sideline who stay put: someone is standing when the nearest person
+    a few frames before and after (to `STILL_OFFSETS`, as far as the clip goes) is within `STILL_YARDS`. A receiver standing wide
+    before the snap runs a route after it, so the frames after show him move. Mutates and returns the lists."""
+    n = len(per_frame)
+    seen = [list(p) for p in per_frame]  # every frame as it was found: a frame already filtered would hide the standing man in it
+    for f in range(n):
+        keep = []
+        for j, (x, y) in enumerate(per_frame[f]):
+            fx = ball_x + x / direction
+            if min(fx, FIELD_WIDTH - fx) >= SIDELINE_STILL_YARDS:
+                keep.append(j)
+                continue
+            looked = 0
+            still = 0
+            for g in [f + sign * k for k in STILL_OFFSETS for sign in (-1, 1)]:
+                if not 0 <= g < n or not seen[g]:
+                    continue
+                looked += 1
+                nearest = min(np.hypot(x - a, y - b) for a, b in seen[g])
+                if nearest <= STILL_YARDS:
+                    still += 1
+            if looked >= 3 and still >= looked - 1:
+                continue  # standing the whole time: the bench
+            keep.append(j)
+        per_frame[f] = [per_frame[f][j] for j in keep]
+        kept_boxes[f] = [kept_boxes[f][j] for j in keep]
+        colors[f] = [colors[f][j] for j in keep]
+    return per_frame, kept_boxes, colors
+
+
+# A track that runs into the 4 yards beside a sideline from inside is cut there: past it the "player" is far more often the
+# bench, a coach or an official the track was handed to than a receiver (a fade ends 3-6 yards in, so its shape is kept).
+SIDELINE_CUT_YARDS = 4.0
+
+
+def trim_at_sideline(tracks, ball_x: float, direction: int):
+    """Cuts every track at the first point where it enters the `SIDELINE_CUT_YARDS` beside a sideline from further in.
+    A track that started inside that strip is left alone (it was filtered as a standing man already). Mutates and returns them."""
+    for t in tracks:
+        gaps = [min(fx, FIELD_WIDTH - fx) for fx in (ball_x + p[1] / direction for p in t.points)]
+        for i in range(1, len(gaps)):
+            if gaps[i] < SIDELINE_CUT_YARDS <= gaps[i - 1]:
+                del t.points[i:]
+                del t.matched[i:]
+                break
+    return tracks
+
+
 def track_play(
     frames_bgr: list[np.ndarray],
     boxes: list[list[Box]],
@@ -416,6 +475,7 @@ def track_play(
         colors.append(col)
         weak.append(wk)
     drop_standing_weak(per_frame, kept_boxes, colors, weak)
+    drop_standing_sideline(per_frame, kept_boxes, colors, ball[0], direction)
     if (tracker or TRACKER) == "tracklets":
         from .tracklets import follow_tracklets, jersey_signature
 
@@ -425,6 +485,7 @@ def track_play(
     else:
         tracks = follow(per_frame[0], per_frame, colors)
         labels = team_of(frames_bgr[snap], kept_boxes[0], per_frame[0])
+    trim_at_sideline(tracks, ball[0], direction)
     if debug is not None:  # what a picture of the tracking needs
         debug.update(frames=frames_bgr[snap:], boxes=kept_boxes, tracks=tracks, labels=labels, fps=fps, to_snap=to_snap, per_frame=per_frame, colors=colors, raw_boxes=boxes[snap:], calibration=calibration, ball=ball, direction=direction)
     scout = None

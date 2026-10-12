@@ -915,6 +915,26 @@ now stop `ROUTE_SECONDS` (3) after the snap, a ceiling rather than the catch, wh
 first tracker's play 5 reads the hitch right: **1 of 4** routes (was 0), play 6 run / power / right still right. Dumps now
 carry each raw box's `jersey` signature, so `python -m eval.replay <dump> tracklets` replays the new tracker without the film.
 
+**Eleventh pass (three whole-play recordings, red Knights on offense, plays 8 / 34 / 43; the first with a clear sideline view of the
+paint).** These recordings are *whole plays*: 8-10 s of pre-snap, then the snap, then the camera zooms out 1.5-2.7x and follows the play. So
+(1) `autocalib.find_snap` picked the wrong frame on all three (it takes the biggest motion jump: here the camera zoom or the recording's
+end screen; the real snap is where the line moves, ~frame 240-300), and the auto field fit gave a different row assignment on different
+frames (three hash / sideline rows 17.78 yd apart look alike) and then failed to split the teams (the red bench counted as red players), so all three
+were calibrated by hand (`scratchpad` helpers: field fit with hand-given row pixels, far sideline = 0, the bench-side hash row = 35.55, then moved to the
+frame just before the snap through the paint registration). Start a clip a second or two before the snap, not at the start of a recording.
+(2) The camera registration (`camera_to_snap_paint`) holds through the zoom: the standing bench, as anchors, stayed within 0.1-0.8 yd for the whole play.
+(3) What failed was the people near the sidelines: tracks slid onto the bench / coaches / officials, and the bench read as offensive players in the
+formation. Now `people.sideline_crowd` (a person within 4.5 yd of a sideline with 4+ others within 3.5 yd is the crowd; used by the tracker's per-frame filter and
+`presnap.read_clip`), `tracks.drop_standing_sideline` (within 7 yd of a sideline and standing the whole play), `tracks.trim_at_sideline` (a track is cut where it runs
+into the 4 yd beside a sideline from further in); with the tracklet tracker, run or pass on the three plays went from 1 of 3 to 3 of 3. **Routes: 0 of 8 scoreable** against the call's
+key (two of the plays are MESH, whose key is the concept's template, and the actual routes of a mesh are not the template; 34's SLANT SLANT OUT is the fair test and
+it read bubble / flat / hitch at low confidence with the near-side receivers, 2-5 yd from the near sideline in front of the bench, only partly tracked).
+**Formation:** the film's own read needs the offense found; the linemen locked into the defense come out as one blob (7 of 11 men on play 8, 8-9 on 34 with the
+bench removed), so `formation._classify` takes a standard line on the ball when no row of three is found and all six skill men are (`ASSUMED_SKILL`), else says unknown, and
+the notes say so. On these three: 34 reads Trips right (the staff's name read "aces", the sheet says Trio), 8 and 43 are unknown unless the sheet gives the formation.
+**Blitz:** `pressureRead` no longer counts a man already at the line at the snap (a pressed corner was called "4 - BLITZ" on play 8) and a corner or safety rushing from
+under 4 yd is a tracking slip, not a call.
+
 ## Game film upload (the hosted pipeline: `/film`, `src/lib/film/`, `video-service/eval/worker*.py`)
 
 A coach uploads a game's clips on **`/film`** (`FilmLibrary.tsx`), a hosted worker reads them, and the finished game

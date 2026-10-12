@@ -34,6 +34,13 @@ LINE_REACH_X = 4.5
 LINE_DEPTHS = (-2.5, 1.5)
 ROW_TOLERANCE = 0.7
 MIN_PLAYERS = 7
+# Linemen locked together with the defense are one blob to a detector at press-box distance, so a row of three is
+# often not found. When it isn't and the skill men are (at least ASSUMED_SKILL of them: a QB, a back and four receivers; fewer is a guess), the line is taken to be a
+# standard one on the ball: five men ASSUMED_SPLIT apart, at the depth of whoever was found in the box. The first
+# real film read 7 of 11 men and no line, and so no formation at all.
+ASSUMED_SKILL = 6
+ASSUMED_SPLIT = 1.2
+ASSUMED_BOX_X = 3.0
 
 
 @dataclass(frozen=True)
@@ -87,8 +94,15 @@ def _classify(offense: list[Spot]) -> Formation:
         return Formation("unknown", None, f"only {len(offense)} offensive players found")
 
     line = find_line(offense)
+    assumed = False
     if len(line) < 3:
-        return Formation("unknown", None, "no offensive line found on the ball")
+        box = [p for p in offense if abs(p.x) <= ASSUMED_BOX_X and LINE_DEPTHS[0] <= p.y <= LINE_DEPTHS[1]]
+        if len(offense) - len(box) < ASSUMED_SKILL:
+            return Formation("unknown", None, "no offensive line found on the ball")
+        depth = sorted(p.y for p in box)[len(box) // 2] if box else 0.0
+        line = [Spot(ASSUMED_SPLIT * k, depth) for k in (-2, -1, 0, 1, 2)]
+        offense = [p for p in offense if p not in box] + line
+        assumed = True
     # Measure everything from the line, not from the ball spot, which can be a yard off: the line's
     # own depth is where "on the line" and "in the backfield" are counted from.
     depth = sorted(p.y for p in line)[len(line) // 2]
@@ -122,6 +136,8 @@ def _classify(offense: list[Spot]) -> Formation:
     right = te_right + wide_right
     strength = "right" if right > left else "left" if left > right else None
     detail = f"wide {wide_left}-{wide_right}, attached {te_left}-{te_right}, backs {len(backs)}"
+    if assumed:
+        detail += "; the line wasn't seen (hidden in the pile), assumed on the ball"
 
     under_center = qb is not None and qb.y >= UNDER_CENTER_MIN_Y
     skill = attached + wide

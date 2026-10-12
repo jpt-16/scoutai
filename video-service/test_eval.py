@@ -185,3 +185,14 @@ def test_pro_and_twins_and_bunch():
     # bunch: Y on the line in the middle, Z to his left and F to his right, both off the line behind him
     bunch = classify(line + [Spot(0, -5)] + [Spot(8, 0), Spot(6.5, -1.5), Spot(9.5, -1.5), Spot(-18, 0), Spot(-12, -1.2)])
     assert bunch.staff.startswith("bunch gun"), bunch  # the QB is in the gun, so it says so
+
+
+def test_a_line_hidden_in_the_pile_is_assumed_when_the_skill_men_are_all_there():
+    from eval.formation import Spot, classify
+
+    skill = [Spot(0, -5), Spot(2, -5), Spot(-12, 0), Spot(-7, -1.5), Spot(7, -1.5), Spot(12, 0)]  # QB, back, 2x2
+    got = classify(skill + [Spot(0.3, -0.5)])  # one lineman made it out of the pile
+    assert got.key == "spread" and "assumed" in got.notes
+    assert got.staff.startswith("deuces")
+    # Too few skill men to trust an assumed line: unknown, not a guess.
+    assert classify(skill[:5] + [Spot(0.3, -0.5), Spot(-1, -0.5)]).key == "unknown"

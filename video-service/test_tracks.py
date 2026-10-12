@@ -167,7 +167,7 @@ def test_every_route_is_named_from_the_recovered_tracks(tmp_path):
     )
     reads = {r["id"]: r for r in json.loads(out.stdout)["reads"]}
     for index, (name, (kind, *_)) in enumerate(receivers.items()):
-        assert reads[index]["route"] == kind, (name, reads[index])
+        assert reads[index]["route"] == ("fade" if kind == "go" else kind), (name, reads[index])  # go and fade are one route to this staff
 
 
 def test_the_tracker_pairs_the_nearest_person_and_survives_a_missed_frame():
@@ -401,3 +401,50 @@ def test_the_tracklet_tracker_follows_the_drawn_receivers_too(tmp_path):
         errors = [np.hypot(x - truth[name][round(t * FPS)][0], y - truth[name][round(t * FPS)][1]) for t, x, y in got]
         assert np.median(errors) < 0.8, (name, np.median(errors))
         assert max(errors) < 2.5, (name, max(errors))
+
+
+def test_standing_people_beside_a_sideline_are_dropped_and_a_runner_is_kept():
+    from eval.tracks import drop_standing_sideline
+
+    # Ball at 26.7 across, direction +1: view x = across - 26.7. The far sideline is across = 0, so x = -26.7.
+    frames = 80
+    bench = (-25.0, 3.0)  # 1.7 yd from the sideline, never moves
+    runner = lambda f: (-22.0 + 0.1 * f, 3.0)  # starts wide and runs in
+    mid = (5.0, 3.0)  # standing mid-field is a player (a lineman)
+    per_frame = [[bench, runner(f), mid] for f in range(frames)]
+    boxes = [[(0, 0, 1, 1, 1.0)] * 3 for _ in range(frames)]
+    colors = [[(0.0, 0.0, 0.0)] * 3 for _ in range(frames)]
+    drop_standing_sideline(per_frame, boxes, colors, 26.7, 1)
+    assert all(len(p) == 2 for p in per_frame)
+    assert all(bench not in p for p in per_frame)
+    assert all(mid in p for p in per_frame)
+
+
+def test_a_track_is_cut_where_it_runs_into_the_strip_beside_a_sideline():
+    from eval.tracks import Track, trim_at_sideline
+
+    # Across = 26.7 + x. A receiver runs from 12 yd inside the far sideline to 1 yd from it.
+    pts = [(f, -14.7 - 0.2 * f, 5.0) for f in range(60)]
+    t = Track(0, (pts[0][1], pts[0][2]), list(pts), matched=[(f, 0) for f in range(60)])
+    trim_at_sideline([t], 26.7, 1)
+    gap = lambda p: 26.7 + p[1]
+    assert gap(t.points[-1]) >= 4.0 > gap(pts[len(t.points)])
+    assert len(t.points) == len(t.matched) < 60
+    # A man who started inside the strip is left alone.
+    pts = [(f, -25.0 + 0.01 * f, 5.0) for f in range(30)]
+    s = Track(1, (pts[0][1], pts[0][2]), list(pts), matched=[(f, 0) for f in range(30)])
+    trim_at_sideline([s], 26.7, 1)
+    assert len(s.points) == 30
+
+
+def test_a_crowd_beside_a_sideline_is_not_players_but_a_bunch_formation_is():
+    from eval.people import sideline_crowd
+
+    bench = [(51.5, 20.0 + 0.8 * i) for i in range(8)]
+    assert sideline_crowd(bench) == set(range(8))
+    # A receiver 5 yd in, in front of that bench, is a player.
+    assert sideline_crowd(bench + [(48.0, 22.0)]) == set(range(8))
+    # Three receivers bunched beside the sideline, and a line in the middle of the field, are players.
+    bunch = [(49.0, 20.0), (50.0, 21.5), (48.5, 22.0)]
+    line = [(26.0 + 1.5 * i, 20.0) for i in range(5)]
+    assert sideline_crowd(bunch + line) == set()
