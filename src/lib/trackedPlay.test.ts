@@ -183,3 +183,31 @@ describe("one man followed twice", () => {
     expect(there[0].player.start.x).toBeCloseTo(31.2);
   });
 });
+
+describe("snapTime when the formation shifts before the snap", () => {
+  it("is when the line goes, not when men drifted 1.5 yd getting set", () => {
+    // Four men shuffle 2 yd slowly between 1 s and 4 s (the formation setting up), then three start together at 5.0 s.
+    const shuffle = (id: number, x: number) => ({
+      id,
+      team: "offense" as const,
+      start: [x, 0] as [number, number],
+      points: Array.from({ length: 181 }, (_, i) => {
+        const t = i / 30;
+        const drift = Math.min(1, Math.max(0, (t - 1) / 3)) * 2;
+        return [t, x + drift, 0] as [number, number, number];
+      }),
+    });
+    const go = (id: number, x: number) => ({
+      id,
+      team: "offense" as const,
+      start: [x, 0] as [number, number],
+      points: Array.from({ length: 241 }, (_, i) => {
+        const t = i / 30;
+        return [t, x, Math.max(0, t - 5.0) * 5] as [number, number, number];
+      }),
+    });
+    const at = snapTime({ tracks: [shuffle(1, -10), shuffle(2, -8), shuffle(3, 8), shuffle(4, 10), go(5, -3), go(6, 0), go(7, 3)].map((t) => ({ ...t, points: t.points.slice(0, 240) })) });
+    expect(at).toBeGreaterThan(4.5);
+    expect(at).toBeLessThan(5.2);
+  });
+});

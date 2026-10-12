@@ -448,3 +448,35 @@ def test_a_crowd_beside_a_sideline_is_not_players_but_a_bunch_formation_is():
     bunch = [(49.0, 20.0), (50.0, 21.5), (48.5, 22.0)]
     line = [(26.0 + 1.5 * i, 20.0) for i in range(5)]
     assert sideline_crowd(bunch + line) == set()
+
+
+def test_bunch_then_a_man_zaps_across_reads_bunch_at_the_set_and_deuces_at_the_snap():
+    from eval.tracks import formation_reads, snap_seconds
+
+    def trk(i, pts, team="offense"):
+        return {"id": i, "team": team, "start": pts[0][1:], "points": [list(p) for p in pts]}
+
+    times = [i / 10 for i in range(0, 61)]  # 6 s at 10 fps; the snap is at 4.4 s
+    still = lambda x, y: [(t, x, y) for t in times]
+    line = [trk(i, still(-2.4 + 1.2 * i, -0.5)) for i in range(5)]
+    # Their lineman jitter, a QB in the gun and one back (they stay until the snap, then move).
+    qb = trk(5, [(t, -1.0, -5.0) for t in times])
+    back = trk(6, [(t, 2.0, -5.0) for t in times])
+    # Bunch right: one on the line, two off it, within 3 yd of each other. A wide receiver left.
+    bunch_a = trk(7, still(10.0, -0.5))
+    bunch_b = trk(8, still(11.5, -1.8))
+    bunch_c = trk(9, still(10.5, -2.4))
+    left = trk(10, still(-12.0, -0.5))
+    # b zaps left across the formation from 1.0 to 3.0 s and stands in the slot (-7, -1.8) until the snap.
+    zap = [(t, 11.5 - 18.5 * min(1.0, max(0.0, (t - 1.0) / 2.0)), -1.8) for t in times]
+    bunch_b = trk(8, zap)
+    tracks = [*line, qb, back, bunch_a, bunch_c, bunch_b, left]
+    # At the snap four men move off their spots (1.5+ yd): the back, the line's two ends and a receiver.
+    for t in tracks:
+        if t["id"] in (6, 7, 10, 0):
+            t["points"] = [[p[0], p[1] + (0 if p[0] < 4.4 else 3.0 * (p[0] - 4.4)), p[2]] for p in t["points"]]
+    assert 4.0 <= snap_seconds(tracks) <= 4.8
+    got = formation_reads(tracks)
+    assert got["set"]["key"] != got["snap"]["key"] or got["set"]["staff"] != got["snap"]["staff"]
+    assert got["set"]["staff"].startswith("bunch")
+    assert got["snap"]["staff"].startswith("deuces")

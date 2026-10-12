@@ -112,3 +112,23 @@ describe("pre-snap motion from film", () => {
   });
 });
 
+
+describe("the film's formation before and at the snap", () => {
+  const f = (text: string, key: string) => ({ key, strength: null, staff: text, text, notes: "", men: 11 });
+  const file = (set: string, snap: string) => {
+    const { tracks } = playWith(null);
+    return { tracks, formations: { set: f(set, "trips"), snap: f(snap, "spread"), snapSeconds: 2 } };
+  };
+
+  it("a card built from the film alone is the formation the ball was snapped from, and notes the motion", () => {
+    const { card } = cardFromTracks(file("bunch gun right", "deuces gun"), null);
+    expect(card.formation.toLowerCase()).toContain("deuces");
+    expect(card.notes).toContain("Motion: set in Bunch Gun Right, snapped from Deuces Gun.");
+  });
+
+  it("no note when the formation did not change, and the sheet's formation stays the sheet's", () => {
+    expect(cardFromTracks(file("deuces gun", "deuces gun"), null).card.notes).not.toContain("Motion:");
+    const { card } = cardFromTracks(file("bunch gun right", "deuces gun"), row());
+    expect(card.formation).toBe("DUCES");
+  });
+});

@@ -419,6 +419,99 @@ def drop_standing_sideline(per_frame, kept_boxes, colors, ball_x: float, directi
     return per_frame, kept_boxes, colors
 
 
+# The snap, from the tracks (the same rule as `trackedPlay.ts`'s `snapTime`): the fourth offensive man to move this far from his first
+# spot started to, less a beat. A man in motion is one man, so he doesn't move the snap.
+SNAP_MOVERS = 4
+SNAP_MOVED_YARDS = 1.5
+SNAP_LEAD_SECONDS = 0.35
+FORMATION_NEAR_SECONDS = 0.3
+FORMATION_BACK_SECONDS = 1.5
+
+
+ONSET_STARTERS = 3
+ONSET_WINDOW = 0.6
+ONSET_STEP = 0.1
+ONSET_STILL = 0.6
+ONSET_GO = 1.2
+ONSET_SPREAD = 0.5
+ONSET_LEAD = 0.1
+ONSET_LEFT = 0.5
+ONSET_NEAR = 0.12
+ONSET_OVERRIDE = 0.3
+
+
+def _spot_at(points: list, s: float):
+    p = min(points, key=lambda q: abs(q[0] - s))
+    return (p[1], p[2]) if abs(p[0] - s) <= ONSET_NEAR else None
+
+
+def _onset_snap(tracks: list[dict]) -> float | None:
+    """The snap as an onset: three men who were standing all start within half a second (a man in motion starts once, and
+    men shuffling in their stances don't get 1.2 yd from a standstill in 0.6 s). Mirrors `trackedPlay.ts`'s `onsetSnap`."""
+    offense = [t for t in tracks if t["team"] == "offense" and len(t["points"]) >= 8]
+    if len(offense) < ONSET_STARTERS:
+        return None
+    first = min(t["points"][0][0] for t in offense)
+    last = max(t["points"][-1][0] for t in offense)
+    onsets: list[float] = []
+    for t in offense:
+        s = first + ONSET_WINDOW
+        while s <= last - ONSET_WINDOW:
+            a, b, c = _spot_at(t["points"], s - ONSET_WINDOW), _spot_at(t["points"], s), _spot_at(t["points"], s + ONSET_WINDOW)
+            if a and b and c and np.hypot(b[0] - a[0], b[1] - a[1]) < ONSET_STILL and np.hypot(c[0] - b[0], c[1] - b[1]) > ONSET_GO:
+                left = next((p[0] for p in t["points"] if p[0] >= s and np.hypot(p[1] - b[0], p[2] - b[1]) > ONSET_LEFT), s)
+                onsets.append(left)
+                break
+            s += ONSET_STEP
+    onsets.sort()
+    for i in range(len(onsets) - ONSET_STARTERS + 1):
+        if onsets[i + ONSET_STARTERS - 1] - onsets[i] <= ONSET_SPREAD:
+            return max(0.0, onsets[i] - ONSET_LEAD)
+    return None
+
+
+def snap_seconds(tracks: list[dict]) -> float:
+    times = []
+    for t in tracks:
+        if t["team"] != "offense" or len(t["points"]) < 2:
+            continue
+        _, x0, y0 = t["points"][0]
+        hit = next((p[0] for p in t["points"] if np.hypot(p[1] - x0, p[2] - y0) > SNAP_MOVED_YARDS), None)
+        if hit is not None:
+            times.append(hit)
+    times.sort()
+    older = max(0.0, times[SNAP_MOVERS - 1] - SNAP_LEAD_SECONDS) if len(times) >= SNAP_MOVERS else 0.0
+    onset = _onset_snap(tracks)
+    return onset if onset is not None and onset - older > ONSET_OVERRIDE else older
+
+
+def formation_reads(tracks: list[dict]) -> dict:
+    """The offense's formation twice: as the clip first shows it ("set") and at the snap. They differ when a man went in motion
+    (Bunch, then a receiver zaps across and it is Deuces): the sheet's tag, and the card, are the formation the ball was snapped
+    from, with the motion drawn from where he was set. Read from the offense's tracks (`eval.formation`)."""
+    from .formation import classify, Spot
+
+    at_snap = snap_seconds(tracks)
+
+    def read(t0: float) -> dict:
+        spots = []
+        for t in tracks:
+            if t["team"] != "offense" or not t["points"]:
+                continue
+            # Where he stood at that moment: his last spot up to `FORMATION_BACK_SECONDS` before it (a man the detector missed for
+            # a moment just before the snap is still where he was), else the nearest spot just after.
+            before = [p for p in t["points"] if t0 - FORMATION_BACK_SECONDS <= p[0] <= t0 + 1e-6]
+            near = before[-1] if before else min(t["points"], key=lambda p: abs(p[0] - t0))
+            if before or abs(near[0] - t0) <= FORMATION_NEAR_SECONDS:
+                spots.append(Spot(near[1], near[2]))
+        f = classify(spots)
+        text = f.staff or " ".join(w for w in (f.key, f.strength or "") if w and f.key != "unknown")
+        return {"key": f.key, "strength": f.strength, "staff": f.staff, "text": text, "notes": f.notes, "men": len(spots)}
+
+    first = min((t["points"][0][0] for t in tracks if t["team"] == "offense" and t["points"]), default=0.0)
+    return {"set": read(first), "snap": read(at_snap), "snapSeconds": round(at_snap, 2)}
+
+
 # A track that runs into the 4 yards beside a sideline from inside is cut there: past it the "player" is far more often the
 # bench, a coach or an official the track was handed to than a receiver (a fade ends 3-6 yards in, so its shape is kept).
 SIDELINE_CUT_YARDS = 4.0
@@ -496,21 +589,23 @@ def track_play(
         offense_boxes = [b for b, lab in zip(kept_boxes[0], labels) if lab == "offense"]
         defense_boxes = [b for b, lab in zip(kept_boxes[0], labels) if lab == "defense"]
         scout = {"color": color, "side": scout_side(frames_bgr[snap], offense_boxes, defense_boxes, color)}
+    out_tracks = [
+        {
+            "id": t.id,
+            "team": labels[t.id],
+            "start": [round(t.start[0], 2), round(t.start[1], 2)],
+            "points": [[round(f / fps, 3), round(x, 2), round(y, 2)] for f, x, y in t.points],
+            # The jersey color (Lab L, a, b) at each point, so a swap to the other team can be seen in the numbers.
+            "colors": [[round(c, 0) for c in colors[f][j]] for f, j in t.matched] if colors else [],
+        }
+        for t in tracks
+    ]
     return {
         "fps": fps,
+        "formations": formation_reads(out_tracks),
         **({"scout": scout} if scout else {}),
         "timing": {**timing, "track_seconds": round(time.perf_counter() - began, 2)},
-        "tracks": [
-            {
-                "id": t.id,
-                "team": labels[t.id],
-                "start": [round(t.start[0], 2), round(t.start[1], 2)],
-                "points": [[round(f / fps, 3), round(x, 2), round(y, 2)] for f, x, y in t.points],
-                # The jersey color (Lab L, a, b) at each point, so a swap to the other team can be seen in the numbers.
-                "colors": [[round(c, 0) for c in colors[f][j]] for f, j in t.matched] if colors else [],
-            }
-            for t in tracks
-        ],
+        "tracks": out_tracks,
     }
 
 

@@ -35,8 +35,21 @@ export interface TrackedPlayer {
   points: [number, number, number][];
 }
 
+/** The offense's formation as `eval.tracks.formation_reads` named it: from the tracks (the staff's own name where it has one). */
+export interface FilmFormation {
+  key: string;
+  strength: string | null;
+  staff: string;
+  /** What a card's formation column would say ("deuces gun", "trio gun right", "trips right"); "" when it couldn't be read. */
+  text: string;
+  notes: string;
+  men: number;
+}
+
 export interface TrackedPlayFile {
   fps?: number;
+  /** The formation as the clip first shows it and at the snap: they differ when a man went in motion (Bunch, then a receiver zaps across: Deuces). */
+  formations?: { set: FilmFormation; snap: FilmFormation; snapSeconds: number };
   /** The team being scouted (its jersey color) and which side of the ball it was on in this play (`eval/scoutteam.py`). */
   scout?: { color: string; side: "offense" | "defense" | null };
   tracks: TrackedPlayer[];
@@ -59,6 +72,17 @@ const SNAP_MOVERS = 4;
 const MOVED_YARDS = 1.5;
 /** Take the snap a little before the third man's move shows. */
 const SNAP_LEAD_SECONDS = 0.35;
+const ONSET_STARTERS = 3;
+const ONSET_WINDOW_SECONDS = 0.6;
+const ONSET_STEP_SECONDS = 0.1;
+const ONSET_STILL_YARDS = 0.6;
+const ONSET_GO_YARDS = 1.2;
+const ONSET_SPREAD_SECONDS = 0.5;
+const ONSET_LEAD_SECONDS = 0.1;
+/** The onset replaces the older rule only when it is later by this much: a clean play has both within a tenth of a second, and a formation shifting before the ball moves fools the older rule by a second. */
+const ONSET_OVERRIDE_SECONDS = 0.3;
+const ONSET_LEFT_YARDS = 0.5;
+const ONSET_NEAR_SECONDS = 0.12;
 
 /**
  * Far faster than any high-school player runs, with room for detection noise on top of a sprint (a real
@@ -193,6 +217,13 @@ interface RawRead {
  * (the players are set, one may be in motion), and a route is read from the snap on. 0 if too few moved.
  */
 export function snapTime(file: TrackedPlayFile): number {
+  const older = firstMoversSnap(file);
+  const onset = onsetSnap(file);
+  return onset !== null && onset - older > ONSET_OVERRIDE_SECONDS ? onset : older;
+}
+
+/** The older rule: the fourth offensive man to get 1.5 yd from his first spot, less a beat. Drifting men and one in motion count. */
+function firstMoversSnap(file: TrackedPlayFile): number {
   const times = file.tracks
     .filter((t) => t.team === "offense" && t.points.length >= 2)
     .map((t) => {
@@ -202,6 +233,47 @@ export function snapTime(file: TrackedPlayFile): number {
     .filter((v): v is number => v !== undefined)
     .sort((a, b) => a - b);
   return times.length >= SNAP_MOVERS ? Math.max(0, times[SNAP_MOVERS - 1] - SNAP_LEAD_SECONDS) : 0;
+}
+
+/** Where a track was at time `s` (the nearest point within a few frames), or null. */
+function spotAt(t: TrackedPlayer, s: number): [number, number] | null {
+  let best: [number, number, number] | null = null;
+  for (const p of t.points) if (!best || Math.abs(p[0] - s) < Math.abs(best[0] - s)) best = p;
+  return best && Math.abs(best[0] - s) <= ONSET_NEAR_SECONDS ? [best[1], best[2]] : null;
+}
+
+/**
+ * The snap as an *onset*: men who were standing and then all start at once. A man starts when he moved under `ONSET_STILL_YARDS`
+ * in the 0.6 s before a moment and over `ONSET_GO_YARDS` in the 0.6 s after; the snap is the first moment from which
+ * `ONSET_STARTERS` men start within half a second. A man in motion starts once and a man drifting or shuffling in his stance
+ * rarely gets 1.2 yd in 0.6 s from a standstill, so unlike "the fourth man to leave his spot" the formation shifting before the
+ * snap doesn't set it off (first real film: that rule fired 0.85 s early on a Bunch zapped to Deuces). Null when too few start.
+ */
+function onsetSnap(file: TrackedPlayFile): number | null {
+  const offense = file.tracks.filter((t) => t.team === "offense" && t.points.length >= 8);
+  if (offense.length < ONSET_STARTERS) return null;
+  const first = Math.min(...offense.map((t) => t.points[0][0]));
+  const last = Math.max(...offense.map((t) => t.points[t.points.length - 1][0]));
+  const onsets: number[] = [];
+  for (const t of offense) {
+    for (let s = first + ONSET_WINDOW_SECONDS; s <= last - ONSET_WINDOW_SECONDS; s += ONSET_STEP_SECONDS) {
+      const a = spotAt(t, s - ONSET_WINDOW_SECONDS);
+      const b = spotAt(t, s);
+      const c = spotAt(t, s + ONSET_WINDOW_SECONDS);
+      if (!a || !b || !c) continue;
+      if (Math.hypot(b[0] - a[0], b[1] - a[1]) < ONSET_STILL_YARDS && Math.hypot(c[0] - b[0], c[1] - b[1]) > ONSET_GO_YARDS) {
+        // The forward window sees a start up to 0.6 s early: the onset is when he got 0.5 yd from where he stood.
+        const left = t.points.find(([u, x, y]) => u >= s && Math.hypot(x - b[0], y - b[1]) > ONSET_LEFT_YARDS);
+        onsets.push(left ? left[0] : s);
+        break;
+      }
+    }
+  }
+  onsets.sort((x, y) => x - y);
+  for (let i = 0; i + ONSET_STARTERS <= onsets.length; i++) {
+    if (onsets[i + ONSET_STARTERS - 1] - onsets[i] <= ONSET_SPREAD_SECONDS) return Math.max(0, onsets[i] - ONSET_LEAD_SECONDS);
+  }
+  return null;
 }
 
 /** The same tracks with everything before the snap cut off: each man starts where he stood at the snap. */
@@ -324,6 +396,21 @@ export interface TrackedCard {
   unsure: TrackedRead[];
 }
 
+/** The formation the ball was snapped from, as the film names it ("" when it couldn't be read: the sheet or a coach supplies it). */
+export function filmFormationText(file: TrackedPlayFile): string {
+  const snap = file.formations?.snap;
+  return snap && snap.key !== "unknown" ? snap.text : "";
+}
+
+/** "Motion: set in Bunch Gun Right, snapped from Deuces Gun." when the formation changed between the set and the snap, else "". */
+export function motionFormationNote(file: TrackedPlayFile): string {
+  const set = file.formations?.set;
+  const snap = file.formations?.snap;
+  if (!set || !snap || set.key === "unknown" || snap.key === "unknown" || !set.text || !snap.text || set.text === snap.text) return "";
+  const cap = (t: string) => t.replace(/\b\w/g, (c) => c.toUpperCase());
+  return `Motion: set in ${cap(set.text)}, snapped from ${cap(snap.text)}.`;
+}
+
 /**
  * The card for one tracked play. With the sheet's row (`row`), the sheet stays ground truth
  * (formation, call, down, front) and only the routes and where each man stood come from the
@@ -334,10 +421,12 @@ export function cardFromTracks(
   row: HudlPlayCard | null,
   opts: { formation?: string; playName?: string; source?: string; playNumber?: number } = {},
 ): TrackedCard {
-  const { detection, reads: raw } = detectionFromTracks(file, opts);
-  const built = row
+  const { detection, reads: raw } = detectionFromTracks(file, { ...opts, formation: opts.formation || filmFormationText(file) });
+  const motion = motionFormationNote(file);
+  const built0 = row
     ? applyDetectionToCard(row, detection)
     : buildCardFromDetection(detection, opts.source ?? "tracked film", opts.playNumber ?? 1);
+  const built = motion ? deriveCard({ ...built0, notes: built0.notes.trim() ? `${built0.notes.trim()} ${motion}` : motion }) : built0;
 
   // Which letter each man was matched to, on the card as it now stands (his own spots).
   const letters = matchDetectedLetters(detection, built);

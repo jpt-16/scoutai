@@ -935,6 +935,23 @@ the notes say so. On these three: 34 reads Trips right (the staff's name read "a
 **Blitz:** `pressureRead` no longer counts a man already at the line at the snap (a pressed corner was called "4 - BLITZ" on play 8) and a corner or safety rushing from
 under 4 yd is a tracking slip, not a call.
 
+**Twelfth pass (the same three recordings, with the coach's own route truth; plays 8, 34, 43).** Two of the three plays (8 and 43) were a **Bunch with a
+man zapped across (pre-snap motion) into Deuces gun**, which is what the Hudl tag (DUCES) calls them: the tag is the formation the ball was snapped from. So a
+clip has to start *before* the motion (a second or two into the set; the earlier runs started 0.4 s before the snap, where the motion was already over).
+Now: `eval.tracks.formation_reads` (written into the tracks file as `formations: {set, snap, snapSeconds}`) names the offense's formation twice from its tracks, as the clip first
+shows it and at the snap; `trackedPlay.ts`'s `cardFromTracks` uses the snap formation when the film is the only source, and adds "Motion: set in Bunch Gun,
+snapped from Deuces Gun." to the notes when they differ (the sheet's formation still wins). **Real result:** the set reads **Bunch gun** on both plays ✓; the
+snap formation does not read Deuces yet (8 reads Double Eagle, 43 Trips with 8 men): the linemen locked in the pile are mostly missing and a defender or two is
+labeled offense, so a wide-vs-attached count is wrong (`formation._classify` assumes a standard line when fewer than three linemen are found and six skill men are,
+else says unknown). **Snap time:** the old rule (the fourth man to move 1.5 yd) fired 0.85 s early on play 8 because the formation was still shifting; `snapTime` now also
+reads an **onset** (three men who were standing all start within half a second: `onsetSnap`) and uses it when it is more than 0.3 s later than the old rule (a clean play has
+both within a tenth of a second, which keeps the drawn-play tests' windows unchanged); play 8's snap is now 3.67 s into the clip, which matches the film.
+**Scoring against what the coach says each man ran** (`scripts/score-truth.ts tracks/ --sheet hudl.csv --truth truth.json`, `{play: {letter: "post|dig"}}`): the call's template
+is not the truth (a MESH is not its template), so this is the real measure. First numbers: **2 of 13 routes right** (3 counting the runner-up): 8's back rail → wheel ✓, 43's X
+stick → hitch ✓. The pictures of the tracks on the film (`trackdebug.draw_frame` from a replayed dump) say why: tracking, not the reader, is the limit; after the snap the
+camera zooms out 1.5-2.7x and the receivers on the near side, in front of the bench, are lost within a second or two (play 8's two right-side receivers kept 39 and 14 points of ~300),
+and the tracks that do last cross into the pile. Pre-snap motion is found on play 8 (F, from the right bunch to the left slot).
+
 ## Game film upload (the hosted pipeline: `/film`, `src/lib/film/`, `video-service/eval/worker*.py`)
 
 A coach uploads a game's clips on **`/film`** (`FilmLibrary.tsx`), a hosted worker reads them, and the finished game
