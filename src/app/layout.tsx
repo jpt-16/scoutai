@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { ClerkProvider } from "@clerk/nextjs";
+import { clerkAppearance } from "@/lib/clerkAppearance";
 import "@fontsource/barlow/400.css";
 import "@fontsource/barlow/500.css";
 import "@fontsource/barlow/600.css";
@@ -60,7 +61,7 @@ export default function RootLayout({
       {/* Only the paid video feature uses Clerk — the free CSV path never
           needs a signed-in user, so ClerkProvider (which throws without a
           publishable key) is skipped entirely until one is configured. */}
-      {isClerkConfigured() ? <ClerkProvider>{body}</ClerkProvider> : body}
+      {isClerkConfigured() ? <ClerkProvider appearance={clerkAppearance}>{body}</ClerkProvider> : body}
     </html>
   );
 }

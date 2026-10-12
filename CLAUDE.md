@@ -918,6 +918,7 @@ there's still no separate database for this either.
   `useTeamAccount` also asks `GET /api/ai-access` (the same `requireEntitlement()`, costs
   nothing) once per user + team, and the upload buttons go straight to uploading when either the
   subscription or the server says yes.
+- **Theme:** `src/lib/clerkAppearance.ts` dresses every Clerk screen (sign-in modal, user menu, organization switcher) in the app's dark palette and Barlow fonts, passed to `<ClerkProvider appearance>` in `layout.tsx`. The "Sign in to My Application" title is the application name in Clerk's dashboard, and the "Development mode" badge goes away on a production instance.
 - `src/lib/useTeamAccount.ts`: a thin client hook over `useAuth()`/`useOrganization()` (Clerk keeps
   them reactive on its own — no manual refetch/refresh needed, unlike the Supabase version this
   replaced). Only call it from a component that's guaranteed to render inside `<ClerkProvider>`.
