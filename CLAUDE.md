@@ -716,7 +716,14 @@ his spot, `unknown` when nothing fits, else the route with a `confidence` (the m
 the full ranking, so only unsure plays need a coach. Tested on simulated played routes (jittered stems and
 breaks, rounded corners, tracker noise, run-on past the catch): about 91% right on the route tree and 92% off
 it; GO vs FADE and a path seen only part way (11 yards of a deep route) are the real ambiguities, and
-show as low confidence. **Not yet run on real film.** The tracker that produces the paths is
+show as low confidence. **Tolerant of sloppy routes** (a receiver who runs a stem short or long, releases off the ball
+differently, or breaks a few yards off): the path is lined up with each shape *after the release* (`RELEASE_YARDS` 2, a small
+`RELEASE_COST` for how far apart they began), the depth and width scale over 0.7-1.4x with a `STRETCH_COST` so a route that fits as
+drawn beats one that needs stretching, and it always names the closest route (`UNKNOWN_DISTANCE` 6.5 mean yards: past that it is not a
+route at all), with a low `confidence` flagging it for a coach; a path under `MIN_ROUTE_YARDS` (4) still reads unknown. Simulated
+sloppy routes (scaled 0.72-1.3, vertices 1+ yard off, a sideways release): about 67% right with no "unknown" (66% before, with 49 unknown
+of 2850); mild variation 89% as before; the real confusions are the ones a person has: fade vs go, speed out vs out vs slide, leak
+vs shallow. **Not yet run on real film.** The tracker that produces the paths is
 `video-service/eval/tracks.py`: each frame is matched to the one before on the background (ORB features with
 the people masked out, RANSAC homography, falling back to a pan-and-zoom similarity, holding the camera when
 nothing matches), the matrices are chained back to the snap frame so every frame lands on the calibrated

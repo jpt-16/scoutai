@@ -73,7 +73,7 @@ const JUMP_WINDOW_SECONDS = 0.3;
 /** Two tracks starting this close are one man followed twice. */
 const SAME_MAN_YARDS = 2;
 /** The shortest route in the tree runs about this far; less than that hasn't shown which route it is. */
-const MIN_ROUTE_YARDS = 5;
+const MIN_ROUTE_YARDS = 4;
 /**
  * A route is what he ran before the ball got there: read his first this-many seconds from the snap. After that it is
  * the run after the catch or a receiver giving up on a route (on real film a hitch, settled at 2 s and then run 6 yards

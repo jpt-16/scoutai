@@ -31,12 +31,16 @@ function round(pts: RoutePoint[]): RoutePoint[] {
  * corners rounded, a different speed, tracker noise on every point, and sometimes the run
  * after the catch. `outside` puts him on the left or right of the ball.
  */
-function played(kind: RouteKind, r: ReturnType<typeof rng>, outside: 1 | -1): RoutePoint[] {
+function played(kind: RouteKind, r: ReturnType<typeof rng>, outside: 1 | -1, sloppy = false): RoutePoint[] {
   const shape = routeTemplateYards(kind, 1);
-  const sx = r.between(0.85, 1.15);
-  const sy = r.between(0.85, 1.15);
+  // Sloppy: a receiver who runs it short or long, releases off the ball sideways, and breaks where he breaks.
+  const [lo, hi] = sloppy ? [0.72, 1.3] : [0.85, 1.15];
+  const sx = r.between(lo, hi);
+  const sy = r.between(lo, hi);
+  const [jx, jy] = sloppy ? [1.1, 1.3] : [0.8, 0.9];
+  const drift = sloppy ? r.normal() * 1.5 : 0;
   const vertices: RoutePoint[] = shape.map(([x, y], i) =>
-    i === 0 ? { x: 0, y: 0 } : { x: x * sx + r.normal() * 0.8, y: y * sy + r.normal() * 0.9 },
+    i === 0 ? { x: 0, y: 0 } : { x: x * sx + r.normal() * jx + (i === 1 ? drift : 0), y: y * sy + r.normal() * jy },
   );
   if (r.next() < 0.4) {
     // Runs on after the catch, in the direction of the last leg.
@@ -113,6 +117,26 @@ describe("readRoute", () => {
     console.log(`route tree, played: ${right}/${total}\n${report.join("\n")}`);
     expect(right / total).toBeGreaterThan(0.8);
     for (const [k, t] of perKind) expect(t.right / t.total, k).toBeGreaterThan(0.6);
+  });
+
+  it("names the closest route for a route run badly (short or long, a different release), never giving up on it", () => {
+    const r = rng(2024);
+    const tree: RouteKind[] = ["slide", "speed-out", "slant", "out", "curl", "comeback", "shallow", "corner", "post", "fade"];
+    let right = 0;
+    let total = 0;
+    let unknown = 0;
+    for (const kind of tree) {
+      for (let i = 0; i < 30; i++) {
+        const outside = r.next() < 0.5 ? 1 : -1;
+        const read = readRoute(played(kind, r, outside, true), outside);
+        total += 1;
+        if (read.kind === kind) right += 1;
+        if (read.kind === "unknown") unknown += 1;
+      }
+    }
+    console.log(`sloppy routes: ${right}/${total}, unknown ${unknown}`);
+    expect(unknown).toBe(0);
+    expect(right / total).toBeGreaterThan(0.6);
   });
 
   it("is sure of a clear route and unsure when the path stops before the route does", () => {
