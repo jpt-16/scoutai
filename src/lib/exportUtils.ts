@@ -8,6 +8,25 @@
  * `src/components/ExportModal.tsx`. Framework-free for Vitest.
  */
 
+/** One card as it is printed or exported: the play and the lens it is seen through. */
+export interface CardView<C> {
+  card: C;
+  unit: "offense" | "defense";
+}
+
+/**
+ * The cards of a view as pages. With `pair`, every play gives two cards from the one read, its Scout O card then its
+ * Scout D card (so they sit side by side on a 2-up sheet and stay together in an export); otherwise one card each.
+ */
+export function cardViews<C>(cards: C[], unit: "offense" | "defense", pair = false): CardView<C>[] {
+  return pair
+    ? cards.flatMap((card) => [
+        { card, unit: "offense" as const },
+        { card, unit: "defense" as const },
+      ])
+    : cards.map((card) => ({ card, unit }));
+}
+
 export interface ExportTarget {
   id: "coachpad" | "ipad" | "letter";
   label: string;
@@ -72,16 +91,23 @@ const slug = (text: string, max = 40) =>
 /** "hendricken-scout-d-team-coachpad.pdf" */
 export function exportFileName(
   script: string,
-  unit: "offense" | "defense",
+  unit: "offense" | "defense" | "both",
   mode: "team" | "7v7",
   target: ExportTarget["id"],
   ext: "pdf" | "zip",
 ): string {
-  return `${slug(script)}-scout-${unit === "defense" ? "d" : "o"}-${mode === "7v7" ? "7v7" : "team"}-${target}.${ext}`;
+  return `${slug(script)}-scout-${unit === "both" ? "o-d" : unit === "defense" ? "d" : "o"}-${mode === "7v7" ? "7v7" : "team"}-${target}.${ext}`;
 }
 
 /** "03-play-14-trips-right.png": ordered so a folder sorts in script order. */
-export function imageName(index: number, total: number, playNumber: number, formation: string): string {
+export function imageName(
+  index: number,
+  total: number,
+  playNumber: number,
+  formation: string,
+  unit?: "offense" | "defense",
+): string {
   const width = Math.max(2, String(total).length);
-  return `${String(index + 1).padStart(width, "0")}-play-${playNumber}${formation.trim() ? `-${slug(formation, 24)}` : ""}.png`;
+  const lens = unit ? `-${unit === "defense" ? "d" : "o"}` : "";
+  return `${String(index + 1).padStart(width, "0")}-play-${playNumber}${formation.trim() ? `-${slug(formation, 24)}` : ""}${lens}.png`;
 }

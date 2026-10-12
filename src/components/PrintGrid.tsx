@@ -6,6 +6,7 @@ import { ExportModal } from "@/components/ExportModal";
 import { ScoutCard } from "@/components/ScoutCard";
 import { Button } from "@/components/ui/button";
 import type { DiagramMode, ScoutUnit } from "@/lib/formations";
+import { cardViews } from "@/lib/exportUtils";
 import type { HudlPlayCard } from "@/lib/hudlParser";
 import { cn } from "@/lib/utils";
 
@@ -37,16 +38,20 @@ export function PrintGrid({
   fileName,
   mode = "team",
   unit = "offense",
+  pair = false,
 }: {
   cards: HudlPlayCard[];
   fileName: string;
   mode?: DiagramMode;
   unit?: ScoutUnit;
+  /** Every play as two cards from one read: its Scout O card, then its Scout D card. */
+  pair?: boolean;
 }) {
   const [perPage, setPerPage] = useState<PerPage>(4);
   const [exporting, setExporting] = useState(false);
   const layout = LAYOUTS[perPage];
-  const pages = chunk(cards, perPage);
+  const views = cardViews(cards, unit, pair);
+  const pages = chunk(views, perPage);
 
   return (
     <div className="flex flex-1 flex-col">
@@ -74,7 +79,7 @@ export function PrintGrid({
           ))}
         </div>
         <p className="text-sm text-muted-foreground">
-          {cards.length} cards · {pages.length} {pages.length === 1 ? "page" : "pages"} · Letter{" "}
+          {views.length} cards · {pages.length} {pages.length === 1 ? "page" : "pages"} · Letter{" "}
           {layout.orientation}
         </p>
         <Button
@@ -82,12 +87,12 @@ export function PrintGrid({
           variant="outline"
           className="ml-auto"
           onClick={() => setExporting(true)}
-          disabled={cards.length === 0}
+          disabled={views.length === 0}
         >
           <Tablet aria-hidden="true" />
           CoachPad / tablet
         </Button>
-        <Button size="lg" onClick={() => window.print()} disabled={cards.length === 0}>
+        <Button size="lg" onClick={() => window.print()} disabled={views.length === 0}>
           <Printer aria-hidden="true" />
           Print / Save PDF
         </Button>
@@ -100,6 +105,7 @@ export function PrintGrid({
           fileName={fileName}
           mode={mode}
           unit={unit}
+          pair={pair}
         />
       )}
 
@@ -117,7 +123,7 @@ export function PrintGrid({
             >
               <div className="flex items-end justify-between border-b-2 border-[#111] pb-1.5">
                 <span className="font-display text-2xl font-extrabold tracking-[0.02em]">
-                  {unit === "defense" ? "SCOUT DEFENSE" : "SCOUT OFFENSE"} ·{" "}
+                  {pair ? "SCOUT OFFENSE + DEFENSE" : unit === "defense" ? "SCOUT DEFENSE" : "SCOUT OFFENSE"} ·{" "}
                   {mode === "7v7" ? "7v7" : "TEAM"} · {fileName}
                 </span>
                 <span className="text-sm font-semibold text-[#4a4a4a]">
@@ -125,8 +131,8 @@ export function PrintGrid({
                 </span>
               </div>
               <div className={cn("grid justify-center gap-[0.25in]", layout.grid)}>
-                {page.map((card) => (
-                  <ScoutCard key={card.id} card={card} variant="print" mode={mode} unit={unit} />
+                {page.map(({ card, unit: lens }) => (
+                  <ScoutCard key={`${card.id}-${lens}`} card={card} variant="print" mode={mode} unit={lens} />
                 ))}
               </div>
             </section>

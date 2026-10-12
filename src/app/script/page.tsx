@@ -103,9 +103,13 @@ const MODES: { value: Mode; label: string; short: string }[] = [
   { value: "team", label: "TEAM (11v11)", short: "TEAM" },
 ];
 
-const UNITS: { value: ScoutUnit; label: string; short: string }[] = [
+/** The lens on a play: Scout O, Scout D, or both at once (one read of the play, two cards side by side). */
+type Lens = ScoutUnit | "both";
+
+const UNITS: { value: Lens; label: string; short: string }[] = [
   { value: "offense", label: "SCOUT OFFENSE", short: "SCOUT O" },
   { value: "defense", label: "SCOUT DEFENSE", short: "SCOUT D" },
+  { value: "both", label: "BOTH", short: "O + D" },
 ];
 
 export default function ScriptPage() {
@@ -149,7 +153,7 @@ function ScriptApp({ demoMode = false }: { demoMode?: boolean }) {
   const slot: ScriptSlot = "script";
   const [view, setView] = useState<View>("field");
   const [modeChoice, setMode] = useState<Mode>("all");
-  const [unitChoice, setUnit] = useState<ScoutUnit>("offense");
+  const [unitChoice, setUnit] = useState<Lens>("offense");
   // Practice mode (/script?practice=<day>&period=<n>): the day's playsheet
   // decides the unit, period type and cards instead of the toggles.
   const [practice, setPractice] = useState<{
@@ -224,11 +228,15 @@ function ScriptApp({ demoMode = false }: { demoMode?: boolean }) {
   const cards = useMemo(() => script?.cards ?? [], [script]);
   const practicePeriod = practice?.day.periods[periodIndex];
   // Our offense's period is the scout defense's; our defense's is the scout offense's.
+  // Both lenses: every play shows up (Scout D lists every look), as its offense card and its defense card.
+  const pair = !practicePeriod && unitChoice === "both";
   const unit: ScoutUnit = practicePeriod
     ? practicePeriod.side === "offense"
       ? "defense"
       : "offense"
-    : unitChoice;
+    : unitChoice === "both"
+      ? "defense"
+      : unitChoice;
   const mode: Mode = practicePeriod ? practicePeriod.kind : modeChoice;
   const periodCards = useMemo(() => {
     if (!practice) return [];
@@ -619,7 +627,7 @@ function ScriptApp({ demoMode = false }: { demoMode?: boolean }) {
               className="flex shrink-0 rounded-xl border bg-secondary p-1"
             >
               {UNITS.map((u) => {
-                const selected = unit === u.value;
+                const selected = unitChoice === u.value;
                 return (
                   <button
                     key={u.value}
@@ -850,7 +858,7 @@ function ScriptApp({ demoMode = false }: { demoMode?: boolean }) {
           </div>
         )}
         <div className="flex shrink-0 gap-2 border-l pl-3">
-          {view === "field" && (
+          {view === "field" && !pair && (
             <Button
               size="lg"
               variant={drawing ? "default" : "outline"}
@@ -920,13 +928,13 @@ function ScriptApp({ demoMode = false }: { demoMode?: boolean }) {
               )}
             </>
           )}
-          {unit === "defense" && view === "field" && !drawing && !demoMode && (
+          {unit === "defense" && !pair && view === "field" && !drawing && !demoMode && (
             <Button size="lg" variant="outline" onClick={() => setSecondaryOpen(true)}>
               <Shield aria-hidden="true" />
               Secondary
             </Button>
           )}
-          {unit === "defense" && view === "field" && !drawing && (
+          {unit === "defense" && !pair && view === "field" && !drawing && (
             <>
               <Button
                 size="lg"
@@ -1059,7 +1067,7 @@ function ScriptApp({ demoMode = false }: { demoMode?: boolean }) {
         <EditPlayDialog
           key={current.id}
           card={current}
-          unit={unit}
+          unit={pair ? "offense" : unit}
           mode={cardMode}
           open={editing}
           onOpenChange={setEditing}
@@ -1111,7 +1119,25 @@ function ScriptApp({ demoMode = false }: { demoMode?: boolean }) {
             }}
           >
             <div className="absolute inset-0 flex items-center justify-center">
-              {current ? (
+              {current && pair ? (
+                // One read of the play, two cards: what the offense ran, and what the defense did.
+                <div className="flex w-full items-center justify-center gap-3">
+                  {(["offense", "defense"] as const).map((lens) => (
+                    <div
+                      key={lens}
+                      style={{ width: `min(calc(50cqw - 6px), calc(100cqh * ${SCOUT_CARD_ASPECT}))` }}
+                    >
+                      <ScoutCard
+                        card={current}
+                        mode={cardMode}
+                        unit={lens}
+                        tendencies={undefined}
+                        contrast={sunlight ? "high" : "normal"}
+                      />
+                    </div>
+                  ))}
+                </div>
+              ) : current ? (
                 <div
                   style={{
                     width: `min(100cqw, calc(100cqh * ${SCOUT_CARD_ASPECT}))`,
@@ -1315,6 +1341,7 @@ function ScriptApp({ demoMode = false }: { demoMode?: boolean }) {
           }
           mode={cardMode}
           unit={unit}
+          pair={pair}
         />
       </TabsContent>
     </Tabs>

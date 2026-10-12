@@ -18,6 +18,7 @@ import {
   fitCard,
   imageName,
   type ExportTarget,
+  cardViews,
 } from "@/lib/exportUtils";
 import type { DiagramMode, ScoutUnit } from "@/lib/formations";
 import type { HudlPlayCard } from "@/lib/hudlParser";
@@ -59,6 +60,7 @@ export function ExportModal({
   fileName,
   mode,
   unit,
+  pair = false,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -66,7 +68,10 @@ export function ExportModal({
   fileName: string;
   mode: DiagramMode;
   unit: ScoutUnit;
+  /** Every play as two cards from one read: its Scout O card, then its Scout D card. */
+  pair?: boolean;
 }) {
+  const views = cardViews(cards, unit, pair);
   const [targetId, setTargetId] = useState<ExportTarget["id"]>("coachpad");
   const [format, setFormat] = useState<Format>("pdf");
   const [sunlight, setSunlight] = useState(true);
@@ -79,7 +84,7 @@ export function ExportModal({
 
   const run = async () => {
     setError(null);
-    setProgress({ done: 0, total: cards.length });
+    setProgress({ done: 0, total: views.length });
     try {
       // Let the hidden frames mount, then capture them one by one.
       await nextFrame();
@@ -90,7 +95,7 @@ export function ExportModal({
       if (!first) throw new Error("Nothing to export");
       const fontEmbedCSS = await getFontEmbedCSS(first);
       const images: string[] = [];
-      for (let i = 0; i < cards.length; i++) {
+      for (let i = 0; i < views.length; i++) {
         const node = frames.current[i];
         if (!node) continue;
         images.push(
@@ -103,7 +108,7 @@ export function ExportModal({
             cacheBust: false,
           }),
         );
-        setProgress({ done: i + 1, total: cards.length });
+        setProgress({ done: i + 1, total: views.length });
       }
 
       if (format === "pdf") {
@@ -114,18 +119,18 @@ export function ExportModal({
           if (i > 0) doc.addPage([w, h], "landscape");
           doc.addImage(png, "PNG", 0, 0, w, h, undefined, "FAST");
         });
-        download(doc.output("blob"), exportFileName(fileName, unit, mode, target.id, "pdf"));
+        download(doc.output("blob"), exportFileName(fileName, pair ? "both" : unit, mode, target.id, "pdf"));
       } else {
         const { default: JSZip } = await import("jszip");
         const zip = new JSZip();
         images.forEach((png, i) =>
-          zip.file(imageName(i, images.length, cards[i].playNumber, cards[i].formation), png.split(",")[1], {
+          zip.file(imageName(i, images.length, views[i].card.playNumber, views[i].card.formation, pair ? views[i].unit : undefined), png.split(",")[1], {
             base64: true,
           }),
         );
         download(
           await zip.generateAsync({ type: "blob" }),
-          exportFileName(fileName, unit, mode, target.id, "zip"),
+          exportFileName(fileName, pair ? "both" : unit, mode, target.id, "zip"),
         );
       }
       onOpenChange(false);
@@ -143,7 +148,7 @@ export function ExportModal({
         <DialogHeader>
           <DialogTitle className="font-display text-3xl font-bold">Export for a sideline screen</DialogTitle>
           <DialogDescription className="text-base">
-            All {cards.length} {cards.length === 1 ? "card" : "cards"} in this view, one per page, ready to load on
+            All {views.length} {views.length === 1 ? "card" : "cards"} in this view, one per page, ready to load on
             The CoachPad or an iPad by cloud sync or USB.
           </DialogDescription>
         </DialogHeader>
@@ -225,7 +230,7 @@ export function ExportModal({
               Drawing card {progress.done} of {progress.total}…
             </span>
           )}
-          <Button size="lg" onClick={() => void run()} disabled={busy || cards.length === 0}>
+          <Button size="lg" onClick={() => void run()} disabled={busy || views.length === 0}>
             {busy ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <Download aria-hidden="true" />}
             {busy ? "Exporting…" : format === "pdf" ? "Download PDF" : "Download images"}
           </Button>
@@ -234,9 +239,9 @@ export function ExportModal({
         {/* The pages themselves, drawn off screen at the target's own pixel size while exporting. */}
         {busy && (
           <div aria-hidden="true" style={{ position: "fixed", left: -100_000, top: 0, pointerEvents: "none" }}>
-            {cards.map((card, i) => (
+            {views.map(({ card, unit: lens }, i) => (
               <div
-                key={card.id}
+                key={`${card.id}-${lens}`}
                 ref={(el) => {
                   frames.current[i] = el;
                 }}
@@ -247,7 +252,7 @@ export function ExportModal({
                     card={card}
                     variant="print"
                     mode={mode}
-                    unit={unit}
+                    unit={lens}
                     contrast={sunlight ? "high" : "normal"}
                   />
                 </div>

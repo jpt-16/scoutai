@@ -312,6 +312,13 @@ Free-text tags are classified by keyword (`classifyFormation`, `classifyFront`,
   "Twins" instead of just "Pro". `secondaryFromFilm` writes a table per family (with a `plays` count) *and* one per shape
   (the pooled fallback); `dbAlignmentFor(alignments, formationText, key)` picks one: a table the coach set (family, else
   shape) beats film, then family beats shape. The Secondary dialog still sets shape tables only.
+- **One play, two cards** (the **Both** lens, script header: SCOUT OFFENSE / SCOUT DEFENSE / **BOTH**): a play read from film is
+  one card holding one read (routes, run scheme and carrier from the offense's tracks; front, coverage, blitz, each
+  defender's spot and arrow from the defense's), and every lens draws the part it needs: Scout O the play the offense ran,
+  Scout D what the defense did. Both shows the two side by side for each play (every play is listed, as on Scout D), and
+  the play's tools (Draw, Adjust, Secondary) are off while it is on. **Print Grid / CoachPad export** follow it: each play
+  comes out as its Scout O card then its Scout D card (`exportUtils.ts`'s `cardViews`, so a 2-up sheet holds the pair; export
+  files are named `…-scout-o-d-…` and `01-play-14-trips-right-o.png` / `-d.png`). Practice playsheet periods keep their one lens.
 - **7v7** drops the linemen on both sides. `inPeriod` decides which plays each period lists:
   - Scout O 7v7: every pass/RPO/PA from team, plus untagged plays as formation reps (the card
     says "no routes tagged").

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { EXPORT_TARGETS, exportFileName, fitCard, imageName } from "./exportUtils";
+import { EXPORT_TARGETS, cardViews, exportFileName, fitCard, imageName } from "./exportUtils";
 
 const CARD_ASPECT = 760 / 600;
 
@@ -38,5 +38,19 @@ describe("names", () => {
   it("numbers images so a folder sorts in script order", () => {
     expect(imageName(2, 50, 14, "Trips Rt")).toBe("03-play-14-trips-rt.png");
     expect(imageName(9, 120, 101, "")).toBe("010-play-101.png");
+  });
+});
+
+describe("one play, two cards (Scout O and Scout D from the same read)", () => {
+  it("lists each play's offense card then its defense card, or one card each", () => {
+    const plays = [{ n: 1 }, { n: 2 }];
+    expect(cardViews(plays, "defense").map((v) => v.unit)).toEqual(["defense", "defense"]);
+    expect(cardViews(plays, "offense", true).map((v) => `${v.card.n}${v.unit[0]}`)).toEqual(["1o", "1d", "2o", "2d"]);
+  });
+
+  it("names the files for both lenses", () => {
+    expect(exportFileName("Game 1", "both", "team", "coachpad", "pdf")).toBe("game-1-scout-o-d-team-coachpad.pdf");
+    expect(imageName(0, 4, 14, "Trips Right", "defense")).toBe("01-play-14-trips-right-d.png");
+    expect(imageName(0, 4, 14, "Trips Right")).toBe("01-play-14-trips-right.png");
   });
 });
