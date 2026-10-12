@@ -99,9 +99,17 @@ export function trimAtJump(points: [number, number, number][]): [number, number,
   return points;
 }
 
-/** One man followed twice (two ids that start on the same spot) counts once: the longer track. */
+/** How far upfield a track got: a receiver running a route reaches yards a man standing or drifting along the line never does. */
+function reach(t: TrackedPlayer): number {
+  return t.points.reduce((m, [, , y]) => Math.max(m, y), 0);
+}
+
+/**
+ * One man followed twice (two ids that start on the same spot) counts once. Of the two, the one that got
+ * furthest upfield: the other is usually a track that wandered off after a bystander, and it can be the longer.
+ */
 function dropSameMan(tracks: TrackedPlayer[]): TrackedPlayer[] {
-  const longest = [...tracks].sort((a, b) => b.points.length - a.points.length);
+  const longest = [...tracks].sort((a, b) => reach(b) - reach(a) || b.points.length - a.points.length);
   const kept: TrackedPlayer[] = [];
   for (const t of longest) {
     if (kept.some((k) => Math.hypot(k.start[0] - t.start[0], k.start[1] - t.start[1]) < SAME_MAN_YARDS)) continue;

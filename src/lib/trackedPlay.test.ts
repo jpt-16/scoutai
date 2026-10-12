@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildDiagram, FIELD, routeTemplateYards, YARD_PX, YARD_X, type RouteKind } from "./formations";
 import { parseHudlCsvText } from "./hudlParser";
-import { cardFromTracks, fromTheSnap, snapTime, trimAtJump, type TrackedPlayer, type TrackedPlayFile } from "./trackedPlay";
+import { cardFromTracks, detectionFromTracks, fromTheSnap, snapTime, trimAtJump, type TrackedPlayer, type TrackedPlayFile } from "./trackedPlay";
 
 const CSV = "PLAY #,DN,DIST,OFF FORM,OFF PLAY,PLAY TYPE,OFF STR,PLAY DIR\n1,1,10,Spread,QUICK SLANT,Pass,R,R\n";
 
@@ -162,5 +162,24 @@ describe("a track the tracker handed to another man", () => {
     man.points = Array.from({ length: 10 }, (_, i) => [i * 0.1, man.start[0] + i * 0.3, man.start[1] + i * 0.1]);
     const { unsure } = cardFromTracks(file, row);
     expect(unsure.some((u) => u.kind === "unknown")).toBe(true);
+  });
+});
+
+describe("one man followed twice", () => {
+  it("keeps the track that ran upfield, not a longer one that wandered along the line", () => {
+    const { file } = played({ X: "go", Y: "go", Z: "go", H: "go" });
+    // Two ids start 1.5 yards apart on the far right. One slid along the line (a bystander), the other ran a go.
+    file.tracks.push({
+      id: 200, team: "offense", start: [30, 0],
+      points: Array.from({ length: 100 }, (_, i) => [i * 0.05, 30 - i * 0.2, 0] as [number, number, number]),
+    });
+    file.tracks.push({
+      id: 201, team: "offense", start: [31.2, -0.8],
+      points: Array.from({ length: 30 }, (_, i) => [i * 0.1, 31.2, -0.8 + i * 0.8] as [number, number, number]),
+    });
+    const { reads } = detectionFromTracks(file);
+    const there = reads.filter((r) => Math.abs(r.player.start.x - 31.2) < 0.1 || Math.abs(r.player.start.x - 30) < 0.1);
+    expect(there).toHaveLength(1);
+    expect(there[0].player.start.x).toBeCloseTo(31.2);
   });
 });
