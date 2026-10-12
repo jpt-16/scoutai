@@ -941,14 +941,14 @@ function ScriptApp({ demoMode = false }: { demoMode?: boolean }) {
                 <Move aria-hidden="true" />
                 {adjusting ? "Done" : "Adjust X's"}
               </Button>
-              {adjusting && current?.defenseOverrides && (
+              {adjusting && (current?.defenseOverrides || current?.defenseMoves) && (
                 <Button
                   size="lg"
                   variant="outline"
                   onClick={() =>
                     saveCards(
                       cards.map((c) =>
-                        c.id === current.id ? { ...c, defenseOverrides: undefined } : c,
+                        c.id === current.id ? { ...c, defenseOverrides: undefined, defenseMoves: undefined } : c,
                       ),
                     )
                   }

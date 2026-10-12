@@ -247,6 +247,12 @@ Free-text tags are classified by keyword (`classifyFormation`, `classifyFront`,
   Fire: both outside backers off the edge, 6 rush" first in NOTES, and labels the table's box BLITZ. None in 7v7. There is
   no Cover 6 in this staff's calls: a "6" there is a rush count, and `coverageStyleFor` no longer reads it as a two-high
   shell.
+  **Where each defender went** (`card.defenseMoves`, `Diagram.defenseArrows`): a film card draws a straight arrow from each
+  defender who moved after the snap, the way a scout card shows what the defense did (the nickel flowing to the flat, a safety
+  rotating down, a corner dropping). `readDefense` puts each man's `move` (his spot `MOVE_SECONDS` (1.5) after the snap less
+  his spot at it, in yards; none under `MIN_MOVE_YARDS` (1.5), capped at `MAX_MOVE_YARDS` (14)) on `FilmDefender`,
+  `defenseMovesFor` hands each to the card's own defender id (the same nearest-of-the-same-kind match as `defenseOverrides`) in
+  card coordinates, and a blitz tag's drawn rush stands in only on a card with no film arrows. **Reset X's** clears both.
   Scout defense cards are **flipped 180°** (`Diagram.flipped`, `losY` = 160). The defense is at
   the bottom and the offense on top, as the scout defense sees it, so the offense's right is on
   their left. Text stays upright. The header's `HASH` stays as recorded in Hudl.

@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { FIELD, YARD_PX, YARD_X } from "./formations";
 import { parseHudlCsvText } from "./hudlParser";
-import { applyDefenseRead, dbSpots, defenseOverridesFor, frontsByFormation, readDefense, secondaryFromFilm } from "./defenseRead";
+import { applyDefenseRead, dbSpots, defenseMovesFor, defenseOverridesFor, frontsByFormation, readDefense, secondaryFromFilm } from "./defenseRead";
+import { buildDiagram } from "./formations";
 import type { TrackedPlayFile } from "./trackedPlay";
 
 /** A still picture of a play at the snap: every man at his spot for a second. */
@@ -130,5 +131,47 @@ describe("a read that can't be a real defense", () => {
     expect(card.defFront).toBe("");
     expect(card.notes).toContain("Check D");
     expect(secondaryFromFilm([{ formationKey: "spread", read }]).spread).toBeUndefined();
+  });
+});
+
+describe("where each defender went after the snap (the arrows on the card)", () => {
+  /** The 4-2-5 standing, then (1.5 s on) the nickel flows out to the flat and a safety rotates down; everyone else holds. */
+  function moving(): TrackedPlayFile {
+    const base = still(DEUCES, FOUR_TWO_FIVE);
+    const goes: Record<number, [number, number]> = { 106: [14, 3], 109: [4, 5.5] }; // the nickel, a safety: where they are at 1.5 s
+    return {
+      tracks: base.tracks.map((t) => {
+        const to = goes[t.id];
+        if (!to) return { ...t, points: [[0, ...t.start], [1, ...t.start], [2, ...t.start]] as [number, number, number][] };
+        const [x0, y0] = t.start;
+        return { ...t, points: [[0, x0, y0], [1.5, to[0], to[1]], [2, to[0], to[1]]] as [number, number, number][] };
+      }),
+    };
+  }
+
+  it("reads who moved (not who stood his ground), capped at a reasonable length", () => {
+    const read = readDefense(moving())!;
+    const moved = read.defenders.filter((d) => d.move);
+    expect(moved).toHaveLength(2);
+    const nickel = moved.find((d) => d.role === "nb")!;
+    expect(nickel.move!.dx).toBeCloseTo(14 - 8.5, 0);
+    expect(read.defenders.filter((d) => !d.move)).toHaveLength(read.defenders.length - 2);
+  });
+
+  it("puts an arrow on the card from each defender who moved, and none on a card with no film", () => {
+    const [row] = parseHudlCsvText("PLAY #,OFF FORM,OFF PLAY,PLAY TYPE\n5,DUCES,FADE SPEED OUT HITCH FADE,Pass\n").cards;
+    const read = readDefense(moving())!;
+    const card = applyDefenseRead(row, read);
+    expect(Object.keys(card.defenseMoves ?? {})).toHaveLength(2);
+    expect(buildDiagram(card, "team", "defense").defenseArrows).toHaveLength(2);
+    expect(buildDiagram(row, "team", "defense").defenseArrows).toEqual([]);
+    // Each arrow starts on a defender of the card and ends away from him.
+    const d = buildDiagram(card, "team", "defense");
+    for (const arrow of d.defenseArrows) {
+      expect(d.defense.some((p) => Math.hypot(p.x - arrow[0].x, p.y - arrow[0].y) < 0.5)).toBe(true);
+      expect(Math.hypot(arrow[1].x - arrow[0].x, arrow[1].y - arrow[0].y)).toBeGreaterThan(8);
+    }
+    expect(defenseMovesFor(row, read)).toEqual(card.defenseMoves);
+    void defenseOverridesFor;
   });
 });

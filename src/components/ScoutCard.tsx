@@ -673,6 +673,15 @@ export function ScoutCard({
             });
           })}
 
+        {/* Scout defense from film: where each defender went after the snap. */}
+        {diagram.defenseArrows.length > 0 && (
+          <g fill="none" stroke={c.defense} strokeWidth={w(2.2)} strokeLinecap="butt" strokeLinejoin="miter" aria-label="Defenders' movement">
+            {diagram.defenseArrows.map((p, i) => (
+              <path key={`dm${i}`} d={linePath(p, 3)} markerEnd={marker("rush")} />
+            ))}
+          </g>
+        )}
+
         {/* Scout defense: the blitz, an arrow from each blitzer at the quarterback. */}
         {diagram.rushes.length > 0 && (
           <g fill="none" stroke={c.defense} strokeWidth={w(2.4)} strokeLinecap="butt" strokeLinejoin="miter" aria-label="Blitz">

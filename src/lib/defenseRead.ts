@@ -23,6 +23,8 @@ export interface FilmDefender {
   x: number;
   y: number;
   role: DefRole;
+  /** Where he went in the first `MOVE_SECONDS` after the snap, in yards (x to the offense's right, y upfield), when he went anywhere. */
+  move?: { dx: number; dy: number };
 }
 
 export interface DefenseRead {
@@ -57,6 +59,11 @@ const MIN_DEFENDERS = 8;
 const MAX_DEFENDERS = 11;
 /** How far from the snap a man's spot can be taken from (seconds): the nearest point of his track. */
 const SNAP_WINDOW = 0.4;
+/** What a defender did is where he was this long after the snap (the ball is out or the play has declared itself). */
+export const MOVE_SECONDS = 1.5;
+/** A defender who moved less than this (yards) stood his ground: no arrow. A longer move is drawn at most `MAX_MOVE_YARDS`. */
+export const MIN_MOVE_YARDS = 1.5;
+export const MAX_MOVE_YARDS = 14;
 
 /** Where a man stood at time `t`: the point of his track nearest it, if one is close enough. */
 function spotAt(track: TrackedPlayer, t: number): { x: number; y: number } | null {
@@ -65,13 +72,21 @@ function spotAt(track: TrackedPlayer, t: number): { x: number; y: number } | nul
   return best && Math.abs(best[0] - t) <= SNAP_WINDOW ? { x: best[1], y: best[2] } : null;
 }
 
+/** Where a man was at time `t`, from the nearest point of his track within `SNAP_WINDOW`. */
+const spotAtLoose = spotAt;
+
 /** The defense at the snap, or null when too few defenders were found to say. */
 export function readDefense(file: TrackedPlayFile): DefenseRead | null {
   const t = snapTime(file);
+  const tracksOf = new Map<{ x: number; y: number }, TrackedPlayer>();
   const at = (team: string) =>
     file.tracks
       .filter((tr) => tr.team === team)
-      .map((tr) => spotAt(tr, t))
+      .map((tr) => {
+        const p = spotAt(tr, t);
+        if (p) tracksOf.set(p, tr);
+        return p;
+      })
       .filter((p): p is { x: number; y: number } => p !== null);
   // Receivers: offensive men outside the box, near the line.
   const receivers = at("offense").filter((p) => Math.abs(p.x) > BOX_HALF_WIDTH - 0.5 && p.y > -3);
@@ -103,7 +118,14 @@ export function readDefense(file: TrackedPlayFile): DefenseRead | null {
   // Everyone left is a backer in the box, or walked out over a slot: a nickel, counted with the DBs.
   for (const p of spots) if (!role.has(p)) role.set(p, Math.abs(p.x) > BOX_HALF_WIDTH + 1 ? "nb" : "lb");
 
-  const defenders = spots.map((p) => ({ ...p, role: role.get(p)! }));
+  const defenders: FilmDefender[] = spots.map((p) => {
+    const later = tracksOf.has(p) ? spotAtLoose(tracksOf.get(p)!, t + MOVE_SECONDS) : null;
+    const dx = later ? later.x - p.x : 0;
+    const dy = later ? later.y - p.y : 0;
+    const len = Math.hypot(dx, dy);
+    const scale = len > MAX_MOVE_YARDS ? MAX_MOVE_YARDS / len : 1;
+    return { ...p, role: role.get(p)!, ...(len >= MIN_MOVE_YARDS ? { move: { dx: dx * scale, dy: dy * scale } } : {}) };
+  });
   const count = (r: DefRole) => defenders.filter((d) => d.role === r).length;
   const dl = count("dl");
   const lb = count("lb");
@@ -131,7 +153,30 @@ const GROUP: Record<string, "dl" | "lb" | "cb" | "s"> = { E: "dl", T: "dl", N: "
  * of the same kind first; a nickel (a fifth DB) or a sixth backer takes the nearest leftover id.
  */
 export function defenseOverridesFor(card: HudlPlayCard, read: DefenseRead): Record<string, { x: number; y: number }> {
-  const diagram = buildDiagram({ ...card, defenseOverrides: undefined }, "team", "defense");
+  const out: Record<string, { x: number; y: number }> = {};
+  for (const [id, i] of matchFilmToCard(card, read)) {
+    const d = read.defenders[i];
+    out[id] = { x: Math.round(FIELD.center.x + d.x * YARD_X), y: Math.round(FIELD.los - d.y * YARD_PX) };
+  }
+  return out;
+}
+
+/**
+ * Where each defender went after the snap, as an arrow: his move in the card's own coordinates (un-flipped, from his
+ * spot), keyed by the card's defender id like `defenseOverrides`. Only men who went somewhere (`MIN_MOVE_YARDS`).
+ */
+export function defenseMovesFor(card: HudlPlayCard, read: DefenseRead): Record<string, { x: number; y: number }> {
+  const out: Record<string, { x: number; y: number }> = {};
+  for (const [id, i] of matchFilmToCard(card, read)) {
+    const move = read.defenders[i].move;
+    if (move) out[id] = { x: Math.round(move.dx * YARD_X), y: Math.round(-move.dy * YARD_PX) };
+  }
+  return out;
+}
+
+/** Each of the card's defender ids paired with the film defender (index into `read.defenders`) nearest it, of the same kind first. */
+function matchFilmToCard(card: HudlPlayCard, read: DefenseRead): Map<string, number> {
+  const diagram = buildDiagram({ ...card, defenseOverrides: undefined, defenseMoves: undefined }, "team", "defense");
   const slots = diagram.defense.map((d) => {
     const p = fromCardPoint(diagram, { x: d.x, y: d.y });
     return { id: d.id, group: GROUP[d.label] ?? "lb", x: p.x, y: p.y };
@@ -153,12 +198,12 @@ export function defenseOverridesFor(card: HudlPlayCard, read: DefenseRead): Reco
   pairs.sort((a, b) => a[0] - b[0]);
   const usedFilm = new Set<number>();
   const usedSlot = new Set<number>();
-  const out: Record<string, { x: number; y: number }> = {};
+  const out = new Map<string, number>();
   for (const [, i, j] of pairs) {
     if (usedFilm.has(i) || usedSlot.has(j)) continue;
     usedFilm.add(i);
     usedSlot.add(j);
-    out[slots[j].id] = { x: film[i].x, y: film[i].y };
+    out.set(slots[j].id, i);
   }
   return out;
 }
@@ -178,6 +223,7 @@ export function applyDefenseRead(card: HudlPlayCard, read: DefenseRead): HudlPla
   return deriveCard({
     ...withFront,
     defenseOverrides: defenseOverridesFor(withFront, read),
+    defenseMoves: defenseMovesFor(withFront, read),
     notes: withFront.notes.trim() ? `${withFront.notes.trim()} ${note}` : note,
   });
 }

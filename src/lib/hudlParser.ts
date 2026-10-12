@@ -96,6 +96,11 @@ export interface HudlPlayCard {
    */
   defenseOverrides?: Record<string, { x: number; y: number }>;
   /**
+   * Scout D from film: where each defender went after the snap, drawn as an arrow from his spot. Keyed like
+   * `defenseOverrides`, as a move in the card's own coordinates (un-flipped, before the hash shift).
+   */
+  defenseMoves?: Record<string, { x: number; y: number }>;
+  /**
    * Where each offensive player (by letter, Q included) really lined up, read
    * from film: yards to the offense's right (+) / left (−) of the ball, and
    * yards past the line (+) / into the backfield (−). The card draws these

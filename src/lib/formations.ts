@@ -692,6 +692,8 @@ export interface Diagram {
   fakes: Point[][];
   /** Scout defense cards only: where each defender lines up. */
   defense: Defender[];
+  /** Scout defense cards from film: an arrow from each defender to where he went after the snap. */
+  defenseArrows: Point[][];
   /** Scout defense cards only: the blitzers' rush arrows, when the COVERAGE column is a blitz ("6 - DOUBLE FIRE"). */
   rushes: Point[][];
   /**
@@ -1509,6 +1511,7 @@ export function buildDiagram(
     | "playCall"
     | "frontKey"
     | "defenseOverrides"
+    | "defenseMoves"
     | "secondary"
     | "yardLine"
     | "routeOverrides"
@@ -1569,6 +1572,10 @@ export function buildDiagram(
         )
       : null;
   const defense = aligned?.defenders ?? [];
+  const defenseArrows: Pt[][] = defense.flatMap((d) => {
+    const move = card.defenseMoves?.[d.id];
+    return move ? [[[d.x, d.y], [d.x + move.x, d.y + move.y]] as Pt[]] : [];
+  });
 
   if (unit === "defense") {
     // The scout defense only needs the formation it's lining up against.
@@ -1798,7 +1805,9 @@ export function buildDiagram(
     pulls: turnAll(points(pulls)),
     fakes: turnAll(points(fakes)),
     defense: defense.map(turn),
-    rushes: (aligned?.rushes ?? []).map((path) => path.map(toPoint).map(turn)),
+    defenseArrows: defenseArrows.map((path) => path.map(toPoint).map(turn)),
+    // The film's arrows say what each defender really did; a blitz tag's drawn rush only stands in where there are none.
+    rushes: defenseArrows.length ? [] : (aligned?.rushes ?? []).map((path) => path.map(toPoint).map(turn)),
     defenseNotes: aligned?.notes ?? [],
     ballHashX: ballHashX != null && flipped ? FIELD.width - ballHashX : ballHashX,
     losY: flipY(FIELD.los),
