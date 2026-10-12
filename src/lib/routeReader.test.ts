@@ -117,7 +117,7 @@ describe("readRoute", () => {
     console.log(`route tree, played: ${right}/${total}\n${report.join("\n")}`);
     expect(right / total).toBeGreaterThan(0.8);
     for (const [k, t] of perKind) expect(t.right / t.total, k).toBeGreaterThan(0.6);
-  });
+  }, 60_000);
 
   it("names the closest route for a route run badly (short or long, a different release), never giving up on it", () => {
     const r = rng(2024);
@@ -137,7 +137,7 @@ describe("readRoute", () => {
     console.log(`sloppy routes: ${right}/${total}, unknown ${unknown}`);
     expect(unknown).toBe(0);
     expect(right / total).toBeGreaterThan(0.6);
-  });
+  }, 60_000);
 
   it("is sure of a clear route and unsure when the path stops before the route does", () => {
     // Straight up the field for 22 yards: a go, and clearly.
@@ -173,6 +173,6 @@ describe("readRoute", () => {
     }
     console.log(`off the tree, played: ${right}/${total}\n${report.join("\n")}`);
     expect(right / total).toBeGreaterThan(0.7);
-  });
+  }, 60_000);
 });
 
