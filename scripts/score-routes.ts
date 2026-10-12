@@ -15,6 +15,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { planBatch } from "../src/lib/batchMatcher";
 import { parseHudlCsvText } from "../src/lib/hudlParser";
+import { readDefense } from "../src/lib/defenseRead";
 import { keyRoutes, report, scorePlay, summarize, type RouteVerdict } from "../src/lib/routeScore";
 import { cardFromTracks, type TrackedPlayFile } from "../src/lib/trackedPlay";
 
@@ -38,6 +39,10 @@ const plan = planBatch(files.map((f) => f.replace(/\.json$/, ".mp4")), sheet.car
 
 const all: RouteVerdict[] = [];
 let unkeyed = 0;
+// Scout D: the front the film read against the front the key tagged (where it tagged one).
+let frontsKeyed = 0;
+let frontsRight = 0;
+const frontMisses: string[] = [];
 for (const row of plan.rows) {
   if (!row.clip) continue;
   const file = JSON.parse(readFileSync(join(dir, row.clip.replace(/\.mp4$/, ".json")), "utf8")) as TrackedPlayFile;
@@ -50,9 +55,22 @@ for (const row of plan.rows) {
     const got = v.read ? `${v.read.kind}${v.read.kind === "block" || v.read.kind === "unknown" ? "" : ` ${v.read.confidence.toFixed(2)}`}` : "not tracked";
     return `${v.letter} ${v.key}${v.right ? " ✓" : ` ✗ (${got})`}`;
   });
-  console.log(`Play ${row.card.playNumber} (${row.clip}) ${row.card.formation} · ${row.card.playCall}: ${cells.join(" | ")}`);
+  const defense = readDefense(file);
+  let front = "";
+  if (row.card.frontKey !== "unknown") {
+    frontsKeyed++;
+    const right = !!defense?.plausible && defense.frontKey === row.card.frontKey;
+    if (right) frontsRight++;
+    else frontMisses.push(`${row.card.defFront} → ${defense ? defense.label : "not read"}`);
+    front = ` || front ${row.card.defFront}${right ? " ✓" : ` ✗ (${defense ? defense.label : "not read"})`}`;
+  }
+  console.log(`Play ${row.card.playNumber} (${row.clip}) ${row.card.formation} · ${row.card.playCall}: ${cells.join(" | ")}${front}`);
 }
 for (const clip of plan.unmatchedClips) console.log(`${clip}: no row in the key for this play`);
 console.log("");
 for (const line of report(summarize(all))) console.log(line);
+if (frontsKeyed) {
+  console.log(`Fronts right (Scout D): ${frontsRight} of ${frontsKeyed} (${Math.round((100 * frontsRight) / frontsKeyed)}%)`);
+  if (frontMisses.length) console.log(`  missed: ${frontMisses.slice(0, 8).join(", ")}`);
+}
 if (unkeyed) console.log(`Not scored: ${unkeyed} receivers whose route on the call has no route-tree name (a mesh drag, a rail)`);

@@ -18,6 +18,8 @@ import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { planBatch } from "../src/lib/batchMatcher";
 import { parseHudlCsvText } from "../src/lib/hudlParser";
+import { applyDefenseRead, frontsByFormation, readDefense, secondaryFromFilm, type DefenseRead } from "../src/lib/defenseRead";
+import type { HudlPlayCard } from "../src/lib/hudlParser";
 import { cardFromTracks, type TrackedPlayFile } from "../src/lib/trackedPlay";
 
 const args = process.argv.slice(2);
@@ -59,6 +61,15 @@ const sheetPath = flag("--sheet");
 const cards = [];
 const checks: string[] = [];
 const warnings: string[] = [];
+// Scout D: each play's defense at the snap, kept to roll up by formation.
+const defenses: { card: HudlPlayCard; read: DefenseRead }[] = [];
+const withDefense = (card: HudlPlayCard, file: TrackedPlayFile): HudlPlayCard => {
+  const read = readDefense(file);
+  if (!read) return card;
+  const next = applyDefenseRead(card, read);
+  defenses.push({ card: next, read });
+  return next;
+};
 
 if (sheetPath) {
   const parsed = parseHudlCsvText(readFileSync(sheetPath, "utf8"));
@@ -71,7 +82,7 @@ if (sheetPath) {
       continue;
     }
     const { card, unsure } = cardFromTracks(file, row.card, { source: basename(sheetPath) });
-    cards.push(card);
+    cards.push(withDefense(card, file));
     if (unsure.length) checks.push(`Play ${card.playNumber}: ${unsure.map((u) => u.letter).join(", ")}`);
   }
   for (const clip of plan.unmatchedClips) warnings.push(`${clip}: no row in the sheet for this play`);
@@ -83,13 +94,19 @@ if (sheetPath) {
       source: stem,
       playNumber: playNumberOf(stem, i + 1),
     });
-    cards.push(card);
+    cards.push(withDefense(card, plays.get(f)!));
     if (unsure.length) checks.push(`Play ${i + 1} (${stem}): ${unsure.map((u) => u.letter).join(", ")}`);
   });
 }
 
 const title = sheetPath ? basename(sheetPath) : basename(dir);
-const script = { fileName: title, films: [title], savedAt: new Date().toISOString(), cards, warnings };
+// How the defense lined its corners and safeties up against each formation: the Secondary table, from film.
+const dbAlignments = secondaryFromFilm(defenses.map(({ card, read }) => ({ formationKey: card.formationKey, read })));
+const script = { fileName: title, films: [title], savedAt: new Date().toISOString(), cards, warnings, dbAlignments };
 writeFileSync(out, JSON.stringify(script));
 console.log(`${cards.length} cards → ${out}`);
 if (checks.length) console.log(`Routes to check:\n  ${checks.join("\n  ")}`);
+if (defenses.length) {
+  console.log(`Defense read on ${defenses.filter((d) => d.read.plausible).length} of ${cards.length} plays (the rest marked "Check D"). By formation:`);
+  for (const line of frontsByFormation(defenses.map(({ card, read }) => ({ formation: card.formation, read })))) console.log(`  ${line}`);
+}
