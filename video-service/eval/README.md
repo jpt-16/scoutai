@@ -143,3 +143,10 @@ writes `detections/<clip>_detections.json` (it now also holds the RAW detector b
 jersey color, detector confidence, box), plus the tracker's own answer. It holds no film, only numbers, so it can be sent and
 the tracking rules tried again and again elsewhere. Combine it with `MODEL_CHECKPOINT=PekingU/rtdetr_v2_r50vd` for the better detector.
 
+
+## Running on a free GPU (Colab) instead of the Mac
+
+`eval/colab_tracks.ipynb` runs the same `eval.tracks` command on a Colab T4: upload `colab_tracks.ipynb` at
+colab.research.google.com, set the runtime to T4 GPU, and follow its cells (zip `video-service/` on the Mac, upload
+it, run, download `results.zip`). The tracker picks CUDA by itself (`devices.py`). The clips are game film, so use
+your own account and delete the runtime afterwards.
