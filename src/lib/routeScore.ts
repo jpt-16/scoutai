@@ -24,7 +24,9 @@ export function keyRoutes(card: HudlPlayCard): Map<string, KeyKind | null> {
   const d = buildDiagram(card, "team", "offense");
   const key = new Map<string, KeyKind | null>();
   d.routeLetters.forEach((letter, i) => {
-    if (letter && letter !== "Q") key.set(letter, (d.routeKinds[i] as RouteKind | null) ?? null);
+    // A go and a fade are the same route to this staff: the key says fade for both.
+    const kind = (d.routeKinds[i] as RouteKind | null) ?? null;
+    if (letter && letter !== "Q") key.set(letter, kind === "go" ? "fade" : kind);
   });
   // Everyone else with a job and no route blocks (a stalk, pass pro, a lead).
   for (const [letter, job] of Object.entries(d.jobs)) {

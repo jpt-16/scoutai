@@ -140,10 +140,10 @@ describe("readRoute", () => {
   }, 60_000);
 
   it("is sure of a clear route and unsure when the path stops before the route does", () => {
-    // Straight up the field for 22 yards: a go, and clearly.
+    // Straight up the field for 22 yards: a go, which this staff calls a fade, and clearly.
     const long = Array.from({ length: 56 }, (_, i) => ({ x: 12 + i * 0.002, y: i * 0.4 }));
     const clear = readRoute(long, 1);
-    expect(clear.kind).toBe("go");
+    expect(clear.kind).toBe("fade");
     expect(clear.confidence).toBeGreaterThan(0.2);
     expect(clear.ranked).toHaveLength(READABLE_ROUTES.length);
     // The same player seen for only 11 yards could still turn into a curl or a comeback: ask a coach.
@@ -152,9 +152,25 @@ describe("readRoute", () => {
     expect(short.confidence).toBeLessThan(clear.confidence);
   });
 
+  it("a go and a fade are the same route: a straight vertical and a drifting one both read fade", () => {
+    const r = rng(7);
+    let fade = 0;
+    for (let i = 0; i < 40; i++) {
+      const outside = r.next() < 0.5 ? 1 : -1;
+      const drift = i % 2 ? 0 : 0.08; // a go (straight) or a fade (drifting to the sideline)
+      const path = Array.from({ length: 50 }, (_, k) => ({
+        x: (12 + k * 0.4 * drift + r.normal() * 0.25) * outside,
+        y: k * 0.4 + r.normal() * 0.25,
+      }));
+      if (readRoute(path, outside).kind === "fade") fade += 1;
+    }
+    expect(fade / 40).toBeGreaterThan(0.9);
+    expect(READABLE_ROUTES).not.toContain("go");
+  });
+
   it("reads the routes off the tree as played too", () => {
     const r = rng(99);
-    const off: RouteKind[] = ["go", "hitch", "dig", "wheel", "flat", "swing", "whip", "bubble", "leak"];
+    const off: RouteKind[] = ["hitch", "dig", "wheel", "flat", "swing", "whip", "bubble", "leak"];
     let right = 0;
     let total = 0;
     const report: string[] = [];

@@ -21,10 +21,13 @@ export interface RoutePoint {
   y: number;
 }
 
-/** Every route the reader can name. */
+/**
+ * Every route the reader can name. There is no separate GO: a go and a fade are the same route to this staff (a vertical,
+ * with or without a drift to the sideline), so a straight path up the field reads as `fade`, the tree's 9.
+ */
 export const READABLE_ROUTES: RouteKind[] = [
   "slide", "speed-out", "slant", "out", "curl", "comeback", "shallow", "corner", "post", "fade",
-  "go", "hitch", "dig", "wheel", "flat", "swing", "whip", "bubble", "leak",
+  "hitch", "dig", "wheel", "flat", "swing", "whip", "bubble", "leak",
 ];
 
 export interface RouteRead {
@@ -150,7 +153,9 @@ export function readRoute(track: RoutePoint[], outside: 1 | -1 = 1): RouteRead {
     return { kind: "block", distance: 0, confidence: 1, ranked: [] };
   }
 
-  const ranked = READABLE_ROUTES.map((kind) => {
+  // Both vertical shapes are tried (a straight go and a drifting fade) and the better one is reported as fade.
+  const merged = new Map<RouteKind, number>();
+  const ranked0 = [...READABLE_ROUTES, "go" as RouteKind].map((kind) => {
     let best = Infinity;
     for (const sx of SCALES) {
       for (const sy of SCALES) {
@@ -193,7 +198,12 @@ export function readRoute(track: RoutePoint[], outside: 1 | -1 = 1): RouteRead {
       }
     }
     return { kind, distance: best };
-  }).sort((a, b) => a.distance - b.distance);
+  });
+  for (const { kind, distance } of ranked0) {
+    const name = kind === "go" ? "fade" : kind;
+    merged.set(name, Math.min(merged.get(name) ?? Infinity, distance));
+  }
+  const ranked = [...merged].map(([kind, distance]) => ({ kind, distance })).sort((a, b) => a.distance - b.distance);
 
   const [first, second] = ranked;
   if (first.distance > UNKNOWN_DISTANCE) return { kind: "unknown", distance: first.distance, confidence: 0, ranked };
