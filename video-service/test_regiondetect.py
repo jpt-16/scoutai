@@ -94,3 +94,15 @@ def test_detect_play_asks_the_detector_for_the_windows_of_every_frame_and_report
     assert len(boxes) == 3 and all(len(b) == 1 for b in boxes)
     assert stub.calls and stats["windows_first"] == stub.calls[0] and stats["windows_last"] == stub.calls[-1]
     assert stats["detect_seconds"] >= 0
+
+
+def test_a_man_cut_in_two_by_a_tile_is_not_counted_but_one_at_the_pictures_edge_is():
+    from eval.presnap import cut_by_tile
+
+    # A 600 x 400 tile in the middle of a 1470 x 816 picture: a box running into its bottom edge is half a man.
+    assert cut_by_tile(100, 200, 140, 399, 400, 200, 600, 400, 1470, 816)
+    assert cut_by_tile(0, 100, 40, 200, 400, 200, 600, 400, 1470, 816)
+    # Whole inside the tile: kept.
+    assert not cut_by_tile(100, 100, 140, 300, 400, 200, 600, 400, 1470, 816)
+    # The top-left tile's top and left are the picture's own edges: a man there is not cut by the tiling.
+    assert not cut_by_tile(0, 0, 40, 100, 0, 0, 600, 400, 1470, 816)

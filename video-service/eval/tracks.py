@@ -53,6 +53,9 @@ MAX_RADIUS_YARDS = 6.0
 # A man's speed is read over this many of his last matches (two frames' jitter says nothing about speed) and
 # can't be more than this many yards a frame (a sprint is about 0.35).
 VELOCITY_FRAMES = 6
+# Speed is only read once a man has this many matched points, and never projected more than this many frames on.
+VELOCITY_MIN_POINTS = 4
+MAX_AHEAD_FRAMES = 10
 MAX_YARDS_PER_FRAME = 0.45
 # Frames of a recording that stop changing (the Hudl player froze at the end of the clip) carry no play.
 FROZEN_FRAME_DIFF = 0.4
@@ -188,8 +191,12 @@ class Track:
     def predicted(self, ahead: int = 1) -> tuple[float, float]:
         """Where he'd be `ahead` frames after he was last seen if he kept going the way he was (a person
         doesn't turn on a dime). A man missed for a few frames has gone on that many frames further."""
-        if len(self.points) < 2:
+        # A velocity from a frame or two is mostly the detector's box jitter (a box a few pixels shorter moves a man's
+        # feet a yard): projected over a gap it sends the track off after someone else. Hold him still until he has
+        # been seen in enough frames for a real speed to show.
+        if len(self.points) < VELOCITY_MIN_POINTS:
             return self.last
+        ahead = min(ahead, MAX_AHEAD_FRAMES)
         (f0, x0, y0), (f1, x1, y1) = self.points[-1 - min(VELOCITY_FRAMES, len(self.points) - 1)], self.points[-1]
         gap = max(1, f1 - f0)
         vx, vy = (x1 - x0) / gap, (y1 - y0) / gap
