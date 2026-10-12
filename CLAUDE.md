@@ -851,6 +851,23 @@ the URL and seeks, else the whole video is downloaded once); nothing is uploaded
 the plan allows, fails the game with a reason the coach can act on. A video game's stages are uploading, **splitting**, reading,
 building, ready.
 
+**Two angles of one game** (a press-box view and an end-zone view): pick them together as videos. The splitter reports each video's
+snap times; `pairing.ts` finds the shift that lines two videos' snaps up (every pair of snaps votes for an offset, the strongest are
+scored, the best refined by the median residual: 2 s tolerance) and calls them one game when at least 3 plays and half the shorter
+video's plays match (`alignSnaps`: under 1% false matches across 300 pairs of unrelated drawn games; halves of a game share
+nothing, so stay apart). `groupVideos` makes groups (the earliest uploaded is the group's clock; groups come out in upload order, so
+pick halves in game order) and a play seen by two cameras is **one play with a clip per view**: `play_007.mp4`, `play_007_b.mp4`
+(`planGame`, `clipName`); a play only one camera caught is its own play. The job's `plan` (`plays`, `matched`, `views`) is shown on the
+card. Each view is read separately (a clip each, so the cost doubles); the worker's formation line is the first read view's. In
+`scripts/tracks-to-cards.ts` / `score-routes.ts` (`scripts/trackDir.ts`) the files of a play are merged by `viewMerge.ts`: both views are
+in the same field frame (yards from the ball), so the second is lined up with the first (the cameras put "the ball" a little
+differently: a median shift of up to 3 yd), men are paired by where they stood at the snap (1.5 yd, closest first, same team), each
+pair keeps the first track and is **extended** by the other's later points where they pick up where it ended and carry on like a
+runner (a receiver one camera lost behind a defender, found by the other), and men only the other view found are added up to a team
+of eleven, on the field only. If fewer than 6 men agree the second view is a different play (a wrong pairing): it is left out and the
+card says "A second angle was filmed but didn't line up". The defense read and the run read use the merged tracks too. **Drawn film
+only**: the real test is a game filmed from two places; the tolerances (2 s, 1.5 yd) were set on drawn tracks.
+
 **What film can and can't read.** From the film alone the cards get the formation (and its strength), run or pass, the routes,
 the run scheme and direction, the hash side (from where the ball is across the field), and the defense (front, shell, where the
 corners and safeties stood). **Down, distance, yard line and result are not on press-box film** (there is no scoreboard), so a
@@ -863,7 +880,7 @@ paint (it is unknown which yard line a calibrated field is), so a coach enters i
 `del` calls the sync route already uses, but this flow hasn't run against a live store), the container image build, the real
 detector inside it, and a GPU host. **Not built:** the in-browser four-click calibration for a clip that `needs_hand` (the screen
 lists them and says to send them to us), an email when a game is ready (the screen polls), billing per game, a screen to add a
-play the splitter missed or drop one it invented (the plan's timestamps are only in the video's plot), and scorebug OCR.
+play the splitter missed or drop one it invented (the plan's timestamps are only in the video's plot), choosing which angle is primary, and scorebug OCR.
 
 ## Shared film libraries and rate limiting
 

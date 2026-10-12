@@ -343,6 +343,11 @@ describe("the daily sweep", () => {
 });
 
 
+/** The clips a planned job holds (read straight from its record). */
+async function getJobClips(id: string, team: string) {
+  return (await storage.getJson<FilmJob>(paths.job(team, id)))!.clips;
+}
+
 describe("a whole game's video", () => {
   const GB = 1024 * 1024 * 1024;
   const halves = [{ name: "first_half.mp4", size: 2 * GB }, { name: "second_half.mp4", size: 3 * GB }];
@@ -483,6 +488,37 @@ describe("a whole game's video", () => {
     await storeResult(ctx, team, id, gz({ cards: [{}, {}] }));
     expect(await handleEvent(ctx, team, id, { type: "assembled", plays: 2 })).toBe("ready");
     expect(await getView(ctx, OWNER, id)).toMatchObject({ stage: "ready", plays: 2, kind: "video" });
+  });
+
+  it("recognizes two angles of one game: one play, a clip per view, one formation line a play for the cards", async () => {
+    const { id, team } = await started();
+    const press = Array.from({ length: 6 }, (_, i) => p(60 + i * 40, 63 + i * 40, 72 + i * 40));
+    const endZone = press.map((x) => ({ ...x, start: x.start - 25, snap: x.snap - 25 + 0.4, end: x.end - 25 }));
+    await handleEvent(ctx, team, id, splitEvent(0, press));
+    expect(await handleEvent(ctx, team, id, splitEvent(1, endZone))).toBe("planned");
+    const view = await getView(ctx, OWNER, id);
+    expect(view).toMatchObject({ stage: "reading", total: 12, plan: { plays: 6, matched: 6, views: 12, angleVideos: 1 } });
+
+    const shard = (dispatcher.sent[0] as { clips: { name: string; source: { start: number } }[] }).clips;
+    expect(shard.map((c) => c.name)).toEqual(["play_001.mp4", "play_001_b.mp4", "play_002.mp4", "play_002_b.mp4", "play_003.mp4", "play_003_b.mp4"]);
+    dispatcher.sent.length = 0;
+
+    // every view reports; the press box's formation read of play 2 failed, so the end zone's is the one used
+    const names = (await getJobClips(id, team)).map((c) => c.name);
+    expect(names).toHaveLength(12);
+    for (const [i, name] of names.entries()) {
+      const view2 = name.includes("_b");
+      const unreadable = name === "play_002.mp4";
+      await handleEvent(ctx, team, id, clipEvent(i, unreadable ? "needs_hand" : "done", {
+        name, formation: unreadable ? "" : view2 ? "pro" : "trips", strength: unreadable ? "" : "right",
+      }));
+    }
+    const assemble = dispatcher.sent.find((d) => d.type === "assemble") as { tracks: { name: string }[]; forms: Record<string, string>[] };
+    expect(assemble.tracks.map((t) => t.name)).toContain("play_001_b.mp4");
+    expect(assemble.tracks.map((t) => t.name)).not.toContain("play_002.mp4"); // that view wasn't read
+    expect(assemble.forms).toHaveLength(6); // a line a play, not a line a view
+    expect(assemble.forms[0]).toEqual({ "PLAY #": "1", "OFF FORM": "trips", "OFF STR": "right" }); // the first angle's
+    expect(assemble.forms[1]).toEqual({ "PLAY #": "2", "OFF FORM": "pro", "OFF STR": "right" }); // the second, when the first failed
   });
 
   it("serves a video to the worker by range, and only while the game is running", async () => {

@@ -186,7 +186,7 @@ export function FilmLibrary() {
           <p className="text-[15px] leading-relaxed text-muted-foreground">
             {mode === "clips"
               ? `Pick one game's clips, one per play (.mp4, .mov or .m4v, up to ${MAX_CLIP_BYTES / 1024 / 1024} MB each). `
-              : `Pick the whole game as one recording, or in halves (up to ${MAX_VIDEOS} .mp4, .mov or .m4v files, ${MAX_VIDEO_BYTES / 1024 / 1024 / 1024} GB each). We find every snap and cut the plays ourselves. It reads best from a recording that shows the field, with the offense lined up and still before each snap. `}
+              : `Pick the whole game as one recording, or in halves (up to ${MAX_VIDEOS} .mp4, .mov or .m4v files, ${MAX_VIDEO_BYTES / 1024 / 1024 / 1024} GB each). We find every snap and cut the plays ourselves. If you have more than one angle of the game (the press box and the end zone), pick them all together: we match the same play across them and read it from both. It reads best from a recording that shows the field, with the offense lined up and still before each snap. `}
             We read every play and build the scout cards. The film is deleted {CLIP_RETENTION_DAYS} days after you upload it; the
             cards stay.
           </p>
@@ -331,7 +331,7 @@ function GameCard({ job, opening, onOpen, onDelete }: { job: JobView; opening: b
           </span>
           <span className="text-sm text-muted-foreground">
             {job.kind === "video"
-              ? `${job.videos} ${job.videos === 1 ? "video" : "videos"}${job.total ? ` · ${job.total} plays found` : ""}`
+              ? `${job.videos} ${job.videos === 1 ? "video" : "videos"}${job.plan ? ` · ${job.plan.plays} plays found` : ""}`
               : `${job.total} ${job.total === 1 ? "clip" : "clips"}`}
           </span>
         </div>
@@ -346,6 +346,13 @@ function GameCard({ job, opening, onOpen, onDelete }: { job: JobView; opening: b
       {job.stage === "uploading" && (
         <p className="text-sm text-muted-foreground">The upload didn&apos;t finish. Delete this and upload the game again.</p>
       )}
+      {job.plan && job.plan.angleVideos > 0 && (
+        <p className="text-sm text-muted-foreground">
+          {job.plan.matched === job.plan.plays
+            ? `Every play was matched across the ${job.plan.angleVideos + 1} angles.`
+            : `${job.plan.matched} of ${job.plan.plays} plays were seen from more than one angle and matched; the rest were caught by one camera.`}
+        </p>
+      )}
       {job.stage === "splitting" && (
         <p className="flex items-center gap-2 text-sm text-muted-foreground" role="status">
           <Loader2 className="size-4 animate-spin" aria-hidden="true" /> Finding the plays in the video. This takes a few minutes.
@@ -356,7 +363,9 @@ function GameCard({ job, opening, onOpen, onDelete }: { job: JobView; opening: b
           <div className="h-2 overflow-hidden rounded-full bg-muted">
             <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${pct}%` }} />
           </div>
-          <p className="text-sm text-muted-foreground">Reading plays: {job.reported} of {job.total}</p>
+          <p className="text-sm text-muted-foreground">
+            {job.plan && job.plan.views > job.plan.plays ? `Reading camera views: ${job.reported} of ${job.total}` : `Reading plays: ${job.reported} of ${job.total}`}
+          </p>
         </div>
       )}
       {job.stage === "building" && (

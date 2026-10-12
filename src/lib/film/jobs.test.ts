@@ -11,7 +11,8 @@ import {
   checkNewVideoJob,
   cleanSplit,
   parseVideoPath,
-  planClips,
+  planGame,
+  clipName,
   cleanupFor,
   isValidClipName,
   isValidJobId,
@@ -287,19 +288,66 @@ describe("the plays the worker found", () => {
   it("numbers the plays across the videos in video order, whatever order the reports came in", () => {
     const second = cleanSplit(1, 3000, [play(5, 8, 17)])!;
     const first = cleanSplit(0, 3000, [play(30, 33, 42), play(90, 93, 102)])!;
-    const r = planClips([second, first], 150);
-    expect(r.ok && r.value.map((c) => [c.name, c.source])).toEqual([
-      ["play_001.mp4", { video: 0, start: 30, end: 42 }],
-      ["play_002.mp4", { video: 0, start: 90, end: 102 }],
-      ["play_003.mp4", { video: 1, start: 5, end: 17 }],
+    const r = planGame([second, first], 150);
+    expect(r.ok && r.value.clips.map((c) => [c.name, c.source, c.play, c.view])).toEqual([
+      ["play_001.mp4", { video: 0, start: 30, end: 42 }, 1, 0],
+      ["play_002.mp4", { video: 0, start: 90, end: 102 }, 2, 0],
+      ["play_003.mp4", { video: 1, start: 5, end: 17 }, 3, 0],
     ]);
-    expect(r.ok && r.value.map((c) => c.index)).toEqual([0, 1, 2]);
+    expect(r.ok && r.value.clips.map((c) => c.index)).toEqual([0, 1, 2]);
+    expect(r.ok && r.value.summary).toEqual({ plays: 3, matched: 0, views: 3, angleVideos: 0 });
   });
 
   it("fails clearly when there are no plays, or more than the plan allows", () => {
-    expect(planClips([cleanSplit(0, 100, [])!], 150)).toMatchObject({ ok: false, message: expect.stringMatching(/No plays were found/) });
+    expect(planGame([cleanSplit(0, 100, [])!], 150)).toMatchObject({ ok: false, message: expect.stringMatching(/No plays were found/) });
     const many = cleanSplit(0, 4000, Array.from({ length: 60 }, (_, i) => play(i * 20, i * 20 + 3, i * 20 + 12)))!;
-    expect(planClips([many], 50)).toMatchObject({ ok: false, message: expect.stringMatching(/60 plays, more than the 50/) });
-    expect(planClips([many], 60).ok).toBe(true);
+    expect(planGame([many], 50)).toMatchObject({ ok: false, message: expect.stringMatching(/60 plays, more than the 50/) });
+    expect(planGame([many], 60).ok).toBe(true);
+  });
+});
+
+describe("two angles of one game", () => {
+  const play = (start: number, snap: number, end: number) => ({ start, snap, end, score: 0.9 });
+  // 12 plays 40 s apart in the press box; the end zone camera started 25 s later and saw each snap a half second late
+  const press = cleanSplit(0, 3000, Array.from({ length: 12 }, (_, i) => play(60 + i * 40, 63 + i * 40, 72 + i * 40)))!;
+  const endZone = cleanSplit(1, 3000, Array.from({ length: 12 }, (_, i) => play(60 + i * 40 - 25, 63 + i * 40 - 25 + 0.5, 72 + i * 40 - 25)))!;
+
+  it("is one play with a clip per angle, the second named _b", () => {
+    expect(clipName(7, 0)).toBe("play_007.mp4");
+    expect(clipName(7, 1)).toBe("play_007_b.mp4");
+    const r = planGame([press, endZone], 150);
+    expect(r.ok && r.value.summary).toEqual({ plays: 12, matched: 12, views: 24, angleVideos: 1 });
+    const clips = r.ok ? r.value.clips : [];
+    expect(clips.slice(0, 4).map((c) => [c.name, c.play, c.view, c.source?.video])).toEqual([
+      ["play_001.mp4", 1, 0, 0],
+      ["play_001_b.mp4", 1, 1, 1],
+      ["play_002.mp4", 2, 0, 0],
+      ["play_002_b.mp4", 2, 1, 1],
+    ]);
+    // each view is cut from its own video's time of the same play
+    expect(clips[0].source).toMatchObject({ start: 60, end: 72 });
+    expect(clips[1].source).toMatchObject({ start: 35, end: 47 });
+    expect(clips.map((c) => c.index)).toEqual(clips.map((_, i) => i));
+  });
+
+  it("counts the limit in plays, not in views", () => {
+    expect(planGame([press, endZone], 12).ok).toBe(true);
+    expect(planGame([press, endZone], 11)).toMatchObject({ ok: false, message: /12 plays, more than the 11/ });
+  });
+
+  it("names the second angle's play the first when the first camera missed it", () => {
+    const missed = cleanSplit(0, 3000, press.plays.filter((_, i) => i !== 4).map((p) => ({ ...p })))!;
+    const r = planGame([missed, endZone], 150);
+    const clips = r.ok ? r.value.clips : [];
+    const five = clips.filter((c) => c.play === 5);
+    expect(five).toHaveLength(1);
+    expect(five[0]).toMatchObject({ name: "play_005.mp4", view: 0, source: { video: 1 } });
+    expect(r.ok && r.value.summary).toMatchObject({ plays: 12, matched: 11, views: 23 });
+  });
+
+  it("does not match halves of a game", () => {
+    const secondHalf = cleanSplit(1, 3000, Array.from({ length: 12 }, (_, i) => play(30 + i * 31, 33 + i * 31, 42 + i * 31)))!;
+    const r = planGame([press, secondHalf], 150);
+    expect(r.ok && r.value.summary).toEqual({ plays: 24, matched: 0, views: 24, angleVideos: 0 });
   });
 });

@@ -443,3 +443,28 @@ def test_the_server_accepts_a_split_dispatch_and_refuses_one_without_a_video(mon
     good = {"type": "split", "jobId": "j", "callbackUrl": "c", "token": "t", "video": {"index": 0, "name": "a.mp4", "url": "u"}}
     assert client.post("/jobs", json={k: v for k, v in good.items() if k != "video"}, headers=ok).status_code == 400
     assert client.post("/jobs", json=good, headers=ok).status_code == 202 and submitted == [good]
+
+
+@pytest.mark.skipif(not (ROOT / "node_modules").exists() or not shutil.which("npx"), reason="needs the app's node_modules")
+def test_two_angles_of_one_play_come_out_as_one_card(tmp_path):
+    """play_003 and play_003_b (the same play from a second camera) are read separately and built into one card."""
+    good, boxes = make_game_clip(tmp_path, sf.QUAD_A, 1)
+    http = Recorder({"u": good})
+    results = run_shard(
+        shard([
+            {"index": 0, "name": "play_003.mp4", "url": "u", "tracksPutUrl": "p0"},
+            {"index": 1, "name": "play_003_b.mp4", "url": "u", "tracksPutUrl": "p1"},
+        ]),
+        StandIn(boxes), http, threads=1, workdir=tmp_path / "w",
+    )
+    assert [r.status for r in results] == ["done", "done"]
+    dispatch = {
+        "type": "assemble", "jobId": "job12345", "callbackUrl": "cb", "token": "t",
+        "tracks": [{"name": "play_003.mp4", "url": "t0"}, {"name": "play_003_b.mp4", "url": "t1"}],
+        "forms": [{"PLAY #": "3", "OFF FORM": "trips", "OFF STR": "right"}],  # one line a play, not a line a view
+        "resultPutUrl": "g",
+    }
+    http2 = Recorder({"t0": results[0].tracks, "t1": results[1].tracks})
+    assert run_assemble(dispatch, http2, workdir=tmp_path / "a") == 1
+    game = json.loads(http2.puts["g"])
+    assert len(game["cards"]) == 1 and game["cards"][0]["formationKey"] == "trips"

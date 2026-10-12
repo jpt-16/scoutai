@@ -22,7 +22,7 @@ import {
   checkNewVideoJob,
   cleanSplit,
   parseVideoPath,
-  planClips,
+  planGame,
   isValidClipName,
   paths,
   parseClipPath,
@@ -388,12 +388,12 @@ async function tryPlan(ctx: FilmContext, team: string, job: FilmJob): Promise<"s
   if (reports.length < wanted) return "stored";
   if (!(await ctx.storage.putJson(paths.planned(team, job.id), { at: iso(ctx.now()) }, { exclusive: true }))) return "stored";
 
-  const plan = planClips(reports, job.maxPlays ?? 150);
+  const plan = planGame(reports, job.maxPlays ?? 150);
   if (!plan.ok) {
     await writeJob(ctx, team, job, { state: "failed", error: plan.message });
     return "failed";
   }
-  const planned = await writeJob(ctx, team, job, { clips: plan.value });
+  const planned = await writeJob(ctx, team, job, { clips: plan.value.clips, plan: plan.value.summary });
   try {
     await dispatchShards(ctx, team, planned);
   } catch (error) {
@@ -423,6 +423,12 @@ async function tryAssemble(ctx: FilmContext, team: string, job: FilmJob): Promis
   if (!(await ctx.storage.putJson(paths.assembling(team, id), { at: iso(ctx.now()) }, { exclusive: true }))) return "stored";
   const base = callbackBase(ctx, team, id);
   const done = statuses.filter((s) => s.status === "done").sort((a, b) => a.index - b.index);
+  // One formation line a play: from its first view that was read (the other angle's is checked against it by the card builder).
+  const formByPlay = new Map<string, ClipStatus>();
+  for (const s of done) {
+    const key = playNumber(s.name, s.index);
+    if (!formByPlay.has(key)) formByPlay.set(key, s);
+  }
   try {
     await ctx.dispatcher.send({
       type: "assemble",
@@ -430,7 +436,7 @@ async function tryAssemble(ctx: FilmContext, team: string, job: FilmJob): Promis
       callbackUrl: base,
       token: workerToken(ctx.secret, team, id),
       tracks: done.map((s) => ({ name: s.name, url: `${base}/tracks/${s.index}` })),
-      forms: done.map((s) => ({ "PLAY #": playNumber(s.name, s.index), "OFF FORM": s.formation, "OFF STR": s.strength })),
+      forms: [...formByPlay].map(([play, s]) => ({ "PLAY #": play, "OFF FORM": s.formation, "OFF STR": s.strength })),
       resultPutUrl: `${base}/result`,
     });
   } catch (error) {

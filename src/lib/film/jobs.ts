@@ -23,6 +23,7 @@
 
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import type { TierLimits } from "../usageLimits";
+import { groupVideos } from "./pairing";
 import { CLIP_RETENTION_DAYS, MAX_CLIP_BYTES, MAX_VIDEOS, MAX_VIDEO_BYTES, isValidClipName } from "./shared";
 
 export { CLIP_RETENTION_DAYS, MAX_CLIP_BYTES, MAX_VIDEOS, MAX_VIDEO_BYTES, isValidClipName } from "./shared";
@@ -44,6 +45,20 @@ export interface JobClip {
   size: number;
   /** A play found in a long video: where to cut it (seconds into video `video`). Absent for an uploaded clip. */
   source?: { video: number; start: number; end: number };
+  /** Which play of the game this is (1-based), and which view of it: 0 the first angle, 1 the second ("_b"), 2 the third. */
+  play?: number;
+  view?: number;
+}
+
+/** What the split found, kept on the job so the coach can see how the angles were matched. */
+export interface PlanSummary {
+  plays: number;
+  /** Plays seen from two or more angles. */
+  matched: number;
+  /** Clips to read (a matched play has one per angle). */
+  views: number;
+  /** Videos that turned out to be other angles of the same game. */
+  angleVideos: number;
 }
 
 /** A whole game's video the coach uploaded, for the worker to find the plays in. */
@@ -68,6 +83,8 @@ export interface FilmJob {
   maxPlays?: number;
   /** The plays: uploaded clips, or (for a video game) filled in once every video has been split. */
   clips: JobClip[];
+  /** For a video game: how the split went. */
+  plan?: PlanSummary;
   /** Cards in the finished game. */
   plays?: number;
   error?: string;
@@ -104,6 +121,8 @@ export interface JobView {
   /** "uploading", "splitting" (finding the plays in a video), "reading" (clips being read), "building" (all reported,
    * cards being made), "ready", "failed". */
   stage: "uploading" | "splitting" | "reading" | "building" | "ready" | "failed";
+  /** For a video game once split: the plays found and how many were seen from more than one angle. */
+  plan?: PlanSummary;
   /** "video" for a game uploaded as whole videos, and how many videos. */
   kind: JobKind;
   videos: number;
@@ -304,22 +323,44 @@ export function cleanSplit(index: unknown, duration: unknown, plays: unknown): S
   return { index: index as number, duration: length, plays: clean };
 }
 
-/** Every video's plays become one numbered list of clips (`play_001.mp4` … across the videos in order). */
-export function planClips(reports: SplitReport[], maxPlays: number): Checked<JobClip[]> {
+const VIEW_SUFFIX = ["", "_b", "_c", "_d"];
+
+/** `play_007.mp4` for a play's first view, `play_007_b.mp4` for its second: the reader and the card builder pair views by the name. */
+export function clipName(play: number, view: number): string {
+  return `play_${String(play).padStart(3, "0")}${VIEW_SUFFIX[view] ?? `_${view}`}.mp4`;
+}
+
+/**
+ * The split of every video becomes one numbered list of plays. Videos that turn out to be other angles of the same game (their
+ * snaps line up, see pairing.ts) are grouped, and a play seen from two places is one play with a clip per view; a play only one
+ * camera caught is a play with one view. Different parts of a game (halves) are kept apart and numbered in upload order.
+ */
+export function planGame(reports: SplitReport[], maxPlays: number): Checked<{ clips: JobClip[]; summary: PlanSummary }> {
+  const groups = groupVideos(reports.map((r) => ({ index: r.index, snaps: r.plays.map((p) => p.snap) })));
+  const byVideo = new Map(reports.map((r) => [r.index, r]));
+  // `GroupedPlay.views[].snap` indexes the video's snaps in sorted order; cleanSplit sorts plays by snap, so it is the same list.
   const clips: JobClip[] = [];
-  for (const r of [...reports].sort((a, b) => a.index - b.index)) {
-    for (const p of r.plays) {
-      const n = clips.length;
-      clips.push({ index: n, name: `play_${String(n + 1).padStart(3, "0")}.mp4`, size: 0, source: { video: r.index, start: p.start, end: p.end } });
+  let plays = 0;
+  let matched = 0;
+  for (const g of groups) {
+    for (const play of g.plays) {
+      plays++;
+      if (play.views.length > 1) matched++;
+      play.views.forEach((v, view) => {
+        const p = byVideo.get(v.video)!.plays[v.snap];
+        const n = clips.length;
+        clips.push({ index: n, name: clipName(plays, view), size: 0, source: { video: v.video, start: p.start, end: p.end }, play: plays, view });
+      });
     }
   }
-  if (clips.length === 0) {
+  if (plays === 0) {
     return { ok: false, message: "No plays were found in the video. Check that it shows the field, with the offense lined up before each snap." };
   }
-  if (clips.length > maxPlays) {
-    return { ok: false, message: `The video has ${clips.length} plays, more than the ${maxPlays} your plan allows in a game. Upload it in halves.` };
+  if (plays > maxPlays) {
+    return { ok: false, message: `The video has ${plays} plays, more than the ${maxPlays} your plan allows in a game. Upload it in halves.` };
   }
-  return { ok: true, value: clips };
+  const angleVideos = groups.reduce((sum, g) => sum + g.videos.length - 1, 0);
+  return { ok: true, value: { clips, summary: { plays, matched, views: clips.length, angleVideos } } };
 }
 
 /** Clips split into dispatches of `size`, in order. */
@@ -359,6 +400,7 @@ export function viewOf(job: FilmJob, statuses: ClipStatus[]): JobView {
     stage,
     kind: job.kind ?? "clips",
     videos: job.videos?.length ?? 0,
+    plan: job.plan,
     plays: job.plays,
     error: job.error,
     filmDeletedAt: job.clipsDeletedAt ?? null,
