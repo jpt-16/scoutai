@@ -20,6 +20,7 @@ import { planBatch } from "../src/lib/batchMatcher";
 import { parseHudlCsvText } from "../src/lib/hudlParser";
 import { applyDefenseRead, frontsByFormation, readDefense, secondaryFromFilm, type DefenseRead } from "../src/lib/defenseRead";
 import type { HudlPlayCard } from "../src/lib/hudlParser";
+import { applyRunRead, readRun } from "../src/lib/runRead";
 import { cardFromTracks, type TrackedPlayFile } from "../src/lib/trackedPlay";
 
 const args = process.argv.slice(2);
@@ -89,11 +90,15 @@ if (sheetPath) {
 } else {
   files.forEach((f, i) => {
     const stem = f.replace(/\.json$/, "");
-    const { card, unsure } = cardFromTracks(plays.get(f)!, null, {
+    // No sheet: a run read from the film names the call ("POWER RT"); a pass keeps the film's routes.
+    const run = readRun(plays.get(f)!);
+    const built = cardFromTracks(plays.get(f)!, null, {
       formation: formations.get(playNumberOf(stem, i + 1)) ?? "",
       source: stem,
       playNumber: playNumberOf(stem, i + 1),
     });
+    const card = run.kind === "run" ? applyRunRead({ ...built.card, playCall: "" }, run) : built.card;
+    const unsure = run.kind === "run" ? [] : built.unsure;
     cards.push(withDefense(card, plays.get(f)!));
     if (unsure.length) checks.push(`Play ${i + 1} (${stem}): ${unsure.map((u) => u.letter).join(", ")}`);
   });

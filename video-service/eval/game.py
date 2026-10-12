@@ -1,13 +1,18 @@
 """A whole game in one command: clips in, scout cards out.
 
-    python -m eval.game clips/ --sheet hudl.csv --out game.json
+    python -m eval.game clips/ --sheet hudl.csv --out game.json [--key corrected.csv]
 
 For every clip in the folder this (1) calibrates it with `eval.autocalib` unless a `.json`
 is already beside it (a hand calibration from `eval.calibrate` always wins), (2) reads the
 formation before the snap (`eval.presnap`), (3) follows every player through the play
 (`eval.tracks`), and then hands the tracks to `scripts/tracks-to-cards.ts`, which names each
-route, lines the plays up with the Hudl sheet's rows and writes `game.json`. Open that on the
-app's landing page.
+route, reads each run (scheme and direction) and each defense (front, every defender's spot, and the
+secondary per formation), lines the plays up with the Hudl sheet's rows and writes `game.json`. Open that
+on the app's landing page. With `--key` (the coach's corrected breakdown) it then scores the reads:
+routes, run or pass, run schemes, fronts (`scripts/score-routes.ts`).
+
+Detection runs on the field only, at one man size (`--region`, see `eval.regiondetect`); `--tiles` is the
+old whole-frame grid, used with `--no-region`.
 
 Clips it can't calibrate are listed at the end and left out of the cards (the sheet still
 draws their rows); calibrate those by hand with `python -m eval.calibrate <clip>` and run
@@ -37,8 +42,11 @@ def main() -> None:
     ap.add_argument("--sheet", type=Path, help="Hudl's breakdown (CSV) for this game")
     ap.add_argument("--out", type=Path, default=Path("game.json"))
     ap.add_argument("--work", type=Path, default=Path("game-work"), help="where tracks and debug pictures go")
-    ap.add_argument("--seconds", type=float, default=6.0, help="how long after the snap to follow")
-    ap.add_argument("--tiles", type=int, default=2)
+    ap.add_argument("--seconds", type=float, default=8.0, help="how long after the snap to follow")
+    ap.add_argument("--tiles", type=int, default=3)
+    ap.add_argument("--no-region", dest="region", action="store_false", help="tile the whole frame instead of the field")
+    ap.add_argument("--key", type=Path, help="the coach's corrected breakdown (CSV): score the reads against it")
+    ap.add_argument("--detections", action="store_true", help="also save every detection (work/detections), to tune without the film")
     args = ap.parse_args()
 
     clips = sorted(p for p in args.clips.iterdir() if p.suffix.lower() in VIDEOS)
@@ -63,9 +71,18 @@ def main() -> None:
         formation = read_clip(clip, detector, args.tiles, debug_dir)["formation"]
         forms.append({"PLAY #": play_number(clip, i), "OFF FORM": formation.key, "OFF STR": formation.strength or ""})
         out = tracks_dir / f"{clip.stem}.json"
+        timing = ""
         if not out.exists():
-            out.write_text(json.dumps(track_clip(clip, detector, args.seconds, args.tiles)))
-        print(f"[{i}/{len(clips)}] {clip.name}: {formation.key} {formation.strength or ''}")
+            debug: dict | None = {} if args.detections else None
+            result = track_clip(clip, detector, args.seconds, args.tiles, debug, args.region)
+            out.write_text(json.dumps(result))
+            if debug is not None:
+                from .trackdebug import write_detections
+
+                write_detections(debug, args.work / "detections", clip.stem)
+            t = result.get("timing", {})
+            timing = f"  ({sum(v for k, v in t.items() if k.endswith('_seconds')):.0f} s)"
+        print(f"[{i}/{len(clips)}] {clip.name}: {formation.key} {formation.strength or ''}{timing}")
 
     formations = args.work / "ours.csv"
     with formations.open("w", newline="") as fh:
@@ -73,11 +90,14 @@ def main() -> None:
         writer.writeheader()
         writer.writerows(forms)
 
-    cmd = ["npx", "jiti", "scripts/tracks-to-cards.ts", str(tracks_dir.resolve()), "--formations", str(formations.resolve()),
+    cmd = ["npx", "--yes", "jiti", "scripts/tracks-to-cards.ts", str(tracks_dir.resolve()), "--formations", str(formations.resolve()),
            "--out", str(args.out.resolve())]
     if args.sheet:
         cmd += ["--sheet", str(args.sheet.resolve())]
     subprocess.run(cmd, cwd=REPO, check=True)
+    if args.key:
+        print("\nScore against the key:")
+        subprocess.run(["npx", "--yes", "jiti", "scripts/score-routes.ts", str(tracks_dir.resolve()), "--key", str(args.key.resolve())], cwd=REPO, check=True)
     if needs_hand:
         print(f"\n{len(needs_hand)} clips need `python -m eval.calibrate <clip>`, then run this again:")
         for name, reason in needs_hand:

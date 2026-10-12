@@ -119,6 +119,9 @@ def _paint_image(frame_bgr: np.ndarray) -> np.ndarray:
 # frame to frame. Smoothing the camera over about a tenth of a second removes that jitter, which would
 # otherwise look like every player trembling a quarter of a yard.
 CAMERA_SMOOTHING_FRAMES = 3.0
+# The paint is lined up on the half-size paint picture shrunk this many more times (see camera_to_snap_paint).
+PAINT_PYRAMID = 1
+PAINT_ITERATIONS = 40
 
 
 def smooth_cameras(matrices: list[np.ndarray], size: tuple[int, int], sigma: float = CAMERA_SMOOTHING_FRAMES) -> list[np.ndarray]:
@@ -146,17 +149,26 @@ def camera_to_snap_paint(frames_bgr: list[np.ndarray]) -> list[np.ndarray] | Non
     frame straight to the snap frame, not frame to frame, means errors don't add up over the play: on a
     real clip the camera pans 400 yards-worth of pixels in five seconds, and a chain of frame-to-frame
     matches drifted by a quarter of that, this by a fraction. None if there is too little paint to hold
-    onto, and the caller falls back to `camera_to_snap`."""
+    onto, and the caller falls back to `camera_to_snap`.
+
+    The paint is lined up at a quarter of the frame's size (`PAINT_PYRAMID` halvings of the half-size paint
+    picture): on a drawn panning, zooming clip that is 3.6x faster than half size (1.4 s against 4.9 s for
+    91 frames) for 0.6 px more error (9.6 against 9.0), and a refinement at half size cost as much as not
+    shrinking at all. This step ran 50-75 s a clip on Colab's CPU, the slowest part of a clip."""
     paint = [_paint_image(f) for f in frames_bgr]
     if not paint or float(paint[0].sum()) < MIN_PAINT:
         return None
-    down, up = np.diag([0.5, 0.5, 1.0]), np.diag([2.0, 2.0, 1.0])
+    small = paint
+    for _ in range(PAINT_PYRAMID):
+        small = [cv2.pyrDown(p) for p in small]
+    k = 2.0 * 2.0**PAINT_PYRAMID  # frame pixels per small-picture pixel
+    down, up = np.diag([1 / k, 1 / k, 1.0]), np.diag([k, k, 1.0])
     out = [np.eye(3)]
     h = np.eye(3, dtype=np.float32)
-    criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 60, 1e-5)
-    for p in paint[1:]:
+    criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, PAINT_ITERATIONS, 1e-5)
+    for p in small[1:]:
         try:
-            _, h = cv2.findTransformECC(paint[0], p, h.copy(), cv2.MOTION_HOMOGRAPHY, criteria, None, 5)
+            _, h = cv2.findTransformECC(small[0], p, h.copy(), cv2.MOTION_HOMOGRAPHY, criteria, None, 5)
         except cv2.error:
             pass  # no fit on this frame (a blur): hold the camera where it was
         out.append(up @ np.linalg.inv(h) @ down)

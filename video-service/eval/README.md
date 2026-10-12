@@ -171,3 +171,16 @@ row's call into a route per receiver as the answer key (exactly as the card draw
 (`Z fade ✓ | Y speed-out ✗ (slide 0.09) | ...`) and the totals: routes right, how many the analyzer committed to
 (drawn without a "check" note) and how many of those were right, blocking receivers read as blocking, and the most
 common mistakes. Run it after every change; the goal is 90%+ of routes right.
+
+## A whole game in one run (Colab)
+
+`eval/colab_game.ipynb` runs `python -m eval.game` on a Colab T4: clips in, `game.json` out, and with the coach's
+corrected breakdown, the score. Put the clips in `video-service/clips/` and the sheets (`hudl.csv`, `corrected.csv`) in
+`video-service/`, zip the **whole project** (the notebook's first cell has the command; the cards and the score are the
+app's own TypeScript, so Node runs there too), upload, Run all, download `game.json` and `results.zip`.
+
+    python -m eval.game clips/ --sheet hudl.csv --key corrected.csv --out game.json --detections
+
+calibrates each clip (a hand `.json` wins), reads the formation, tracks with `--region`, then
+`scripts/tracks-to-cards.ts` reads routes, runs (`src/lib/runRead.ts`) and the defense (`src/lib/defenseRead.ts`) and
+`scripts/score-routes.ts` prints routes right, run or pass right, run schemes and direction right, and fronts right.
