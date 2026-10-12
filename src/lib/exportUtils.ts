@@ -18,12 +18,16 @@ export interface CardView<C> {
  * The cards of a view as pages. With `pair`, every play gives two cards from the one read, its Scout O card then its
  * Scout D card (so they sit side by side on a 2-up sheet and stay together in an export); otherwise one card each.
  */
-export function cardViews<C>(cards: C[], unit: "offense" | "defense", pair = false): CardView<C>[] {
+export function cardViews<C extends { scoutSide?: "offense" | "defense" }>(
+  cards: C[],
+  unit: "offense" | "defense",
+  pair = false,
+): CardView<C>[] {
+  // A play of the scouted team has only its own side's card: on offense its Scout O, on defense its Scout D.
   return pair
-    ? cards.flatMap((card) => [
-        { card, unit: "offense" as const },
-        { card, unit: "defense" as const },
-      ])
+    ? cards.flatMap((card) =>
+        (["offense", "defense"] as const).filter((lens) => !card.scoutSide || card.scoutSide === lens).map((lens) => ({ card, unit: lens })),
+      )
     : cards.map((card) => ({ card, unit }));
 }
 

@@ -73,6 +73,8 @@ MIN_MATCHES = 25
 # Which tracker follows people: "greedy" (`follow`, frame to frame) or "tracklets" (`eval.tracklets`: clean pieces
 # joined up, teams kept apart by their jerseys). Set per run with --tracker, or for the worker with TRACKER.
 TRACKER = os.environ.get("TRACKER", "greedy")
+# The jersey color of the team being scouted ("red"): each clip then says which side of the ball that team is on (`eval.scoutteam`).
+SCOUT_COLOR = os.environ.get("SCOUT_COLOR", "")
 
 
 def _mask_without(boxes: list[Box], shape: tuple[int, int]) -> np.ndarray:
@@ -385,6 +387,7 @@ def track_play(
     debug: dict | None = None,
     to_snap: list[np.ndarray] | None = None,
     tracker: str | None = None,
+    scout_color: str | None = None,
 ) -> dict:
     """The tracks for one play. `boxes[i]` are the people found in frame `i`; frame `calibration['frame']` is the snap.
     `tracker`: "greedy" or "tracklets" (default `TRACKER`)."""
@@ -424,8 +427,17 @@ def track_play(
         labels = team_of(frames_bgr[snap], kept_boxes[0], per_frame[0])
     if debug is not None:  # what a picture of the tracking needs
         debug.update(frames=frames_bgr[snap:], boxes=kept_boxes, tracks=tracks, labels=labels, fps=fps, to_snap=to_snap, per_frame=per_frame, colors=colors, raw_boxes=boxes[snap:], calibration=calibration, ball=ball, direction=direction)
+    scout = None
+    color = (scout_color if scout_color is not None else SCOUT_COLOR).strip().lower()
+    if color:
+        from .scoutteam import scout_side
+
+        offense_boxes = [b for b, lab in zip(kept_boxes[0], labels) if lab == "offense"]
+        defense_boxes = [b for b, lab in zip(kept_boxes[0], labels) if lab == "defense"]
+        scout = {"color": color, "side": scout_side(frames_bgr[snap], offense_boxes, defense_boxes, color)}
     return {
         "fps": fps,
+        **({"scout": scout} if scout else {}),
         "timing": {**timing, "track_seconds": round(time.perf_counter() - began, 2)},
         "tracks": [
             {
@@ -508,6 +520,7 @@ def track_clip(
     debug: dict | None = None,
     region: bool = False,
     tracker: str | None = None,
+    scout_color: str | None = None,
 ) -> dict:
     """Follows everyone through one clip, from the calibration file beside it.
 
@@ -550,7 +563,7 @@ def track_clip(
     frames, boxes = frames[:end], boxes[:end]
     if to_snap is not None:
         to_snap = to_snap[:end]
-    result = track_play(frames, boxes, calibration, team_by_jersey, fps, debug, to_snap=to_snap, tracker=tracker)
+    result = track_play(frames, boxes, calibration, team_by_jersey, fps, debug, to_snap=to_snap, tracker=tracker, scout_color=scout_color)
     result["timing"] = {k: round(v, 2) for k, v in {**timing, **result["timing"]}.items()}
     result["timing"]["frames"] = len(frames)
     return result
@@ -564,6 +577,7 @@ def main() -> None:
     ap.add_argument("--tiles", type=int, default=2)
     ap.add_argument("--region", action="store_true", help="hold the camera first, then detect only on the field, with a man the same size to the model all play (see eval.regiondetect); --tiles is then unused")
     ap.add_argument("--tracker", choices=["greedy", "tracklets"], default=None, help="who follows people: greedy (frame to frame) or tracklets (eval.tracklets); default TRACKER or greedy")
+    ap.add_argument("--scout-color", default=None, help="the jersey color of the team being scouted (red, blue, gold...): each play then says which side of the ball it is on; default SCOUT_COLOR")
     ap.add_argument("--debug", type=Path, default=None, help="also write pictures of the tracking here (see eval.trackdebug)")
     ap.add_argument("--detections", type=Path, default=None, help="also write everyone the detector found in every frame here, so the tracking can be tuned without the film")
     args = ap.parse_args()
@@ -576,7 +590,7 @@ def main() -> None:
         if not clip.with_suffix(".json").exists():
             continue
         debug: dict | None = {} if (args.debug or args.detections) else None
-        result = track_clip(clip, detector, args.seconds, args.tiles, debug, args.region, args.tracker)
+        result = track_clip(clip, detector, args.seconds, args.tiles, debug, args.region, args.tracker, args.scout_color)
         (args.out / f"{clip.stem}.json").write_text(json.dumps(result))
         n_off = sum(t["team"] == "offense" for t in result["tracks"])
         print(f"{clip.name}: {len(result['tracks'])} people followed, {n_off} offense")

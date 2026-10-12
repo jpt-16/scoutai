@@ -66,7 +66,9 @@ const checks: string[] = [];
 const warnings: string[] = [];
 // Scout D: each play's defense at the snap, kept to roll up by formation.
 const defenses: { card: HudlPlayCard; read: DefenseRead }[] = [];
-const withDefense = (card: HudlPlayCard, file: TrackedPlayFile): HudlPlayCard => {
+const withDefense = (plain: HudlPlayCard, file: TrackedPlayFile): HudlPlayCard => {
+  // Which side of the ball the scouted team ("the red team") was on in this clip, when the tracker was told its color.
+  const card: HudlPlayCard = file.scout?.side ? { ...plain, scoutSide: file.scout.side } : plain;
   const read = readDefense(file);
   // The blitz, then the coverage: what the backers and DBs did after the snap. This staff writes the blitz in the COVERAGE
   // column ("6 - DOUBLE FIRE"), so a blitz read goes there first; each is written only where the sheet left it blank.

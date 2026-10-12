@@ -43,9 +43,18 @@ describe("names", () => {
 
 describe("one play, two cards (Scout O and Scout D from the same read)", () => {
   it("lists each play's offense card then its defense card, or one card each", () => {
-    const plays = [{ n: 1 }, { n: 2 }];
+    const plays: { n: number; scoutSide?: "offense" | "defense" }[] = [{ n: 1 }, { n: 2 }];
     expect(cardViews(plays, "defense").map((v) => v.unit)).toEqual(["defense", "defense"]);
     expect(cardViews(plays, "offense", true).map((v) => `${v.card.n}${v.unit[0]}`)).toEqual(["1o", "1d", "2o", "2d"]);
+  });
+
+  it("gives a play of the scouted team only the card for the side it played", () => {
+    const plays: { n: number; scoutSide?: "offense" | "defense" }[] = [
+      { n: 1, scoutSide: "offense" },
+      { n: 2, scoutSide: "defense" },
+      { n: 3 },
+    ];
+    expect(cardViews(plays, "offense", true).map((v) => `${v.card.n}${v.unit[0]}`)).toEqual(["1o", "2d", "3o", "3d"]);
   });
 
   it("names the files for both lenses", () => {

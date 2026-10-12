@@ -363,8 +363,10 @@ export function lookLabel(look: Pick<ScoutLook, "front" | "coverage">): string {
 const odk = (c: HudlPlayCard) => (c.raw?.ODK ?? "").trim().toUpperCase();
 
 export function opponentLooks(cards: HudlPlayCard[]): ScoutLook[] {
-  const defensive = cards.filter((c) => odk(c) === "D");
-  const pool = (defensive.length ? defensive : cards).filter((c) => c.defFront.trim() || c.coverage.trim());
+  // Film of the scouted team says which plays it was on defense in (the rest show the other team's front).
+  const filmed = cards.some((c) => c.scoutSide);
+  const defensive = filmed ? cards.filter((c) => c.scoutSide === "defense") : cards.filter((c) => odk(c) === "D");
+  const pool = (defensive.length || filmed ? defensive : cards).filter((c) => c.defFront.trim() || c.coverage.trim());
   const looks = new Map<string, ScoutLook>();
   for (const c of pool) {
     const key = lookKey(c.defFront, c.coverage);

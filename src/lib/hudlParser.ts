@@ -117,6 +117,12 @@ export interface HudlPlayCard {
    */
   motionFrom?: Record<string, { x: number; y: number }>;
   /**
+   * Film: which side of the ball the team being scouted ("the red team") played in this clip. Its offense gives the Scout O
+   * cards and its defense the Scout D cards, so a clip where it had the ball is no Scout D card (that defense is the other team's).
+   * Unset for a play whose film didn't say (and for every sheet row).
+   */
+  scoutSide?: "offense" | "defense";
+  /**
    * Scout defense: this play's safety depth and how the slots are played
    * (src/lib/defensiveAligner.ts), set from the Scout D toolbar or the AI card.
    */

@@ -335,6 +335,15 @@ Free-text tags are classified by keyword (`classifyFormation`, `classifyFront`,
   man to move, so a man in motion doesn't move it. `DetectedPlayer.motionFrom` → `detectionMotions` → the letter's spot, kept with
   `offenseSpots` (dropped with them by **Use standard spots** or a new formation). Motion shorter than about 3 yards isn't drawn.
   Not on the sheet: no Hudl column carries it. Drawn tracks only.
+- **The team being scouted** (`card.scoutSide`, `eval/scoutteam.py`): the scout cards are for one team, "the red team" (the opponent
+  whose film it is). Film shows both teams, so the tracker is told its **jersey color** (`--scout-color red` on `eval.tracks` /
+  `eval.game`, `SCOUT_COLOR` for the worker, `scoutColor` in a shard's options) and writes, per play, `scout: {color, side}`: the group
+  behind the ball wearing the color (the median share of torsos in that hue range, `COLORS` in HSV) means the team had the ball. Real
+  pixels on the new recordings: red offense men 0.19-0.53 red, the gold defense 0. `tracks-to-cards` puts it on the card as
+  `scoutSide`, and `inPeriod` then lists a play of the team as **Scout O only if it was on offense, Scout D only if it was on defense**
+  (the other side of that film is the other team); **Both** and Print / export give such a play only its own side's card
+  (`cardViews`); the practice looks (`opponentLooks`) come only from the plays it was on defense. No color given, or the groups wear
+  it about equally (`MIN_GAP`): unset, everything behaves as before. A per-game color field on `/film` isn't built (set it in the worker's environment).
 - **7v7** drops the linemen on both sides. `inPeriod` decides which plays each period lists:
   - Scout O 7v7: every pass/RPO/PA from team, plus untagged plays as formation reps (the card
     says "no routes tagged").

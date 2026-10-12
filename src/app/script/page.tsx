@@ -254,8 +254,13 @@ function ScriptApp({ demoMode = false }: { demoMode?: boolean }) {
     () =>
       practicePeriod
         ? (periodCards[periodIndex] ?? [])
-        : cards.filter((c) => inPeriod(c, mode, unit) && (film === "all" || c.source === film)),
-    [cards, mode, unit, film, practicePeriod, periodCards, periodIndex],
+        : cards.filter(
+            (c) =>
+              // Both lenses: a play shows up if either lens lists it.
+              (pair ? inPeriod(c, mode, "offense") || inPeriod(c, mode, "defense") : inPeriod(c, mode, unit)) &&
+              (film === "all" || c.source === film),
+          ),
+    [cards, mode, unit, pair, film, practicePeriod, periodCards, periodIndex],
   );
   const dbAlignments = script?.dbAlignments;
   const filtered = useMemo(() => {
@@ -1122,7 +1127,10 @@ function ScriptApp({ demoMode = false }: { demoMode?: boolean }) {
               {current && pair ? (
                 // One read of the play, two cards: what the offense ran, and what the defense did.
                 <div className="flex w-full items-center justify-center gap-3">
-                  {(["offense", "defense"] as const).map((lens) => (
+                  {(["offense", "defense"] as const)
+                    // Film of the scouted team: a play it ran has only the offense's card, a play it defended only the defense's.
+                    .filter((lens) => !current.scoutSide || current.scoutSide === lens)
+                    .map((lens) => (
                     <div
                       key={lens}
                       style={{ width: `min(calc(50cqw - 6px), calc(100cqh * ${SCOUT_CARD_ASPECT}))` }}

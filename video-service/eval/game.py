@@ -43,6 +43,7 @@ def main() -> None:
     ap.add_argument("--tiles", type=int, default=3)
     ap.add_argument("--no-region", dest="region", action="store_false", help="tile the whole frame instead of the field")
     ap.add_argument("--key", type=Path, help="the coach's corrected breakdown (CSV): score the reads against it")
+    ap.add_argument("--scout-color", default=None, help="the jersey color of the team being scouted (red, gold, blue...): each play says which side of the ball it is on, so only its offense makes Scout O cards and only its defense Scout D cards")
     ap.add_argument("--detections", action="store_true", help="also save every detection (work/detections), to tune without the film")
     args = ap.parse_args()
 
@@ -60,7 +61,7 @@ def main() -> None:
     for i, clip in enumerate(clips, start=1):
         result = process_clip(
             clip, detector, tracks_dir, debug_dir,
-            seconds=args.seconds, tiles=args.tiles, region=args.region, detections_dir=detections,
+            seconds=args.seconds, tiles=args.tiles, region=args.region, detections_dir=detections, scout_color=args.scout_color,
         )
         if result.status == NEEDS_HAND:
             needs_hand.append((clip.name, result.reason))

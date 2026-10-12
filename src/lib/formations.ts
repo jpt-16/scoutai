@@ -580,10 +580,13 @@ export type Period = "all" | "7v7" | "team";
  *   reps; Scout D lines up to any formation, so it gets every look too.
  */
 export function inPeriod(
-  card: Pick<HudlPlayCard, "playCall" | "concept" | "formation" | "defFront" | "routeOverrides">,
+  card: Pick<HudlPlayCard, "playCall" | "concept" | "formation" | "defFront" | "routeOverrides"> &
+    Partial<Pick<HudlPlayCard, "scoutSide">>,
   period: Period,
   unit: ScoutUnit,
 ): boolean {
+  // Film of the team being scouted: its offense is the Scout O, its defense the Scout D (the other side is the other team).
+  if (card.scoutSide && card.scoutSide !== unit) return false;
   if (period === "all") return true;
   if (unit === "defense") return Boolean(card.formation || card.defFront);
   if (period === "7v7") return isPassPlay(card) || playKind(card) === "none";

@@ -177,6 +177,7 @@ def run_shard(dispatch: dict, detector, http: Http, *, threads: int | None = Non
     seconds = float(options.get("seconds", 8.0))
     tiles = int(options.get("tiles", 3))
     region = bool(options.get("region", True))
+    scout_color = str(options.get("scoutColor") or "") or None  # the team being scouted, by jersey color ("red")
     callback, token = dispatch["callbackUrl"], dispatch["token"]
     shared = SharedDetector(detector)
     threads = threads or int(os.environ.get("WORKER_THREADS", "0")) or min(4, os.cpu_count() or 1)
@@ -200,7 +201,7 @@ def run_shard(dispatch: dict, detector, http: Http, *, threads: int | None = Non
                     raise WorkerError("nothing could be cut from the video at that time")
             else:
                 http.download(entry["url"], clip, token)
-            result = process_clip(clip, shared, tracks_dir, debug_dir, seconds=seconds, tiles=tiles, region=region)
+            result = process_clip(clip, shared, tracks_dir, debug_dir, seconds=seconds, tiles=tiles, region=region, scout_color=scout_color)
             if result.status == DONE and result.tracks is not None:
                 http.put(entry["tracksPutUrl"], result.tracks, token)
         except Exception as error:  # a bad name, a cut or download or upload that never worked: this clip failed, the rest go on

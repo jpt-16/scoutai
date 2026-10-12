@@ -37,6 +37,8 @@ export interface TrackedPlayer {
 
 export interface TrackedPlayFile {
   fps?: number;
+  /** The team being scouted (its jersey color) and which side of the ball it was on in this play (`eval/scoutteam.py`). */
+  scout?: { color: string; side: "offense" | "defense" | null };
   tracks: TrackedPlayer[];
 }
 

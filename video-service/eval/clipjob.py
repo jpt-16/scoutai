@@ -60,6 +60,7 @@ def process_clip(
     tiles: int = 3,
     region: bool = True,
     detections_dir: Path | None = None,
+    scout_color: str | None = None,
 ) -> ClipResult:
     """Calibrate (unless a `.json` is already beside the clip: a hand calibration always wins), read the
     formation, and write `tracks_dir/<stem>.json` (unless it is already there)."""
@@ -76,7 +77,7 @@ def process_clip(
         timing: dict = {}
         if not out.exists():
             debug: dict | None = {} if detections_dir is not None else None
-            tracked = track_clip(clip, detector, seconds, tiles, debug, region)
+            tracked = track_clip(clip, detector, seconds, tiles, debug, region, scout_color=scout_color)
             out.write_text(json.dumps(tracked))
             timing = tracked.get("timing", {})
             if debug is not None:
