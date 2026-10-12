@@ -2,7 +2,7 @@
 
     FILM_WORKER_SECRET=...  uvicorn eval.worker_server:app --host 0.0.0.0 --port 8080
 
-    POST /jobs     a shard or assemble dispatch (see eval.worker), `Authorization: Bearer <secret>`
+    POST /jobs     a shard, split or assemble dispatch (see eval.worker), `Authorization: Bearer <secret>`
     GET  /health   {"ok": true, "device": "cuda"}   (no auth: it says nothing about any game)
 
 The work happens after the answer, on a few background threads, so the host must keep running
@@ -18,7 +18,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from fastapi import FastAPI, Header, HTTPException, Request
 
-from .worker import Http, WorkerError, check_secret, run_assemble, run_shard
+from .worker import Http, WorkerError, check_secret, run_assemble, run_shard, run_split
 
 app = FastAPI(title="ScoutCard film worker")
 
@@ -43,6 +43,8 @@ def _run(dispatch: dict) -> None:
     try:
         if dispatch["type"] == "shard":
             run_shard(dispatch, get_detector(), http)
+        elif dispatch["type"] == "split":
+            run_split(dispatch, http)  # motion only: no detector, no GPU
         else:
             run_assemble(dispatch, http)
     except Exception as error:  # reported to the app by the runner where it can be; logged here either way
@@ -62,11 +64,13 @@ async def submit(request: Request, authorization: str | None = Header(default=No
         dispatch = await request.json()
     except ValueError:
         raise HTTPException(status_code=400, detail="not JSON")
-    if not isinstance(dispatch, dict) or dispatch.get("type") not in ("shard", "assemble"):
-        raise HTTPException(status_code=400, detail="type must be shard or assemble")
+    if not isinstance(dispatch, dict) or dispatch.get("type") not in ("shard", "assemble", "split"):
+        raise HTTPException(status_code=400, detail="type must be shard, assemble or split")
     try:  # refuse a malformed job now, not minutes later
         if dispatch["type"] == "shard":
             required = ("jobId", "callbackUrl", "token", "clips")
+        elif dispatch["type"] == "split":
+            required = ("jobId", "callbackUrl", "token", "video")
         else:
             required = ("jobId", "callbackUrl", "token", "tracks", "forms", "resultPutUrl")
         missing = [k for k in required if k not in dispatch]

@@ -4,8 +4,14 @@ import {
   ABANDONED_UPLOAD_DAYS,
   CLIP_RETENTION_DAYS,
   MAX_CLIP_BYTES,
+  MAX_VIDEOS,
+  MAX_VIDEO_BYTES,
   STUCK_JOB_HOURS,
   checkNewJob,
+  checkNewVideoJob,
+  cleanSplit,
+  parseVideoPath,
+  planClips,
   cleanupFor,
   isValidClipName,
   isValidJobId,
@@ -205,5 +211,95 @@ describe("retention", () => {
     const old = new Date(NOW - (STUCK_JOB_HOURS + 1) * HOUR).toISOString();
     expect(cleanupFor(job({ state: "processing", updatedAt: old }), NOW)).toBe("mark-stuck");
     expect(cleanupFor(job({ state: "processing" }), NOW)).toBe("keep");
+  });
+});
+
+
+describe("a whole game's video", () => {
+  const video = (name: string, gb = 2) => ({ name, size: gb * 1024 * 1024 * 1024 });
+
+  it("takes up to a few videos, numbered in the order picked", () => {
+    const r = checkNewVideoJob([video("first_half.mp4"), video("second_half.mp4")], limits, [], NOW);
+    expect(r.ok && r.value.map((v) => [v.index, v.name])).toEqual([[0, "first_half.mp4"], [1, "second_half.mp4"]]);
+  });
+
+  it.each([
+    ["nothing picked", [], /Pick the game video/],
+    ["too many", Array.from({ length: MAX_VIDEOS + 1 }, (_, i) => video(`h${i}.mp4`)), /Up to 4 videos/],
+    ["a bad name", [{ name: "../x.mp4", size: 5 }], /isn't a video/],
+    ["an empty file", [{ name: "a.mp4", size: 0 }], /empty/],
+    ["too large", [{ name: "a.mp4", size: MAX_VIDEO_BYTES + 1 }], /GB.*halves/],
+    ["a repeated name", [video("a.mp4"), video("A.MP4")], /Two videos/],
+  ])("refuses %s", (_label, input, message) => {
+    const r = checkNewVideoJob(input, limits, [], NOW);
+    expect(!r.ok && r.message).toMatch(message);
+  });
+
+  it("counts against the same games-at-once and games-a-week limits as clips", () => {
+    expect(checkNewVideoJob([video("a.mp4")], limits, [job({ state: "processing" })], NOW).ok).toBe(false);
+    const week = Array.from({ length: limits.jobsPerWeek }, () => job({ state: "ready" }));
+    expect(checkNewVideoJob([video("a.mp4")], limits, week, NOW).ok).toBe(false);
+  });
+
+  it("has its own upload path, read back the same way", () => {
+    const p = paths.video(team, id, 1, "second_half.mp4");
+    expect(parseVideoPath(p)).toEqual({ team, job: id, index: 1, name: "second_half.mp4" });
+    expect(parseClipPath(p)).toBeNull();
+    expect(parseVideoPath(paths.clip(team, id, 1, "a.mp4"))).toBeNull();
+    expect(parseVideoPath(`film/${team}/${id}/videos/1/../../x.mp4`)).toBeNull();
+  });
+
+  it("is 'splitting' while the worker looks for the plays, then reads like any game", () => {
+    const waiting = job({ kind: "video", videos: [{ index: 0, name: "a.mp4", size: 5 }], clips: [] });
+    expect(viewOf(waiting, [])).toMatchObject({ stage: "splitting", kind: "video", videos: 1, total: 0 });
+    expect(readyToAssemble(waiting, [])).toBe("wait"); // nothing to assemble before there are plays
+    expect(viewOf(job({ kind: "video", videos: [{ index: 0, name: "a.mp4", size: 5 }] }), []).stage).toBe("reading");
+  });
+});
+
+describe("the plays the worker found", () => {
+  const play = (start: number, snap: number, end: number, score = 0.9) => ({ start, snap, end, score });
+
+  it("keeps good plays in time order and drops the nonsense", () => {
+    const r = cleanSplit(0, 3600, [
+      play(300, 303, 312),
+      play(10, 13, 22),
+      play(-5, 3, 12), // before the film
+      play(50, 49, 60), // snap before the start
+      play(100, 103, 4000), // past the end
+      play(200, 203, 260), // far too long for a play
+      { start: "a", snap: 1, end: 2 },
+      null,
+      play(400, 403, 410, 7), // score clamped
+    ]);
+    expect(r?.plays.map((p) => p.snap)).toEqual([13, 303, 403]);
+    expect(r?.plays.at(-1)?.score).toBe(1);
+  });
+
+  it("refuses a report that isn't one", () => {
+    expect(cleanSplit(-1, 100, [])).toBeNull();
+    expect(cleanSplit(MAX_VIDEOS, 100, [])).toBeNull();
+    expect(cleanSplit(0, 0, [])).toBeNull();
+    expect(cleanSplit(0, 100, "plays")).toBeNull();
+    expect(cleanSplit("0", 100, [])).toBeNull();
+  });
+
+  it("numbers the plays across the videos in video order, whatever order the reports came in", () => {
+    const second = cleanSplit(1, 3000, [play(5, 8, 17)])!;
+    const first = cleanSplit(0, 3000, [play(30, 33, 42), play(90, 93, 102)])!;
+    const r = planClips([second, first], 150);
+    expect(r.ok && r.value.map((c) => [c.name, c.source])).toEqual([
+      ["play_001.mp4", { video: 0, start: 30, end: 42 }],
+      ["play_002.mp4", { video: 0, start: 90, end: 102 }],
+      ["play_003.mp4", { video: 1, start: 5, end: 17 }],
+    ]);
+    expect(r.ok && r.value.map((c) => c.index)).toEqual([0, 1, 2]);
+  });
+
+  it("fails clearly when there are no plays, or more than the plan allows", () => {
+    expect(planClips([cleanSplit(0, 100, [])!], 150)).toMatchObject({ ok: false, message: expect.stringMatching(/No plays were found/) });
+    const many = cleanSplit(0, 4000, Array.from({ length: 60 }, (_, i) => play(i * 20, i * 20 + 3, i * 20 + 12)))!;
+    expect(planClips([many], 50)).toMatchObject({ ok: false, message: expect.stringMatching(/60 plays, more than the 50/) });
+    expect(planClips([many], 60).ok).toBe(true);
   });
 });

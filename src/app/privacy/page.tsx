@@ -105,7 +105,7 @@ export default function PrivacyPage() {
 
       <LegalSection title="Game film you upload for scout cards">
         <p>
-          Game film you upload on the Game film page goes straight from your browser into a private
+          Game film you upload on the Game film page (a clip a play, or a whole game&apos;s video that we cut into plays) goes straight from your browser into a private
           cloud file (Vercel Blob) that isn&apos;t publicly accessible, and only this app can read.
           To build your scout cards it is sent to our film-analysis server, a GPU machine we run or
           rent, which reads each clip, keeps nothing once the clip has been read, and returns only
@@ -115,7 +115,7 @@ export default function PrivacyPage() {
         </p>
         <p>
           <strong className="text-foreground">Deletion is automatic.</strong> The uploaded clips, and
-          the positions read from them, are deleted 14 days after you upload the game. A game that
+          the positions read from them, are deleted 14 days after you upload the game, including a whole-game video. A game that
           never finishes uploading is removed after two days. You can delete a game, its film and its
           scout cards yourself at any time from the Game film page. The scout cards (the finished
           game file, which holds positions and play calls, no video) stay in your team&apos;s library

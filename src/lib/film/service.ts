@@ -19,6 +19,10 @@ import type { TierLimits } from "../usageLimits";
 import {
   cleanupFor,
   checkNewJob,
+  checkNewVideoJob,
+  cleanSplit,
+  parseVideoPath,
+  planClips,
   isValidClipName,
   paths,
   parseClipPath,
@@ -34,6 +38,8 @@ import {
   type ClipStatusKind,
   type FilmJob,
   type JobClip,
+  type JobKind,
+  type SplitReport,
   type JobView,
 } from "./jobs";
 
@@ -48,7 +54,11 @@ export interface FilmStorage {
   /** `exclusive`: write only if nothing is there yet; returns false when something is. */
   putJson(pathname: string, value: unknown, opts?: { exclusive?: boolean }): Promise<boolean>;
   putBytes(pathname: string, bytes: Uint8Array, contentType: string): Promise<void>;
-  getStream(pathname: string): Promise<{ stream: ReadableStream<Uint8Array>; size: number | null } | null>;
+  /** `range`: an HTTP Range header value ("bytes=0-99"); `contentRange` comes back when the store honored it. */
+  getStream(
+    pathname: string,
+    opts?: { range?: string },
+  ): Promise<{ stream: ReadableStream<Uint8Array>; size: number | null; contentRange?: string | null } | null>;
   list(prefix: string): Promise<StoredObject[]>;
   remove(pathnames: string[]): Promise<void>;
 }
@@ -145,7 +155,8 @@ export async function getView(ctx: FilmContext, owner: string, id: string): Prom
   if (!job) throw new FilmError(404, "not_found", "That game isn't in your library.");
   // A coach watching a game that is waiting on its last report nudges the assemble along (see tryAssemble).
   if (job.state === "processing") {
-    await tryAssemble(ctx, team, job);
+    if (job.kind === "video" && job.clips.length === 0) await tryPlan(ctx, team, job);
+    else await tryAssemble(ctx, team, job);
     job = (await readJob(ctx, team, id)) ?? job;
   }
   return viewFor(ctx, team, job);
@@ -164,30 +175,47 @@ export async function createJob(
   owner: string,
   limits: TierLimits["film"],
   files: unknown,
+  kind: JobKind = "clips",
 ): Promise<{ job: JobView; uploads: Upload[] }> {
   const team = teamKey(owner);
-  const checked = checkNewJob(files, limits, await jobsOf(ctx, team), ctx.now());
-  if (!checked.ok) throw new FilmError(429, "limit", checked.message);
+  const existing = await jobsOf(ctx, team);
   const id = newJobId();
   const at = iso(ctx.now());
-  const job: FilmJob = { id, state: "uploading", createdAt: at, updatedAt: at, clips: checked.value };
+  let job: FilmJob;
+  if (kind === "video") {
+    const checked = checkNewVideoJob(files, limits, existing, ctx.now());
+    if (!checked.ok) throw new FilmError(429, "limit", checked.message);
+    job = { id, state: "uploading", createdAt: at, updatedAt: at, kind: "video", videos: checked.value, maxPlays: limits.maxPlays, clips: [] };
+  } else {
+    const checked = checkNewJob(files, limits, existing, ctx.now());
+    if (!checked.ok) throw new FilmError(429, "limit", checked.message);
+    job = { id, state: "uploading", createdAt: at, updatedAt: at, clips: checked.value };
+  }
   if (!(await ctx.storage.putJson(paths.job(team, id), job, { exclusive: true }))) {
     throw new FilmError(500, "collision", "Couldn't start that game. Try again.");
   }
   return {
     job: viewOf(job, []),
-    uploads: job.clips.map((c) => ({ index: c.index, name: c.name, pathname: paths.clip(team, id, c.index, c.name) })),
+    uploads: job.videos
+      ? job.videos.map((v) => ({ index: v.index, name: v.name, pathname: paths.video(team, id, v.index, v.name) }))
+      : job.clips.map((c) => ({ index: c.index, name: c.name, pathname: paths.clip(team, id, c.index, c.name) })),
   };
 }
 
 /** The browser may upload to exactly the paths `createJob` handed out, while the job is waiting for them. */
 export async function authorizeUpload(ctx: FilmContext, owner: string, pathname: string): Promise<{ maxBytes: number }> {
-  const parsed = parseClipPath(pathname);
-  if (!parsed || parsed.team !== teamKey(owner)) throw new FilmError(403, "bad_path", "That isn't one of your game's clips.");
+  const refuse = () => new FilmError(403, "bad_path", "That isn't one of your game's files.");
+  const clip = parseClipPath(pathname);
+  const video = clip ? null : parseVideoPath(pathname);
+  const parsed = clip ?? video;
+  if (!parsed || parsed.team !== teamKey(owner)) throw refuse();
   const job = await readJob(ctx, parsed.team, parsed.job);
-  const clip = job?.clips.find((c) => c.index === parsed.index && c.name === parsed.name);
-  if (!job || job.state !== "uploading" || !clip) throw new FilmError(403, "bad_path", "That isn't one of your game's clips.");
-  return { maxBytes: clip.size };
+  if (!job || job.state !== "uploading") throw refuse();
+  const entry = video
+    ? job.videos?.find((v) => v.index === video.index && v.name === video.name)
+    : job.clips.find((c) => c.index === parsed.index && c.name === parsed.name);
+  if (!entry) throw refuse();
+  return { maxBytes: entry.size };
 }
 
 /* ------------------------------------------------------------------ starting */
@@ -196,6 +224,39 @@ function callbackBase(ctx: FilmContext, team: string, id: string): string {
   return `${ctx.origin}/api/film/worker/${team}/${id}`;
 }
 
+/** Where the worker reads a long video from (by range: it seeks), authorized by the job's own token in the address. */
+function videoUrl(base: string, token: string, video: number): string {
+  return `${base}/video/${video}?t=${token}`;
+}
+
+/** Sends the clips to the worker in shards. Throws what the dispatcher throws. */
+async function dispatchShards(ctx: FilmContext, team: string, job: FilmJob): Promise<void> {
+  const base = callbackBase(ctx, team, job.id);
+  const token = workerToken(ctx.secret, team, job.id);
+  await Promise.all(
+    planShards<JobClip>(job.clips).map((shard) =>
+      ctx.dispatcher.send({
+        type: "shard",
+        jobId: job.id,
+        callbackUrl: base,
+        token,
+        options: {},
+        clips: shard.map((c) => ({
+          index: c.index,
+          name: c.name,
+          // A clip the coach uploaded is fetched whole; a play found in a long video is a stretch of that video.
+          ...(c.source
+            ? { source: { url: videoUrl(base, token, c.source.video), start: c.source.start, end: c.source.end } }
+            : { url: `${base}/clip/${c.index}` }),
+          tracksPutUrl: `${base}/tracks/${c.index}`,
+        })),
+      }),
+    ),
+  );
+}
+
+const failureMessage = (error: unknown) => (error instanceof FilmError ? error.message : "Couldn't reach the film analyzer.");
+
 export async function startJob(ctx: FilmContext, owner: string, id: string): Promise<JobView> {
   const team = teamKey(owner);
   const job = await readJob(ctx, team, id);
@@ -203,6 +264,34 @@ export async function startJob(ctx: FilmContext, owner: string, id: string): Pro
   if (job.state !== "uploading") throw new FilmError(409, "already_started", "That game has already been started.");
   if (!ctx.dispatcher.configured()) {
     throw new FilmError(501, "worker_off", "Film processing isn't switched on for this site yet.");
+  }
+
+  if (job.kind === "video") {
+    // Every video has to have landed, whole.
+    const stored = new Map((await ctx.storage.list(paths.videos(team, id))).map((o) => [o.pathname, o.size]));
+    const missing = (job.videos ?? []).filter((v) => stored.get(paths.video(team, id, v.index, v.name)) !== v.size);
+    if (missing.length) {
+      throw new FilmError(409, "missing_clips", `${missing.map((v) => v.name).join(", ")} didn't finish uploading. Upload it again.`);
+    }
+    const processing = await writeJob(ctx, team, job, { state: "processing" });
+    const base = callbackBase(ctx, team, id);
+    const token = workerToken(ctx.secret, team, id);
+    try {
+      await Promise.all(
+        (processing.videos ?? []).map((v) =>
+          ctx.dispatcher.send({
+            type: "split",
+            jobId: id,
+            callbackUrl: base,
+            token,
+            video: { index: v.index, name: v.name, url: videoUrl(base, token, v.index) },
+          }),
+        ),
+      );
+    } catch (error) {
+      return viewFor(ctx, team, await writeJob(ctx, team, processing, { state: "failed", error: failureMessage(error) }));
+    }
+    return viewFor(ctx, team, processing);
   }
 
   // Every clip has to have landed, whole.
@@ -214,25 +303,10 @@ export async function startJob(ctx: FilmContext, owner: string, id: string): Pro
   }
 
   const processing = await writeJob(ctx, team, job, { state: "processing" });
-  const base = callbackBase(ctx, team, id);
-  const token = workerToken(ctx.secret, team, id);
   try {
-    await Promise.all(
-      planShards<JobClip>(processing.clips).map((shard) =>
-        ctx.dispatcher.send({
-          type: "shard",
-          jobId: id,
-          callbackUrl: base,
-          token,
-          options: {},
-          clips: shard.map((c) => ({ index: c.index, name: c.name, url: `${base}/clip/${c.index}`, tracksPutUrl: `${base}/tracks/${c.index}` })),
-        }),
-      ),
-    );
+    await dispatchShards(ctx, team, processing);
   } catch (error) {
-    const message = error instanceof FilmError ? error.message : "Couldn't reach the film analyzer.";
-    const failed = await writeJob(ctx, team, processing, { state: "failed", error: message });
-    return viewFor(ctx, team, failed);
+    return viewFor(ctx, team, await writeJob(ctx, team, processing, { state: "failed", error: failureMessage(error) }));
   }
   return viewFor(ctx, team, processing);
 }
@@ -241,6 +315,7 @@ export async function startJob(ctx: FilmContext, owner: string, id: string): Pro
 
 export type WorkerEvent =
   | { type: "clip"; index: number; name: string; status: string; reason?: string; formation?: string; strength?: string; seconds?: number }
+  | { type: "split"; index: number; name?: string; duration: number; plays: unknown }
   | { type: "assembled"; plays?: number }
   | { type: "failed"; error?: string };
 
@@ -252,9 +327,16 @@ function playNumber(name: string, index: number): string {
 }
 
 /** Returns what was done, for the route's answer and for tests. */
-export async function handleEvent(ctx: FilmContext, team: string, id: string, event: WorkerEvent): Promise<"stored" | "assembling" | "ready" | "failed" | "ignored"> {
+export async function handleEvent(ctx: FilmContext, team: string, id: string, event: WorkerEvent): Promise<"stored" | "planned" | "assembling" | "ready" | "failed" | "ignored"> {
   const job = await readJob(ctx, team, id);
   if (!job || job.state !== "processing") return "ignored";
+
+  if (event.type === "split") {
+    const report = cleanSplit(event.index, event.duration, event.plays);
+    if (job.kind !== "video" || job.clips.length > 0 || !report || !job.videos?.some((v) => v.index === report.index)) return "ignored";
+    await ctx.storage.putJson(paths.split(team, id, report.index), report);
+    return tryPlan(ctx, team, job);
+  }
 
   if (event.type === "failed") {
     await writeJob(ctx, team, job, { state: "failed", error: String(event.error ?? "The film analyzer stopped.").slice(0, 300) });
@@ -291,6 +373,34 @@ export async function handleEvent(ctx: FilmContext, team: string, id: string, ev
   reported.add(clip.index);
   if (reported.size < job.clips.length) return "stored";
   return tryAssemble(ctx, team, job);
+}
+
+/**
+ * If every video has been split, number the plays across them and send them to the worker (once). Called by the
+ * last split report, and again by a status poll, like `tryAssemble`.
+ */
+async function tryPlan(ctx: FilmContext, team: string, job: FilmJob): Promise<"stored" | "planned" | "failed"> {
+  if (job.kind !== "video" || job.clips.length > 0 || job.state !== "processing") return "stored";
+  const wanted = job.videos?.length ?? 0;
+  const found = await ctx.storage.list(paths.splits(team, job.id));
+  if (found.length < wanted) return "stored";
+  const reports = (await Promise.all(found.map((o) => ctx.storage.getJson<SplitReport>(o.pathname)))).filter((r): r is SplitReport => r != null);
+  if (reports.length < wanted) return "stored";
+  if (!(await ctx.storage.putJson(paths.planned(team, job.id), { at: iso(ctx.now()) }, { exclusive: true }))) return "stored";
+
+  const plan = planClips(reports, job.maxPlays ?? 150);
+  if (!plan.ok) {
+    await writeJob(ctx, team, job, { state: "failed", error: plan.message });
+    return "failed";
+  }
+  const planned = await writeJob(ctx, team, job, { clips: plan.value });
+  try {
+    await dispatchShards(ctx, team, planned);
+  } catch (error) {
+    await writeJob(ctx, team, planned, { state: "failed", error: failureMessage(error) });
+    return "failed";
+  }
+  return "planned";
 }
 
 /**
@@ -383,6 +493,25 @@ export async function openForWorker(
   const found = await ctx.storage.getStream(pathname);
   if (!found) throw new FilmError(404, "gone", "That file isn't there.");
   return { ...found, contentType: kind === "clip" ? "video/mp4" : "application/json" };
+}
+
+/**
+ * A long video for the worker, by HTTP range: the worker seeks to a play in the middle of a game and asks for just
+ * those bytes. `range` is the request's Range header; the answer says whether the store honored it.
+ */
+export async function openVideoForWorker(
+  ctx: FilmContext,
+  team: string,
+  id: string,
+  index: number,
+  range: string | null,
+): Promise<{ stream: ReadableStream<Uint8Array>; size: number | null; contentRange: string | null }> {
+  const job = await processingJob(ctx, team, id);
+  const video = job.videos?.find((v) => v.index === index);
+  if (!video) throw new FilmError(404, "no_video", "No such video.");
+  const found = await ctx.storage.getStream(paths.video(team, id, index, video.name), range && /^bytes=\d*-\d*$/.test(range) ? { range } : undefined);
+  if (!found) throw new FilmError(404, "gone", "That file isn't there.");
+  return { stream: found.stream, size: found.size, contentRange: found.contentRange ?? null };
 }
 
 /* ------------------------------------------------------------------ the finished game */

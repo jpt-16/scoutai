@@ -413,7 +413,8 @@ refuses the schema, the chunk is asked again as plain JSON and checked by `valid
 failure shows Gemini's own reason in the notice; a chunk that failed isn't marked reviewed.
 
 **Editing:** **Edit play** opens `EditPlayDialog`, with a live card preview and quick-pick
-buttons. It can **Duplicate** or **Delete** the play. Edits go through `updateCard`, which
+buttons. It takes the play's **situation** too (DOWN, TO GO, YARD LINE: `CardEdits`' `down` / `distance` / `isGoalToGo` /
+`yardLine`), because film can't supply them (see "Game film upload"). It can **Duplicate** or **Delete** the play. Edits go through `updateCard`, which
 re-derives the card with `deriveCard` so it draws exactly like a Hudl row. They're saved to
 localStorage and marked "edited" in the play list, and coach notes show on the card.
 
@@ -829,11 +830,40 @@ request works on them at once, which is how a game gets toward 30 minutes (one T
 `pytest test_worker.py` runs it end to end on the drawn game clip with a stand-in detector, the real card builder and a real
 local HTTP server; `src/lib/film/*.test.ts` run the whole job flow on an in-memory store (`memoryStorage.ts`).
 
-**Not verified against the real thing:** the Blob store (the storage class is a thin wrapper over the `get` / `put` / `list` /
+**A whole game's video, not one clip a play** (`eval/split.py`; `kind: "video"` jobs). Film that doesn't come from Hudl is one
+long recording, so the coach picks **Whole game video** on `/film` (up to 4 files, 6 GB each: a game in halves) and the worker
+finds the plays. `split.py` reads the video once at 5 samples a second (decoding is the cost; a few minutes for a game) and
+keeps three numbers a sample: how much the picture moved, how much of it is grass, whether there was a hard cut. A **snap** is a
+quiet set (about a second) followed by a sustained burst (1.5 s), on field footage (grass fraction), with no cut at the snap;
+the thresholds are relative to the film's own motion (its 95th percentile on field footage) so a zoomed-out press box and a
+close sideline camera both work without tuning. Each play is cut from 3 s before the snap to where the motion dies (5-9 s after,
+never into the next play's set). Things it cannot know: a replay is another burst on the same field (cut as a second play), a
+no-huddle snap with no set is missed, a fast pan between plays can read as a burst. Every play has a `score`; `python -m
+eval.split game.mp4 --out clips/ --plot energy.png` draws the motion series with each snap marked, which is what to look at when
+real film behaves differently. **Tested only on drawn film** (a field, players standing then running, slow pans, crowd cutaways
+with hard cuts: all 4 snaps found within 0.9 s and the cutaways ignored); the thresholds are at the top of the file and have not
+met a real game yet. In the app: `POST /api/film/jobs` with `kind: "video"` uploads to `.../videos/<n>/<name>`; `start` sends a
+**split** dispatch per video (its address is the app's own `/video/<n>?t=<token>` route, which honors HTTP Range, OpenCV can't send
+a header); each video's plan comes back as `{type: "split", plays}` (checked by `cleanSplit`); when every video has reported,
+`tryPlan` numbers the plays across them (`play_001.mp4` …, `planClips`, capped by the plan's `maxPlays`) and sends the usual shards,
+each clip now `source: {url, start, end}` instead of a download. The worker cuts it out by range (`resolve_source`: OpenCV opens
+the URL and seeks, else the whole video is downloaded once); nothing is uploaded back. A split that finds no plays, or more than
+the plan allows, fails the game with a reason the coach can act on. A video game's stages are uploading, **splitting**, reading,
+building, ready.
+
+**What film can and can't read.** From the film alone the cards get the formation (and its strength), run or pass, the routes,
+the run scheme and direction, the hash side (from where the ball is across the field), and the defense (front, shell, where the
+corners and safeties stood). **Down, distance, yard line and result are not on press-box film** (there is no scoreboard), so a
+film-only card shows "—" for them until the coach types them in Edit play; with Hudl's sheet they come from the sheet. Reading
+them from a scorebug (OCR) on broadcast-style film is possible and not built; the yard line number can't be read at all from the
+paint (it is unknown which yard line a calibrated field is), so a coach enters it.
+
+**Not verified against the real thing:** the long-video route (a ranged `get` from Blob through a Next function: the SDK passes a
+`Range` header and returns the part, but it hasn't run against a live store), the Blob store (the storage class is a thin wrapper over the `get` / `put` / `list` /
 `del` calls the sync route already uses, but this flow hasn't run against a live store), the container image build, the real
 detector inside it, and a GPU host. **Not built:** the in-browser four-click calibration for a clip that `needs_hand` (the screen
-lists them and says to send them to us), an email when a game is ready (the screen polls), billing per game, and cutting one
-long game video into plays (clips are one play each, as Hudl exports them).
+lists them and says to send them to us), an email when a game is ready (the screen polls), billing per game, a screen to add a
+play the splitter missed or drop one it invented (the plan's timestamps are only in the video's plot), and scorebug OCR.
 
 ## Shared film libraries and rate limiting
 

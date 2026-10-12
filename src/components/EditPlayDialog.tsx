@@ -13,7 +13,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { buildDiagram, ROUTE_CHOICES, type DiagramMode, type ScoutUnit } from "@/lib/formations";
-import { updateCard, type CardEdits, type Hash, type HudlPlayCard } from "@/lib/hudlParser";
+import { parseDistance, parseYardLine, updateCard, type CardEdits, type Hash, type HudlPlayCard } from "@/lib/hudlParser";
 import { cn } from "@/lib/utils";
 
 const FORMATION_PICKS = ["SPREAD", "TRIPS", "DUCES", "I-FORM", "PRO", "SPLIT PRO", "DOUBLE EAGLE"];
@@ -136,9 +136,17 @@ export function EditPlayDialog({
     defFront: card.defFront,
     coverage: card.coverage,
     hash: card.hash,
+    down: card.down,
+    distance: card.distance,
+    isGoalToGo: card.isGoalToGo,
+    yardLine: card.yardLine,
+    yardLineLabel: card.yardLineLabel,
     notes: card.notes,
     routeOverrides: card.routeOverrides ?? {},
   });
+  // What was typed in the situation boxes (a half-typed "OWN 3" isn't a yard line yet, but stays on screen).
+  const [distanceText, setDistanceText] = useState(card.isGoalToGo ? "G" : card.distance == null ? "" : String(card.distance));
+  const [yardText, setYardText] = useState(card.yardLineLabel);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const set = (edits: CardEdits) => setDraft((d) => ({ ...d, ...edits }));
   const preview = updateCard(card, draft);
@@ -211,6 +219,50 @@ export function EditPlayDialog({
                     { value: "", label: "—" },
                   ]}
                   onChange={(v) => set({ hash: (v || null) as Hash | null })}
+                />
+              </Field>
+            </div>
+
+            <div className="grid grid-cols-[auto_minmax(0,1fr)_minmax(0,1.4fr)] gap-3">
+              <Field label="DOWN">
+                <Segmented<"1" | "2" | "3" | "4" | "">
+                  label="Down"
+                  value={draft.down ? (String(draft.down) as "1" | "2" | "3" | "4") : ""}
+                  options={[
+                    { value: "1", label: "1" },
+                    { value: "2", label: "2" },
+                    { value: "3", label: "3" },
+                    { value: "4", label: "4" },
+                    { value: "", label: "—" },
+                  ]}
+                  onChange={(v) => set({ down: v ? Number(v) : null })}
+                />
+              </Field>
+              <Field label="TO GO" htmlFor="edit-distance">
+                <input
+                  id="edit-distance"
+                  className={inputClass}
+                  inputMode="numeric"
+                  placeholder="6 or G"
+                  value={distanceText}
+                  onChange={(e) => {
+                    const text = upper(e.target.value).slice(0, 3);
+                    setDistanceText(text);
+                    set(parseDistance(text));
+                  }}
+                />
+              </Field>
+              <Field label="YARD LINE" htmlFor="edit-yardline">
+                <input
+                  id="edit-yardline"
+                  className={inputClass}
+                  placeholder="OWN 35 or OPP 40"
+                  value={yardText}
+                  onChange={(e) => {
+                    const text = upper(e.target.value).slice(0, 12);
+                    setYardText(text);
+                    set({ yardLine: parseYardLine(text), yardLineLabel: text.trim() });
+                  }}
                 />
               </Field>
             </div>

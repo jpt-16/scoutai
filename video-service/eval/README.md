@@ -205,3 +205,22 @@ film cleanup. The app sends the worker **shards** (a few clips each) and, once e
 `CLAUDE.md`'s "Game film upload" for the whole flow. Knobs: `WORKER_THREADS` (clips at once inside a shard, default up to
 4), `SHARDS_AT_ONCE` (shards a box works on together, default 2). `GET /health` says whether the detector is loaded and
 on what device. Tests: `pytest test_worker.py` (no GPU needed).
+
+
+## A whole game's video (not one clip a play)
+
+Hudl exports a clip a play. A recording of a whole half or game is hours of plays, huddles and cutaways, so cut it first:
+
+```bash
+python -m eval.split game.mp4 --out clips/ --plot energy.png --plan plan.json     # then: python -m eval.game clips/ ...
+python -m eval.split second_half.mp4 --out clips/ --first 41                     # keep the numbering going for a second video
+```
+
+It finds each snap as a quiet set followed by a burst of motion, on footage that is the field (grass fraction), with no hard
+cut at the snap, and writes `play_001.mp4` … with 3 s of set before each snap. `--plot` draws the motion with every snap
+marked (orange); look at it when real film behaves differently, and tune the constants at the top of `split.py`
+(`ACTIVE_FRAC`, `QUIET_RATIO`, `GREEN_MIN`, `MIN_GAP_SECONDS`). `--dry-run` finds the plays without cutting. It has only been
+run on drawn film; a replay is cut as a second play, a no-huddle snap with no set is missed.
+
+The hosted worker does the same on a `split` dispatch (reading the video over HTTP by range, so no whole download) and then
+cuts each play out of the same video for its shard.

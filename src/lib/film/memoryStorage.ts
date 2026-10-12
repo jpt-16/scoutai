@@ -24,10 +24,18 @@ export class MemoryStorage implements FilmStorage {
     this.objects.set(pathname, { bytes, uploadedAt: this.now(), contentType });
   }
 
-  async getStream(pathname: string) {
+  async getStream(pathname: string, opts?: { range?: string }) {
     const found = this.objects.get(pathname);
     if (!found) return null;
-    return { stream: new Response(found.bytes as BodyInit).body as ReadableStream<Uint8Array>, size: found.bytes.byteLength };
+    const m = opts?.range?.match(/^bytes=(\d*)-(\d*)$/);
+    if (m && (m[1] || m[2])) {
+      const total = found.bytes.byteLength;
+      const start = m[1] ? Number(m[1]) : Math.max(0, total - Number(m[2]));
+      const end = m[1] && m[2] ? Math.min(Number(m[2]), total - 1) : total - 1;
+      const part = found.bytes.slice(start, end + 1);
+      return { stream: new Response(part as BodyInit).body as ReadableStream<Uint8Array>, size: part.byteLength, contentRange: `bytes ${start}-${end}/${total}` };
+    }
+    return { stream: new Response(found.bytes as BodyInit).body as ReadableStream<Uint8Array>, size: found.bytes.byteLength, contentRange: null };
   }
 
   async list(prefix: string): Promise<StoredObject[]> {

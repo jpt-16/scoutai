@@ -7,9 +7,10 @@ callbacks are faked (a recorder), plus a small local web server for the real `Ht
 
 import gzip
 import json
+import re
 import shutil
 import threading
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, HTTPServer, ThreadingHTTPServer
 from pathlib import Path
 
 import cv2
@@ -20,6 +21,7 @@ import synthfield as sf
 from eval import worker
 from eval.worker import Http, WorkerError, check_secret, run_assemble, run_shard
 from test_autocalib import StandIn, make_game_clip
+from test_split import render_game, snap_times
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -297,3 +299,147 @@ def test_the_server_only_accepts_a_signed_well_formed_dispatch(monkeypatch):
     r = client.post("/jobs", json=good, headers=ok)
     assert r.status_code == 202 and submitted == [good]
     assert client.get("/health").json()["ok"] is True
+
+
+# ------------------------------------------------------------------ a long video, read over HTTP by range
+
+
+@pytest.fixture(scope="module")
+def long_video(tmp_path_factory) -> Path:
+    path = tmp_path_factory.mktemp("long") / "half.mp4"
+    render_game(path)
+    return path
+
+
+class RangeServer:
+    """Serves one file with HTTP Range support (what Blob's CDN does and what OpenCV's reader asks for)."""
+
+    def __init__(self, path: Path):
+        data = path.read_bytes()
+        self.ranges: list[str | None] = []
+        outer = self
+
+        class H(BaseHTTPRequestHandler):
+            def log_message(self, *a):
+                pass
+
+            def do_GET(self):
+                if not self.path.startswith("/video.mp4"):
+                    self.send_response(404)
+                    self.end_headers()
+                    return
+                rng = self.headers.get("Range")
+                outer.ranges.append(rng)
+                a, b = 0, len(data) - 1
+                if rng and (m := re.match(r"bytes=(\d+)-(\d*)", rng)):
+                    a = int(m.group(1))
+                    b = min(int(m.group(2)) if m.group(2) else b, len(data) - 1)
+                    self.send_response(206)
+                    self.send_header("Content-Range", f"bytes {a}-{b}/{len(data)}")
+                else:
+                    self.send_response(200)
+                self.send_header("Content-Length", str(b - a + 1))
+                self.send_header("Accept-Ranges", "bytes")
+                self.send_header("Content-Type", "video/mp4")
+                self.end_headers()
+                try:
+                    self.wfile.write(data[a : b + 1])
+                except (BrokenPipeError, ConnectionResetError):
+                    pass
+
+        self.server = ThreadingHTTPServer(("127.0.0.1", 0), H)
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+        self.base = f"http://127.0.0.1:{self.server.server_port}"
+        self.size = len(data)
+
+    def close(self):
+        self.server.shutdown()
+
+
+@pytest.fixture
+def range_server(long_video):
+    srv = RangeServer(long_video)
+    yield srv
+    srv.close()
+
+
+def test_a_split_job_finds_the_plays_in_a_long_video_read_by_range_and_reports_the_plan(range_server, tmp_path):
+    http = Recorder({})
+    plan = worker.run_split(
+        {"type": "split", "jobId": "job12345", "callbackUrl": "https://app.test/cb", "token": "tok",
+         "video": {"index": 0, "name": "first_half.mp4", "url": f"{range_server.base}/video.mp4?t=abc"}},
+        http, workdir=tmp_path,
+    )
+    truth = snap_times()
+    assert len(plan) == len(truth)
+    assert all(abs(p["snap"] - t) <= 0.9 for p, t in zip(plan, truth))
+    (url, report, token) = http.posts[-1]
+    assert (url, token) == ("https://app.test/cb", "tok")
+    assert report["type"] == "split" and report["index"] == 0 and report["name"] == "first_half.mp4"
+    assert report["plays"] == plan and report["duration"] > 100
+    assert any(r for r in range_server.ranges)  # it asked for byte ranges: the whole file was not simply downloaded first
+
+
+def test_a_split_that_cannot_read_the_video_tells_the_app(tmp_path):
+    http = Recorder({})
+    with pytest.raises(Exception):
+        worker.run_split(
+            {"type": "split", "jobId": "job12345", "callbackUrl": "cb", "token": "tok", "video": {"index": 0, "name": "x.mp4", "url": "http://127.0.0.1:9/nope.mp4"}},
+            http, workdir=tmp_path,
+        )
+    assert http.posts and http.posts[-1][1]["type"] == "failed"
+
+
+def test_a_video_the_reader_cannot_open_over_http_is_downloaded_once_instead(long_video, tmp_path, range_server):
+    broken = f"{range_server.base}/missing.mp4?t=abc"  # 404 to OpenCV
+    http = Recorder({broken: long_video})
+    source = worker.resolve_source(broken, http, "tok", tmp_path)
+    assert Path(source).exists() and source != broken
+    assert worker.resolve_source(broken, http, "tok", tmp_path) == source  # not downloaded twice
+
+
+def test_a_shard_cuts_each_clip_out_of_the_long_video_and_removes_it_after(range_server, tmp_path, monkeypatch):
+    frames: dict[str, int] = {}
+
+    def stub(clip, detector, tracks_dir, debug_dir, **kw):
+        import cv2
+
+        cap = cv2.VideoCapture(str(clip))
+        frames[clip.name] = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        cap.release()
+        out = tracks_dir / f"{clip.stem}.json"
+        out.write_text("{}")
+        return worker.ClipResult(clip.name, "done", formation="trips", strength="right", tracks=out)
+
+    monkeypatch.setattr(worker, "process_clip", stub)
+    url = f"{range_server.base}/video.mp4?t=abc"
+    truth = snap_times()
+    http = Recorder({})
+    work = tmp_path / "w"
+    results = run_shard(
+        shard([
+            {"index": 0, "name": "play_001.mp4", "source": {"url": url, "start": truth[1] - 3, "end": truth[1] + 8}, "tracksPutUrl": "p0"},
+            {"index": 1, "name": "play_002.mp4", "source": {"url": url, "start": 4000.0, "end": 4010.0}, "tracksPutUrl": "p1"},
+        ]),
+        None, http, threads=1, workdir=work,
+    )
+    by = {r.name: r for r in results}
+    assert by["play_001.mp4"].status == "done" and frames["play_001.mp4"] == pytest.approx(11 * 30, abs=20)
+    assert by["play_002.mp4"].status == "failed" and "nothing could be cut" in by["play_002.mp4"].reason  # past the end of the film
+    assert list(http.puts) == ["p0"]
+    assert not list((work / "clips").glob("*.mp4"))
+
+
+def test_the_server_accepts_a_split_dispatch_and_refuses_one_without_a_video(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from eval import worker_server
+
+    monkeypatch.setenv("FILM_WORKER_SECRET", "s3cret")
+    submitted = []
+    monkeypatch.setattr(worker_server._pool, "submit", lambda fn, d: submitted.append(d))
+    client = TestClient(worker_server.app)
+    ok = {"authorization": "Bearer s3cret"}
+    good = {"type": "split", "jobId": "j", "callbackUrl": "c", "token": "t", "video": {"index": 0, "name": "a.mp4", "url": "u"}}
+    assert client.post("/jobs", json={k: v for k, v in good.items() if k != "video"}, headers=ok).status_code == 400
+    assert client.post("/jobs", json=good, headers=ok).status_code == 202 and submitted == [good]

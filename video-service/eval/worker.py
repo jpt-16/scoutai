@@ -10,6 +10,11 @@ over HTTP. Two kinds of job come in, both described by a small JSON "dispatch":
     assemble  sent by the app once every clip has reported: download all the tracks, build the
               scout cards with `scripts/tracks-to-cards.ts`, upload `game.json`, report back.
 
+    split     film that didn't come from Hudl is one long video, not a clip a play. The worker reads it
+              (ranges over HTTP, no whole download), finds each snap with `eval.split`, and reports the
+              plan: start, snap and end of every play. The app turns the plan into clips; a shard's clip
+              is then `source: {url, start, end}`, a stretch of that video the worker cuts out itself.
+
 The worker never holds the film longer than the job: each job works in its own temporary folder,
 which is deleted when it finishes, success or not (the clips are minors).
 
@@ -22,6 +27,7 @@ its own: the app is the only thing that touches the film store.
 from __future__ import annotations
 
 import csv
+import dataclasses
 import gzip
 import hmac
 import json
@@ -38,6 +44,7 @@ from pathlib import Path
 from typing import Callable
 
 from .clipjob import DONE, ClipResult, process_clip
+from .split import split_video, write_range
 
 REPO = Path(__file__).resolve().parents[2]
 TOKEN_HEADER = "x-film-token"
@@ -129,6 +136,40 @@ def _require(dispatch: dict, *keys: str) -> None:
         raise WorkerError(f"dispatch is missing {', '.join(missing)}")
 
 
+def resolve_source(url: str, http: Http, token: str, workdir: Path) -> str:
+    """Where to read a long video from: the URL itself when OpenCV can open and read it (it asks for just the
+    byte ranges it needs, so a play at minute 80 costs a few MB, not the game), else the whole video downloaded
+    once into `workdir`."""
+    import cv2
+
+    cap = cv2.VideoCapture(url)
+    try:
+        if cap.isOpened() and cap.read()[0]:
+            return url
+    finally:
+        cap.release()
+    local = workdir / "source" / f"{abs(hash(url.split('?')[0]))}.mp4"
+    if not local.exists():
+        local.parent.mkdir(parents=True, exist_ok=True)
+        http.download(url, local, token)
+    return str(local)
+
+
+def cut_source(source: str, start: float, end: float, dest: Path) -> int:
+    """One play, out of a long video, as its own clip. Returns the frames written (0 means nothing was there)."""
+    import cv2
+
+    cap = cv2.VideoCapture(source)
+    if not cap.isOpened():
+        raise WorkerError("could not open the video")
+    try:
+        fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+        size = (int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)))
+        return write_range(cap, fps, size, start, end, dest)
+    finally:
+        cap.release()
+
+
 def run_shard(dispatch: dict, detector, http: Http, *, threads: int | None = None, workdir: Path | None = None) -> list[ClipResult]:
     """Process the clips of one shard, reporting each as it finishes. Returns the results (for tests)."""
     _require(dispatch, "jobId", "callbackUrl", "token", "clips")
@@ -152,11 +193,17 @@ def run_shard(dispatch: dict, detector, http: Http, *, threads: int | None = Non
         clip: Path | None = None
         try:
             clip = clips_dir / _safe_name(name)
-            http.download(entry["url"], clip, token)
+            if "source" in entry:  # a stretch of a long video: cut it out
+                src = entry["source"]
+                source = resolve_source(src["url"], http, token, root)
+                if cut_source(source, float(src["start"]), float(src["end"]), clip) < 10:
+                    raise WorkerError("nothing could be cut from the video at that time")
+            else:
+                http.download(entry["url"], clip, token)
             result = process_clip(clip, shared, tracks_dir, debug_dir, seconds=seconds, tiles=tiles, region=region)
             if result.status == DONE and result.tracks is not None:
                 http.put(entry["tracksPutUrl"], result.tracks, token)
-        except Exception as error:  # a bad name, or a download or upload that never worked: this clip failed, the rest go on
+        except Exception as error:  # a bad name, a cut or download or upload that never worked: this clip failed, the rest go on
             result = ClipResult(name, "failed", reason=f"{type(error).__name__}: {error}")
         finally:
             if clip is not None:
@@ -218,6 +265,35 @@ def run_assemble(
         http.put(dispatch["resultPutUrl"], out, token)
         http.post_json(callback, {"type": "assembled", "plays": plays}, token)
         return plays
+    except Exception as error:
+        try:
+            http.post_json(callback, {"type": "failed", "error": f"{type(error).__name__}: {error}"[:500]}, token)
+        except WorkerError:
+            pass
+        raise
+    finally:
+        if own:
+            shutil.rmtree(root, ignore_errors=True)
+
+
+def run_split(dispatch: dict, http: Http, *, splitter=split_video, workdir: Path | None = None) -> list[dict]:
+    """Find the plays in one long video and report them. The plan is `[{start, snap, end, score, green}]`, seconds
+    from the start of this video; the app numbers the clips across all of a game's videos."""
+    _require(dispatch, "jobId", "callbackUrl", "token", "video")
+    callback, token = dispatch["callbackUrl"], dispatch["token"]
+    video = dispatch["video"]
+    own = workdir is None
+    root = workdir or Path(tempfile.mkdtemp(prefix="film-split-"))
+    try:
+        source = resolve_source(video["url"], http, token, root)
+        plays, series = splitter(source)
+        plan = [dataclasses.asdict(p) for p in plays]
+        http.post_json(
+            callback,
+            {"type": "split", "index": int(video["index"]), "name": str(video.get("name", "")), "duration": round(series.duration, 1), "plays": plan},
+            token,
+        )
+        return plan
     except Exception as error:
         try:
             http.post_json(callback, {"type": "failed", "error": f"{type(error).__name__}: {error}"[:500]}, token)

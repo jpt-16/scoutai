@@ -5,6 +5,9 @@
 
 /** A clip is one play; Hudl's per-play exports are a few MB. */
 export const MAX_CLIP_BYTES = 100 * 1024 * 1024;
+/** A whole game's video (a half, a game) is one file this big at most, and a staff uploads this many at once. */
+export const MAX_VIDEO_BYTES = 6 * 1024 * 1024 * 1024;
+export const MAX_VIDEOS = 4;
 /** How long uploaded film is kept after a game is processed. The game file stays. */
 export const CLIP_RETENTION_DAYS = 14;
 

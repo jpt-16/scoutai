@@ -6,7 +6,7 @@ import { AlertTriangle, CheckCircle2, Film, Loader2, Trash2, Upload } from "luci
 import { Button } from "@/components/ui/button";
 import { filmApi } from "@/lib/film/client";
 import type { JobView } from "@/lib/film/jobs";
-import { CLIP_RETENTION_DAYS, MAX_CLIP_BYTES, isValidClipName } from "@/lib/film/shared";
+import { CLIP_RETENTION_DAYS, MAX_CLIP_BYTES, MAX_VIDEOS, MAX_VIDEO_BYTES, isValidClipName } from "@/lib/film/shared";
 import { formatBytes, runUploads, type UploadItem, type UploadProgress } from "@/lib/film/uploadPlan";
 import { parseScriptFile, storeScript } from "@/lib/scriptStore";
 import { cn } from "@/lib/utils";
@@ -35,6 +35,7 @@ export function FilmLibrary() {
   const input = useRef<HTMLInputElement>(null);
   const [jobs, setJobs] = useState<JobView[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [mode, setMode] = useState<"clips" | "video">("clips");
   const [picked, setPicked] = useState<File[]>([]);
   const [skipped, setSkipped] = useState<string[]>([]);
   const [busy, setBusy] = useState<"idle" | "creating" | "uploading" | "starting">("idle");
@@ -58,12 +59,22 @@ export function FilmLibrary() {
   }, [refresh]);
 
   // While a game is being read, ask how far it has got.
-  const active = jobs?.some((j) => j.stage === "reading" || j.stage === "building") ?? false;
+  const active = jobs?.some((j) => j.stage === "splitting" || j.stage === "reading" || j.stage === "building") ?? false;
   useEffect(() => {
     if (!active) return;
     const timer = setTimeout(() => void refresh(), POLL_MS);
     return () => clearTimeout(timer);
   }, [active, jobs, refresh]);
+
+  function switchMode(next: "clips" | "video") {
+    if (working || next === mode) return;
+    setMode(next);
+    setPicked([]);
+    setSkipped([]);
+    setError(null);
+    setFailedClips([]);
+    setPending(null);
+  }
 
   function pick(list: FileList | null) {
     const all = Array.from(list ?? []);
@@ -76,7 +87,9 @@ export function FilmLibrary() {
   }
 
   const badNames = picked.filter((f) => !isValidClipName(f.name)).map((f) => f.name);
-  const tooBig = picked.filter((f) => f.size > MAX_CLIP_BYTES).map((f) => f.name);
+  const sizeLimit = mode === "video" ? MAX_VIDEO_BYTES : MAX_CLIP_BYTES;
+  const tooBig = picked.filter((f) => f.size > sizeLimit).map((f) => f.name);
+  const tooMany = mode === "video" && picked.length > MAX_VIDEOS;
   const total = picked.reduce((sum, f) => sum + f.size, 0);
 
   async function sendAll(job: Pending) {
@@ -88,7 +101,7 @@ export function FilmLibrary() {
         await upload(item.pathname, job.files[item.index], {
           access: "private",
           handleUploadUrl: "/api/film/upload",
-          multipart: item.size > 8 * 1024 * 1024,
+          multipart: mode === "video" || item.size > 8 * 1024 * 1024,
           onUploadProgress: ({ loaded }) => onBytes(loaded),
         });
       },
@@ -116,7 +129,7 @@ export function FilmLibrary() {
     setFailedClips([]);
     try {
       setBusy("creating");
-      const { job, uploads } = await filmApi.create(picked.map((f) => ({ name: f.name, size: f.size })));
+      const { job, uploads } = await filmApi.create(picked.map((f) => ({ name: f.name, size: f.size })), mode);
       const items: UploadItem[] = uploads.map((u) => ({ index: u.index, name: u.name, pathname: u.pathname, size: picked[u.index].size }));
       await sendAll({ id: job.id, items, files: picked });
     } catch (e) {
@@ -171,10 +184,30 @@ export function FilmLibrary() {
         <div className="flex flex-col gap-1">
           <h2 className="font-display text-3xl font-extrabold uppercase">Upload a game</h2>
           <p className="text-[15px] leading-relaxed text-muted-foreground">
-            Pick one game&apos;s clips, one per play (.mp4, .mov or .m4v, up to {MAX_CLIP_BYTES / 1024 / 1024} MB each). We
-            read every play and build the scout cards. The film is deleted {CLIP_RETENTION_DAYS} days after you upload it; the
+            {mode === "clips"
+              ? `Pick one game's clips, one per play (.mp4, .mov or .m4v, up to ${MAX_CLIP_BYTES / 1024 / 1024} MB each). `
+              : `Pick the whole game as one recording, or in halves (up to ${MAX_VIDEOS} .mp4, .mov or .m4v files, ${MAX_VIDEO_BYTES / 1024 / 1024 / 1024} GB each). We find every snap and cut the plays ourselves. It reads best from a recording that shows the field, with the offense lined up and still before each snap. `}
+            We read every play and build the scout cards. The film is deleted {CLIP_RETENTION_DAYS} days after you upload it; the
             cards stay.
           </p>
+        </div>
+
+        <div className="inline-flex w-fit rounded-xl border p-1" role="group" aria-label="What are you uploading?">
+          {(["clips", "video"] as const).map((m) => (
+            <button
+              key={m}
+              type="button"
+              aria-pressed={mode === m}
+              disabled={working}
+              onClick={() => switchMode(m)}
+              className={cn(
+                "min-h-11 rounded-lg px-4 text-sm font-bold transition-colors disabled:opacity-50",
+                mode === m ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {m === "clips" ? "Clips, one per play" : "Whole game video"}
+            </button>
+          ))}
         </div>
 
         <input
@@ -183,7 +216,7 @@ export function FilmLibrary() {
           accept="video/mp4,video/quicktime,video/x-m4v,.mp4,.mov,.m4v"
           multiple
           className="sr-only"
-          aria-label="Choose a game's clips"
+          aria-label={mode === "video" ? "Choose the game video" : "Choose a game's clips"}
           onChange={(e) => {
             pick(e.target.files);
             e.target.value = "";
@@ -192,11 +225,11 @@ export function FilmLibrary() {
         <div className="flex flex-wrap items-center gap-3">
           <Button variant="outline" size="lg" disabled={working} onClick={() => input.current?.click()}>
             <Film aria-hidden="true" />
-            {picked.length ? "Choose different clips" : "Choose clips"}
+            {picked.length ? (mode === "video" ? "Choose a different video" : "Choose different clips") : mode === "video" ? "Choose the game video" : "Choose clips"}
           </Button>
           {picked.length > 0 && (
             <span className="text-sm text-muted-foreground">
-              {picked.length} {picked.length === 1 ? "clip" : "clips"} · {formatBytes(total)}
+              {picked.length} {mode === "video" ? (picked.length === 1 ? "video" : "videos") : picked.length === 1 ? "clip" : "clips"} · {formatBytes(total)}
             </span>
           )}
         </div>
@@ -215,15 +248,20 @@ export function FilmLibrary() {
         )}
         {tooBig.length > 0 && (
           <p className="text-sm text-destructive" role="alert">
-            Too large (over {MAX_CLIP_BYTES / 1024 / 1024} MB): {tooBig.slice(0, 4).join(", ")}.
+            Too large (over {mode === "video" ? `${MAX_VIDEO_BYTES / 1024 / 1024 / 1024} GB. Split it into halves` : `${MAX_CLIP_BYTES / 1024 / 1024} MB`}): {tooBig.slice(0, 4).join(", ")}.
+          </p>
+        )}
+        {tooMany && (
+          <p className="text-sm text-destructive" role="alert">
+            Up to {MAX_VIDEOS} videos at once. Pick fewer.
           </p>
         )}
 
         {picked.length > 0 && !pending && (
           <div>
-            <Button size="xl" disabled={working || badNames.length > 0 || tooBig.length > 0} onClick={() => void begin()}>
+            <Button size="xl" disabled={working || badNames.length > 0 || tooBig.length > 0 || tooMany} onClick={() => void begin()}>
               {working ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Upload aria-hidden="true" />}
-              {busy === "creating" ? "Getting ready…" : busy === "starting" ? "Starting…" : busy === "uploading" ? `Uploading… ${percent}%` : `Upload ${picked.length} ${picked.length === 1 ? "clip" : "clips"}`}
+              {busy === "creating" ? "Getting ready…" : busy === "starting" ? "Starting…" : busy === "uploading" ? `Uploading… ${percent}%` : `Upload ${picked.length} ${mode === "video" ? (picked.length === 1 ? "video" : "videos") : picked.length === 1 ? "clip" : "clips"}`}
             </Button>
           </div>
         )}
@@ -234,7 +272,7 @@ export function FilmLibrary() {
               <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${percent}%` }} />
             </div>
             <p className="text-sm text-muted-foreground">
-              {progress.filesDone} of {progress.filesTotal} clips uploaded · keep this tab open until it finishes
+              {progress.filesDone} of {progress.filesTotal} {mode === "video" ? "videos" : "clips"} uploaded · keep this tab open until it finishes
             </p>
           </div>
         )}
@@ -291,7 +329,11 @@ function GameCard({ job, opening, onOpen, onDelete }: { job: JobView; opening: b
           <span className="font-display text-xl font-bold">
             Game · {when(job.createdAt)}
           </span>
-          <span className="text-sm text-muted-foreground">{job.total} {job.total === 1 ? "clip" : "clips"}</span>
+          <span className="text-sm text-muted-foreground">
+            {job.kind === "video"
+              ? `${job.videos} ${job.videos === 1 ? "video" : "videos"}${job.total ? ` · ${job.total} plays found` : ""}`
+              : `${job.total} ${job.total === 1 ? "clip" : "clips"}`}
+          </span>
         </div>
         {job.stage === "ready" && (
           <Button size="lg" disabled={opening} onClick={onOpen}>
@@ -303,6 +345,11 @@ function GameCard({ job, opening, onOpen, onDelete }: { job: JobView; opening: b
 
       {job.stage === "uploading" && (
         <p className="text-sm text-muted-foreground">The upload didn&apos;t finish. Delete this and upload the game again.</p>
+      )}
+      {job.stage === "splitting" && (
+        <p className="flex items-center gap-2 text-sm text-muted-foreground" role="status">
+          <Loader2 className="size-4 animate-spin" aria-hidden="true" /> Finding the plays in the video. This takes a few minutes.
+        </p>
       )}
       {job.stage === "reading" && (
         <div className="flex flex-col gap-1.5" role="status">

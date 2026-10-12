@@ -10,7 +10,10 @@
  *
  *   filmjobs/<team>/<job>.json            the job (written when it is created, started and finished); a
  *                                         separate prefix so listing a staff's games never pages through clips
- *   film/<team>/<job>/clips/<n>/<name>    the uploaded film (deleted after `CLIP_RETENTION_DAYS`)
+ *   film/<team>/<job>/clips/<n>/<name>    the uploaded film, a clip a play (deleted after `CLIP_RETENTION_DAYS`)
+ *   film/<team>/<job>/videos/<n>/<name>   or a whole game's video (a half, a game), which the worker cuts into plays
+ *   film/<team>/<job>/split/<n>.json      the plays the worker found in video <n>
+ *   film/<team>/<job>/planned             a marker: the clips are numbered and sent to the worker once
  *   film/<team>/<job>/status/<n>-<kind>.json  one clip's report from the worker (one writer each, no races);
  *                                         the outcome is in the name so progress is a listing, not N reads
  *   film/<team>/<job>/tracks/<n>.json     one clip's tracks, for the assemble step (deleted with the film)
@@ -20,9 +23,9 @@
 
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import type { TierLimits } from "../usageLimits";
-import { CLIP_RETENTION_DAYS, MAX_CLIP_BYTES, isValidClipName } from "./shared";
+import { CLIP_RETENTION_DAYS, MAX_CLIP_BYTES, MAX_VIDEOS, MAX_VIDEO_BYTES, isValidClipName } from "./shared";
 
-export { CLIP_RETENTION_DAYS, MAX_CLIP_BYTES, isValidClipName } from "./shared";
+export { CLIP_RETENTION_DAYS, MAX_CLIP_BYTES, MAX_VIDEOS, MAX_VIDEO_BYTES, isValidClipName } from "./shared";
 /** A job still waiting for its uploads this long is abandoned and removed. */
 export const ABANDONED_UPLOAD_DAYS = 2;
 /** A job the worker never finished in this long is marked failed (the worker died, or lost the job). */
@@ -39,13 +42,31 @@ export interface JobClip {
   index: number;
   name: string;
   size: number;
+  /** A play found in a long video: where to cut it (seconds into video `video`). Absent for an uploaded clip. */
+  source?: { video: number; start: number; end: number };
 }
+
+/** A whole game's video the coach uploaded, for the worker to find the plays in. */
+export interface JobVideo {
+  index: number;
+  name: string;
+  size: number;
+}
+
+export type JobKind = "clips" | "video";
 
 export interface FilmJob {
   id: string;
   state: JobState;
   createdAt: string;
   updatedAt: string;
+  /** "clips" (one per play) or "video" (whole-game videos, split into plays by the worker). Absent = "clips". */
+  kind?: JobKind;
+  /** For a video game: the videos. */
+  videos?: JobVideo[];
+  /** The most plays the staff's plan allows, kept so it can be checked when a split finds them. */
+  maxPlays?: number;
+  /** The plays: uploaded clips, or (for a video game) filled in once every video has been split. */
   clips: JobClip[];
   /** Cards in the finished game. */
   plays?: number;
@@ -80,8 +101,12 @@ export interface JobView {
   read: number;
   needsHand: { name: string; reason: string }[];
   failed: { name: string; reason: string }[];
-  /** "uploading", "reading" (clips being read), "building" (all reported, cards being made), "ready", "failed". */
-  stage: "uploading" | "reading" | "building" | "ready" | "failed";
+  /** "uploading", "splitting" (finding the plays in a video), "reading" (clips being read), "building" (all reported,
+   * cards being made), "ready", "failed". */
+  stage: "uploading" | "splitting" | "reading" | "building" | "ready" | "failed";
+  /** "video" for a game uploaded as whole videos, and how many videos. */
+  kind: JobKind;
+  videos: number;
   plays?: number;
   error?: string;
   /** When the film is deleted (null once it has been). */
@@ -115,6 +140,11 @@ export const paths = {
   allJobs: "filmjobs/",
   clip: (team: string, job: string, index: number, name: string) => `${prefix(team, job)}clips/${index}/${name}`,
   clips: (team: string, job: string) => `${prefix(team, job)}clips/`,
+  video: (team: string, job: string, index: number, name: string) => `${prefix(team, job)}videos/${index}/${name}`,
+  videos: (team: string, job: string) => `${prefix(team, job)}videos/`,
+  split: (team: string, job: string, index: number) => `${prefix(team, job)}split/${index}.json`,
+  splits: (team: string, job: string) => `${prefix(team, job)}split/`,
+  planned: (team: string, job: string) => `${prefix(team, job)}planned`,
   status: (team: string, job: string, index: number, kind: ClipStatusKind) => `${prefix(team, job)}status/${index}-${kind}.json`,
   statuses: (team: string, job: string) => `${prefix(team, job)}status/`,
   tracks: (team: string, job: string, index: number) => `${prefix(team, job)}tracks/${index}.json`,
@@ -122,6 +152,13 @@ export const paths = {
   assembling: (team: string, job: string) => `${prefix(team, job)}assembling`,
   game: (team: string, job: string) => `${prefix(team, job)}game.json`,
 };
+
+/** `film/<team>/<job>/videos/<n>/<name>`, or null. */
+export function parseVideoPath(pathname: string): { team: string; job: string; index: number; name: string } | null {
+  const m = pathname.match(/^film\/([0-9a-f]{24})\/([0-9a-f]{18})\/videos\/(\d{1,2})\/([^/]+)$/);
+  if (!m || !isValidClipName(m[4])) return null;
+  return { team: m[1], job: m[2], index: Number(m[3]), name: m[4] };
+}
 
 /** `…/status/<n>-<kind>.json`, or null. */
 export function parseStatusPath(pathname: string): { index: number; kind: ClipStatusKind } | null {
@@ -160,6 +197,22 @@ export function verifyWorkerToken(secret: string | undefined, team: string, job:
 
 export type Checked<T> = { ok: true; value: T } | { ok: false; message: string };
 
+/** The staff's running and recent games against the tier's limits (shared by clip and video games). */
+function checkGameLimits(limits: TierLimits["film"], existing: FilmJob[], now: number): Checked<true> {
+  const active = existing.filter((j) => (j.state === "uploading" || j.state === "processing") && now - Date.parse(j.updatedAt) < STUCK_JOB_HOURS * HOUR);
+  if (active.length >= limits.activeJobs) {
+    return {
+      ok: false,
+      message: `Your staff already has ${active.length} ${active.length === 1 ? "game" : "games"} processing (limit ${limits.activeJobs} at a time). Try again when ${active.length === 1 ? "it finishes" : "one finishes"}.`,
+    };
+  }
+  const recent = existing.filter((j) => now - Date.parse(j.createdAt) < 7 * DAY);
+  if (recent.length >= limits.jobsPerWeek) {
+    return { ok: false, message: `That's ${limits.jobsPerWeek} games in the last week, the limit for now. Ask us if you need more.` };
+  }
+  return { ok: true, value: true };
+}
+
 /** The files a coach picked, checked against the tier's limits and each other. */
 export function checkNewJob(
   files: unknown,
@@ -187,16 +240,84 @@ export function checkNewJob(
     seen.add(key);
     clips.push({ index: clips.length, name: f.name, size });
   }
-  const active = existing.filter((j) => (j.state === "uploading" || j.state === "processing") && now - Date.parse(j.updatedAt) < STUCK_JOB_HOURS * HOUR);
-  if (active.length >= limits.activeJobs) {
-    return {
-      ok: false,
-      message: `Your staff already has ${active.length} ${active.length === 1 ? "game" : "games"} processing (limit ${limits.activeJobs} at a time). Try again when ${active.length === 1 ? "it finishes" : "one finishes"}.`,
-    };
+  const within = checkGameLimits(limits, existing, now);
+  return within.ok ? { ok: true, value: clips } : within;
+}
+
+/** Whole-game videos (a half, a game) the coach picked, checked the same way. */
+export function checkNewVideoJob(
+  files: unknown,
+  limits: TierLimits["film"],
+  existing: FilmJob[],
+  now: number,
+): Checked<JobVideo[]> {
+  if (!Array.isArray(files) || files.length === 0) return { ok: false, message: "Pick the game video to upload." };
+  if (files.length > MAX_VIDEOS) return { ok: false, message: `Up to ${MAX_VIDEOS} videos at once (a game in halves or quarters); you picked ${files.length}.` };
+  const seen = new Set<string>();
+  const videos: JobVideo[] = [];
+  for (const f of files as { name?: unknown; size?: unknown }[]) {
+    if (!isValidClipName(f?.name)) {
+      return { ok: false, message: `"${String(f?.name).slice(0, 60)}" isn't a video the analyzer can read. Use .mp4, .mov or .m4v files with plain names.` };
+    }
+    const size = Number(f.size);
+    if (!Number.isFinite(size) || size <= 0) return { ok: false, message: `${f.name} is empty.` };
+    if (size > MAX_VIDEO_BYTES) {
+      return { ok: false, message: `${f.name} is ${(size / 1024 / 1024 / 1024).toFixed(1)} GB. A video can be up to ${MAX_VIDEO_BYTES / 1024 / 1024 / 1024} GB; split it into halves.` };
+    }
+    const key = f.name.toLowerCase();
+    if (seen.has(key)) return { ok: false, message: `Two videos are named ${f.name}. Rename one.` };
+    seen.add(key);
+    videos.push({ index: videos.length, name: f.name, size });
   }
-  const recent = existing.filter((j) => now - Date.parse(j.createdAt) < 7 * DAY);
-  if (recent.length >= limits.jobsPerWeek) {
-    return { ok: false, message: `That's ${limits.jobsPerWeek} games in the last week, the limit for now. Ask us if you need more.` };
+  const within = checkGameLimits(limits, existing, now);
+  return within.ok ? { ok: true, value: videos } : within;
+}
+
+/** One video's plays as the worker reported them, checked before anything is cut or sent anywhere. */
+export interface SplitPlay {
+  start: number;
+  snap: number;
+  end: number;
+  score: number;
+}
+export interface SplitReport {
+  index: number;
+  duration: number;
+  plays: SplitPlay[];
+}
+
+const MAX_PLAYS_PER_VIDEO = 400;
+const MAX_PLAY_SECONDS = 40;
+
+export function cleanSplit(index: unknown, duration: unknown, plays: unknown): SplitReport | null {
+  if (!Number.isInteger(index) || (index as number) < 0 || (index as number) >= MAX_VIDEOS) return null;
+  const length = Number(duration);
+  if (!Number.isFinite(length) || length <= 0 || !Array.isArray(plays)) return null;
+  const clean: SplitPlay[] = [];
+  for (const p of plays.slice(0, MAX_PLAYS_PER_VIDEO) as Partial<SplitPlay>[]) {
+    const { start, snap, end, score } = { start: Number(p?.start), snap: Number(p?.snap), end: Number(p?.end), score: Number(p?.score) };
+    if (![start, snap, end].every(Number.isFinite)) continue;
+    if (start < 0 || !(start < snap && snap < end) || end > length + 5 || end - start > MAX_PLAY_SECONDS) continue;
+    clean.push({ start, snap, end, score: Number.isFinite(score) ? Math.min(1, Math.max(0, score)) : 0 });
+  }
+  clean.sort((a, b) => a.snap - b.snap);
+  return { index: index as number, duration: length, plays: clean };
+}
+
+/** Every video's plays become one numbered list of clips (`play_001.mp4` … across the videos in order). */
+export function planClips(reports: SplitReport[], maxPlays: number): Checked<JobClip[]> {
+  const clips: JobClip[] = [];
+  for (const r of [...reports].sort((a, b) => a.index - b.index)) {
+    for (const p of r.plays) {
+      const n = clips.length;
+      clips.push({ index: n, name: `play_${String(n + 1).padStart(3, "0")}.mp4`, size: 0, source: { video: r.index, start: p.start, end: p.end } });
+    }
+  }
+  if (clips.length === 0) {
+    return { ok: false, message: "No plays were found in the video. Check that it shows the field, with the offense lined up before each snap." };
+  }
+  if (clips.length > maxPlays) {
+    return { ok: false, message: `The video has ${clips.length} plays, more than the ${maxPlays} your plan allows in a game. Upload it in halves.` };
   }
   return { ok: true, value: clips };
 }
@@ -224,6 +345,7 @@ export function viewOf(job: FilmJob, statuses: ClipStatus[]): JobView {
     job.state === "uploading" ? "uploading"
     : job.state === "ready" ? "ready"
     : job.state === "failed" ? "failed"
+    : total === 0 ? "splitting"
     : reported >= total ? "building" : "reading";
   return {
     id: job.id,
@@ -235,6 +357,8 @@ export function viewOf(job: FilmJob, statuses: ClipStatus[]): JobView {
     needsHand: bad("needs_hand"),
     failed: bad("failed"),
     stage,
+    kind: job.kind ?? "clips",
+    videos: job.videos?.length ?? 0,
     plays: job.plays,
     error: job.error,
     filmDeletedAt: job.clipsDeletedAt ?? null,
@@ -244,7 +368,7 @@ export function viewOf(job: FilmJob, statuses: ClipStatus[]): JobView {
 
 /** Every clip has reported and at least one was read: time to build the cards. */
 export function readyToAssemble(job: FilmJob, statuses: ClipStatus[]): "assemble" | "fail" | "wait" {
-  if (job.state !== "processing") return "wait";
+  if (job.state !== "processing" || job.clips.length === 0) return "wait";
   const reported = new Set(statuses.map((s) => s.index));
   if (!job.clips.every((c) => reported.has(c.index))) return "wait";
   return statuses.some((s) => s.status === "done") ? "assemble" : "fail";

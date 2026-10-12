@@ -14,6 +14,7 @@ import {
   listViews,
   openForWorker,
   openGame,
+  openVideoForWorker,
   startJob,
   storeResult,
   storeTracks,
@@ -338,5 +339,181 @@ describe("the daily sweep", () => {
     expect(await getView(ctx, OWNER, id)).toMatchObject({ stage: "failed", error: /didn't finish/ });
     const record = await storage.getJson<FilmJob>(paths.job(teamKey(OWNER), id));
     expect(record?.state).toBe("failed");
+  });
+});
+
+
+describe("a whole game's video", () => {
+  const GB = 1024 * 1024 * 1024;
+  const halves = [{ name: "first_half.mp4", size: 2 * GB }, { name: "second_half.mp4", size: 3 * GB }];
+
+  // The memory store holds small stand-ins, so the tests that put videos in it declare small sizes.
+  const small = [{ name: "first_half.mp4", size: 8000 }, { name: "second_half.mp4", size: 8001 }];
+  const splitEvent = (index: number, plays: object[], duration = 3000) => ({ type: "split" as const, index, name: `v${index}.mp4`, duration, plays });
+  const p = (start: number, snap: number, end: number) => ({ start, snap, end, score: 0.9, green: 0.6 });
+
+  it("hands back an upload path per video, under videos/, and signs only those", async () => {
+    const { job, uploads } = await createJob(ctx, OWNER, limits, halves, "video");
+    expect(job).toMatchObject({ stage: "uploading", kind: "video", videos: 2, total: 0 });
+    expect(uploads.map((u) => u.pathname)).toEqual([
+      `film/${teamKey(OWNER)}/${job.id}/videos/0/first_half.mp4`,
+      `film/${teamKey(OWNER)}/${job.id}/videos/1/second_half.mp4`,
+    ]);
+    expect(await authorizeUpload(ctx, OWNER, uploads[1].pathname)).toEqual({ maxBytes: 3 * GB });
+    await expect(authorizeUpload(ctx, "org_other", uploads[0].pathname)).rejects.toMatchObject({ status: 403 });
+    await expect(authorizeUpload(ctx, OWNER, paths.video(teamKey(OWNER), job.id, 0, "other.mp4"))).rejects.toMatchObject({ status: 403 });
+    // a clip path in a video game is not one of its files
+    await expect(authorizeUpload(ctx, OWNER, paths.clip(teamKey(OWNER), job.id, 0, "first_half.mp4"))).rejects.toMatchObject({ status: 403 });
+  });
+
+  it("turns away a video game over the limits", async () => {
+    await expect(createJob(ctx, OWNER, limits, [{ name: "x.avi", size: 5 }], "video")).rejects.toMatchObject({ status: 429, message: /isn't a video/ });
+    await expect(createJob(ctx, OWNER, limits, [{ name: "big.mp4", size: 100 * GB }], "video")).rejects.toMatchObject({ message: /halves/ });
+  });
+
+  it("won't start until every video has landed whole", async () => {
+    const { job, uploads } = await createJob(ctx, OWNER, limits, small, "video");
+    storage.addClip(uploads[0].pathname, 8000);
+    storage.addClip(uploads[1].pathname, 5);
+    await expect(startJob(ctx, OWNER, job.id)).rejects.toMatchObject({ status: 409, message: /second_half.mp4 didn't finish/ });
+    expect(dispatcher.sent).toEqual([]);
+  });
+
+  it("starts by asking the worker to split each video, with the video's own address and the job's token", async () => {
+    const { job, uploads } = await createJob(ctx, OWNER, limits, small, "video");
+    for (const u of uploads) storage.addClip(u.pathname, small[u.index].size);
+    const view = await startJob(ctx, OWNER, job.id);
+    expect(view.stage).toBe("splitting");
+    const team = teamKey(OWNER);
+    const token = workerToken(SECRET, team, job.id);
+    expect(dispatcher.sent).toEqual([
+      { type: "split", jobId: job.id, callbackUrl: `https://app.test/api/film/worker/${team}/${job.id}`, token, video: { index: 0, name: "first_half.mp4", url: `https://app.test/api/film/worker/${team}/${job.id}/video/0?t=${token}` } },
+      { type: "split", jobId: job.id, callbackUrl: `https://app.test/api/film/worker/${team}/${job.id}`, token, video: { index: 1, name: "second_half.mp4", url: `https://app.test/api/film/worker/${team}/${job.id}/video/1?t=${token}` } },
+    ]);
+  });
+
+  async function started() {
+    const { job, uploads } = await createJob(ctx, OWNER, limits, small, "video");
+    for (const u of uploads) storage.addClip(u.pathname, small[u.index].size);
+    await startJob(ctx, OWNER, job.id);
+    dispatcher.sent.length = 0;
+    return { id: job.id, team: teamKey(OWNER) };
+  }
+
+  it("waits for every video to be split, then numbers the plays across them and sends them as shards cut from the video", async () => {
+    const { id, team } = await started();
+    // the second video reports first: numbering still follows the video order
+    expect(await handleEvent(ctx, team, id, splitEvent(1, [p(5, 8, 17)]))).toBe("stored");
+    expect(dispatcher.sent).toEqual([]);
+    expect((await getView(ctx, OWNER, id)).stage).toBe("splitting");
+    expect(await handleEvent(ctx, team, id, splitEvent(0, [p(30, 33, 42), p(90, 93, 102)]))).toBe("planned");
+
+    const view = await getView(ctx, OWNER, id);
+    expect(view).toMatchObject({ stage: "reading", total: 3, reported: 0 });
+    expect(dispatcher.sent).toHaveLength(1);
+    const shard = dispatcher.sent[0] as { type: string; clips: { index: number; name: string; source?: { url: string; start: number; end: number }; url?: string; tracksPutUrl: string }[] };
+    expect(shard.type).toBe("shard");
+    const token = workerToken(SECRET, team, id);
+    expect(shard.clips.map((c) => [c.index, c.name, c.source?.start, c.source?.end, c.url])).toEqual([
+      [0, "play_001.mp4", 30, 42, undefined],
+      [1, "play_002.mp4", 90, 102, undefined],
+      [2, "play_003.mp4", 5, 17, undefined],
+    ]);
+    expect(shard.clips[0].source?.url).toBe(`https://app.test/api/film/worker/${team}/${id}/video/0?t=${token}`);
+    expect(shard.clips[2].source?.url).toBe(`https://app.test/api/film/worker/${team}/${id}/video/1?t=${token}`);
+    expect(shard.clips[0].tracksPutUrl).toBe(`https://app.test/api/film/worker/${team}/${id}/tracks/0`);
+  });
+
+  it("plans once, even if a split is reported again", async () => {
+    const { id, team } = await started();
+    await handleEvent(ctx, team, id, splitEvent(0, [p(30, 33, 42)]));
+    await handleEvent(ctx, team, id, splitEvent(1, [p(5, 8, 17)]));
+    expect(dispatcher.sent).toHaveLength(1);
+    expect(await handleEvent(ctx, team, id, splitEvent(1, [p(5, 8, 17)]))).toBe("ignored"); // clips are set now
+    expect(dispatcher.sent).toHaveLength(1);
+  });
+
+  it("heals a game whose last two split reports landed together, from the status poll", async () => {
+    const { id, team } = await started();
+    await storage.putJson(paths.split(team, id, 0), { index: 0, duration: 3000, plays: [{ start: 30, snap: 33, end: 42, score: 1 }] });
+    await storage.putJson(paths.split(team, id, 1), { index: 1, duration: 3000, plays: [{ start: 5, snap: 8, end: 17, score: 1 }] });
+    expect(dispatcher.sent).toEqual([]);
+    expect((await getView(ctx, OWNER, id)).stage).toBe("reading");
+    expect(dispatcher.sent).toHaveLength(1);
+    await getView(ctx, OWNER, id);
+    expect(dispatcher.sent).toHaveLength(1);
+  });
+
+  it("ignores a split report that is for no video of this game, or isn't a report", async () => {
+    const { id, team } = await started();
+    expect(await handleEvent(ctx, team, id, splitEvent(5, [p(30, 33, 42)]))).toBe("ignored");
+    expect(await handleEvent(ctx, team, id, { type: "split", index: 0, duration: -1, plays: [] })).toBe("ignored");
+    expect(await handleEvent(ctx, team, id, { type: "split", index: 0, duration: 100, plays: "x" })).toBe("ignored");
+    expect((await getView(ctx, OWNER, id)).stage).toBe("splitting");
+  });
+
+  it("fails the game, with a reason the coach can act on, when no plays were found or there are too many", async () => {
+    const none = await started();
+    await handleEvent(ctx, none.team, none.id, splitEvent(0, []));
+    await handleEvent(ctx, none.team, none.id, splitEvent(1, []));
+    expect(await getView(ctx, OWNER, none.id)).toMatchObject({ stage: "failed", error: /No plays were found/ });
+
+    const many = await started();
+    const tooMany = Array.from({ length: limits.maxPlays + 1 }, (_, i) => p(i * 20, i * 20 + 3, i * 20 + 12));
+    await handleEvent(ctx, many.team, many.id, splitEvent(0, tooMany, 100_000));
+    await handleEvent(ctx, many.team, many.id, splitEvent(1, []));
+    expect(await getView(ctx, OWNER, many.id)).toMatchObject({ stage: "failed", error: new RegExp(`${limits.maxPlays + 1} plays, more than the ${limits.maxPlays}`) });
+    expect(dispatcher.sent).toEqual([]);
+  });
+
+  it("then reads, assembles and finishes like any other game", async () => {
+    const { id, team } = await started();
+    await handleEvent(ctx, team, id, splitEvent(0, [p(30, 33, 42), p(90, 93, 102)]));
+    await handleEvent(ctx, team, id, splitEvent(1, []));
+    dispatcher.sent.length = 0;
+    await handleEvent(ctx, team, id, clipEvent(0, "done", { name: "play_001.mp4", formation: "trips", strength: "right" }));
+    expect(await handleEvent(ctx, team, id, clipEvent(1, "done", { name: "play_002.mp4", formation: "pro", strength: "" }))).toBe("assembling");
+    expect(dispatcher.sent[0]).toMatchObject({
+      type: "assemble",
+      forms: [
+        { "PLAY #": "1", "OFF FORM": "trips", "OFF STR": "right" },
+        { "PLAY #": "2", "OFF FORM": "pro", "OFF STR": "" },
+      ],
+    });
+    await storeResult(ctx, team, id, gz({ cards: [{}, {}] }));
+    expect(await handleEvent(ctx, team, id, { type: "assembled", plays: 2 })).toBe("ready");
+    expect(await getView(ctx, OWNER, id)).toMatchObject({ stage: "ready", plays: 2, kind: "video" });
+  });
+
+  it("serves a video to the worker by range, and only while the game is running", async () => {
+    const { id, team } = await started();
+    const path = paths.video(team, id, 0, "first_half.mp4");
+    storage.objects.set(path, { bytes: Uint8Array.from({ length: 100 }, (_, i) => i), uploadedAt: new Date(), contentType: "video/mp4" });
+    const whole = await openVideoForWorker(ctx, team, id, 0, null);
+    expect(whole).toMatchObject({ size: 100, contentRange: null });
+    const part = await openVideoForWorker(ctx, team, id, 0, "bytes=10-19");
+    expect(part).toMatchObject({ size: 10, contentRange: "bytes 10-19/100" });
+    expect(Array.from(new Uint8Array(await new Response(part.stream).arrayBuffer()))).toEqual([10, 11, 12, 13, 14, 15, 16, 17, 18, 19]);
+    const open = await openVideoForWorker(ctx, team, id, 0, "bytes=90-");
+    expect(open.contentRange).toBe("bytes 90-99/100");
+    // a malformed Range is ignored, not passed to the store
+    expect((await openVideoForWorker(ctx, team, id, 0, "bytes=oops")).contentRange).toBeNull();
+    await expect(openVideoForWorker(ctx, team, id, 7, null)).rejects.toMatchObject({ status: 404 });
+    await handleEvent(ctx, team, id, { type: "failed", error: "x" });
+    await expect(openVideoForWorker(ctx, team, id, 0, null)).rejects.toMatchObject({ status: 409 });
+  });
+
+  it("deletes the videos with the rest of the film after the retention, and keeps the game", async () => {
+    const { id, team } = await started();
+    await handleEvent(ctx, team, id, splitEvent(0, [p(30, 33, 42)]));
+    await handleEvent(ctx, team, id, splitEvent(1, []));
+    await handleEvent(ctx, team, id, clipEvent(0, "done", { name: "play_001.mp4" }));
+    await storeResult(ctx, team, id, gz({ cards: [{}] }));
+    await handleEvent(ctx, team, id, { type: "assembled", plays: 1 });
+    clock += (CLIP_RETENTION_DAYS + 1) * DAY;
+    await cleanup(ctx);
+    const left = [...storage.objects.keys()];
+    expect(left.some((k) => k.includes("/videos/") || k.includes("/split/") || k.includes("/status/"))).toBe(false);
+    expect(left).toContain(paths.game(team, id));
   });
 });

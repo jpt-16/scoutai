@@ -49,10 +49,15 @@ export class BlobFilmStorage implements FilmStorage {
     await put(pathname, Buffer.from(bytes), { access: "private", addRandomSuffix: false, allowOverwrite: true, contentType });
   }
 
-  async getStream(pathname: string) {
-    const found = await get(pathname, { access: "private", useCache: false });
+  async getStream(pathname: string, opts?: { range?: string }) {
+    const found = await get(pathname, {
+      access: "private",
+      useCache: false,
+      ...(opts?.range ? { headers: { range: opts.range } } : {}),
+    });
     if (!found || found.statusCode !== 200) return null;
-    return { stream: found.stream, size: found.blob.size };
+    // A ranged answer carries Content-Range (the SDK reports any OK status as 200); the length is the part's.
+    return { stream: found.stream, size: found.blob.size, contentRange: found.headers.get("content-range") };
   }
 
   async list(prefix: string): Promise<StoredObject[]> {
@@ -139,7 +144,9 @@ export function filmError(error: unknown): NextResponse {
  */
 export function workerGate(request: Request, team: string, id: string): NextResponse | null {
   if (!isValidTeamKey(team) || !isValidJobId(id)) return NextResponse.json({ error: "not_found" }, { status: 404 });
-  if (!verifyWorkerToken(process.env.FILM_WORKER_SECRET, team, id, request.headers.get("x-film-token"))) {
+  // The long-video route is read by OpenCV, which can't send a header, so it also takes the token as `?t=`.
+  const given = request.headers.get("x-film-token") ?? new URL(request.url).searchParams.get("t");
+  if (!verifyWorkerToken(process.env.FILM_WORKER_SECRET, team, id, given)) {
     return NextResponse.json({ error: "bad_token" }, { status: 401 });
   }
   return null;
