@@ -161,3 +161,13 @@ to the model, however far the camera has zoomed (`eval/regiondetect.py`). Measur
 tiles: the camera zoomed out 1.6x after the snap and the people found fell from 94 a frame to 61. Every run now prints a
 `time:` line per clip (read, camera, detect, track, and windows per frame for `--region`). Compare two dumps of the same
 clip with `python -m eval.compare a_detections.json b_detections.json`.
+
+## Scoring the routes (the 90% goal)
+
+    npx jiti scripts/score-routes.ts tracks/ --key corrected.csv
+
+Lines every tracked play up with its row of the corrected breakdown (by the number in the clip's name), draws the
+row's call into a route per receiver as the answer key (exactly as the card draws it), and prints each play
+(`Z fade ✓ | Y speed-out ✗ (slide 0.09) | ...`) and the totals: routes right, how many the analyzer committed to
+(drawn without a "check" note) and how many of those were right, blocking receivers read as blocking, and the most
+common mistakes. Run it after every change; the goal is 90%+ of routes right.
