@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -69,6 +70,9 @@ MIN_PAINT = 150.0
 # A track missing for this many frames is dropped.
 MAX_MISSED = 45
 MIN_MATCHES = 25
+# Which tracker follows people: "greedy" (`follow`, frame to frame) or "tracklets" (`eval.tracklets`: clean pieces
+# joined up, teams kept apart by their jerseys). Set per run with --tracker, or for the worker with TRACKER.
+TRACKER = os.environ.get("TRACKER", "greedy")
 
 
 def _mask_without(boxes: list[Box], shape: tuple[int, int]) -> np.ndarray:
@@ -380,8 +384,10 @@ def track_play(
     fps: float,
     debug: dict | None = None,
     to_snap: list[np.ndarray] | None = None,
+    tracker: str | None = None,
 ) -> dict:
-    """The tracks for one play. `boxes[i]` are the people found in frame `i`; frame `calibration['frame']` is the snap."""
+    """The tracks for one play. `boxes[i]` are the people found in frame `i`; frame `calibration['frame']` is the snap.
+    `tracker`: "greedy" or "tracklets" (default `TRACKER`)."""
     snap = calibration["frame"]
     direction = calibration["direction"]
     calib = build_homography(CalibrationPoints(source=calibration["source"], destination=calibration["destination"]))
@@ -407,8 +413,15 @@ def track_play(
         colors.append(col)
         weak.append(wk)
     drop_standing_weak(per_frame, kept_boxes, colors, weak)
-    tracks = follow(per_frame[0], per_frame, colors)
-    labels = team_of(frames_bgr[snap], kept_boxes[0], per_frame[0])
+    if (tracker or TRACKER) == "tracklets":
+        from .tracklets import follow_tracklets, jersey_signature
+
+        signatures = [[jersey_signature(frames_bgr[snap + f], b) for b in kept] for f, kept in enumerate(kept_boxes)]
+        tracks = follow_tracklets(per_frame, signatures, fps)  # type: ignore[assignment]
+        labels = [t.team for t in tracks]  # type: ignore[attr-defined]
+    else:
+        tracks = follow(per_frame[0], per_frame, colors)
+        labels = team_of(frames_bgr[snap], kept_boxes[0], per_frame[0])
     if debug is not None:  # what a picture of the tracking needs
         debug.update(frames=frames_bgr[snap:], boxes=kept_boxes, tracks=tracks, labels=labels, fps=fps, to_snap=to_snap, per_frame=per_frame, colors=colors, raw_boxes=boxes[snap:], calibration=calibration, ball=ball, direction=direction)
     return {
@@ -488,7 +501,13 @@ def frozen_from(boxes: list[list[Box]]) -> int:
 
 
 def track_clip(
-    clip: Path, detector, seconds: float = 6.0, tiles: int = 2, debug: dict | None = None, region: bool = False
+    clip: Path,
+    detector,
+    seconds: float = 6.0,
+    tiles: int = 2,
+    debug: dict | None = None,
+    region: bool = False,
+    tracker: str | None = None,
 ) -> dict:
     """Follows everyone through one clip, from the calibration file beside it.
 
@@ -531,7 +550,7 @@ def track_clip(
     frames, boxes = frames[:end], boxes[:end]
     if to_snap is not None:
         to_snap = to_snap[:end]
-    result = track_play(frames, boxes, calibration, team_by_jersey, fps, debug, to_snap=to_snap)
+    result = track_play(frames, boxes, calibration, team_by_jersey, fps, debug, to_snap=to_snap, tracker=tracker)
     result["timing"] = {k: round(v, 2) for k, v in {**timing, **result["timing"]}.items()}
     result["timing"]["frames"] = len(frames)
     return result
@@ -544,6 +563,7 @@ def main() -> None:
     ap.add_argument("--seconds", type=float, default=6.0, help="how long after the snap to follow")
     ap.add_argument("--tiles", type=int, default=2)
     ap.add_argument("--region", action="store_true", help="hold the camera first, then detect only on the field, with a man the same size to the model all play (see eval.regiondetect); --tiles is then unused")
+    ap.add_argument("--tracker", choices=["greedy", "tracklets"], default=None, help="who follows people: greedy (frame to frame) or tracklets (eval.tracklets); default TRACKER or greedy")
     ap.add_argument("--debug", type=Path, default=None, help="also write pictures of the tracking here (see eval.trackdebug)")
     ap.add_argument("--detections", type=Path, default=None, help="also write everyone the detector found in every frame here, so the tracking can be tuned without the film")
     args = ap.parse_args()
@@ -556,7 +576,7 @@ def main() -> None:
         if not clip.with_suffix(".json").exists():
             continue
         debug: dict | None = {} if (args.debug or args.detections) else None
-        result = track_clip(clip, detector, args.seconds, args.tiles, debug, args.region)
+        result = track_clip(clip, detector, args.seconds, args.tiles, debug, args.region, args.tracker)
         (args.out / f"{clip.stem}.json").write_text(json.dumps(result))
         n_off = sum(t["team"] == "offense" for t in result["tracks"])
         print(f"{clip.name}: {len(result['tracks'])} people followed, {n_off} offense")

@@ -806,6 +806,29 @@ is unchanged: on the clean sprint it still reads wheel (fade next) at low confid
 before reading changed the answer in odd ways (it made a straight sprint read as a comeback because of the frozen tail),
 so it was left alone until there are more real tracks to tune on.
 
+**Tenth pass (offline, on the real dumps and recordings, plays 5 and 6):** measured against the truth for the first time.
+Receiver positions on play 5 were marked by hand from the film (`video-service/eval/truth/play_05.json`, scored by
+`python -m eval.truth tracks/play_05.json eval/truth/play_05.json`): the first tracker had **5 of 13** marks on the right
+man's track. What the film showed: the detector *does* find most receivers in most frames (the region run kept their boxes
+with a clear jersey read); the losses were (a) a receiver's track handed to the defender covering him or to a referee, frame
+to frame, where the color gate never applies, (b) men the detector missed on the snap frame never followed at all, and (c) the
+far-side fade receiver, a blurred sprinter in front of his own white bench, not found by RT-DETR from 1.3 s on (YOLOX on a
+2x window finds him at 0.26-0.50, so a lower threshold or another detector is the lever there). New: **`eval/tracklets.py`**
+(`--tracker tracklets`, or `TRACKER=tracklets` for the worker; the default is still `greedy`): teams by a per-play jersey
+signature (`jersey_signature`, learned from the snap frame, so any two uniforms; real film: offense +0.3 to +0.8, defense
+-0.1 to -0.6), short clean tracklets that never take the other team's jersey, then stitching each man seen at the snap (or in
+the half second after) to the piece he could have run to. Play 5: **8 of 13** marks; play 6: all four receivers followed
+(three before). Route names did *not* improve on these two plays (the far slot is still lost in his first half second beside
+the outside receiver, and the near fade drifting 2 yards out reads as a corner), and play 6's scheme reads outside zone
+instead of power, so it stays a choice until more film is scored. Two downstream bugs found on the way and fixed for every
+tracker: **letters were swapped** (`matchDetectedLetters` matched each man to the nearest card spot on a ball-in-the-middle
+card; real splits differ, the wide side's receivers stood 16 and 18 yards out against the card's 18 and 30, so the slot took
+the outside man's letter; it now uses the card's own hash and keeps the order outside in per side, `alignInOrder`, backs by
+nearness), and **the run after the catch was read as the route** (a hitch run 6 yards upfield and out read as an OUT; reads
+now stop `ROUTE_SECONDS` (3) after the snap, a ceiling rather than the catch, which the tracks don't show). With those, the
+first tracker's play 5 reads the hitch right: **1 of 4** routes (was 0), play 6 run / power / right still right. Dumps now
+carry each raw box's `jersey` signature, so `python -m eval.replay <dump> tracklets` replays the new tracker without the film.
+
 ## Game film upload (the hosted pipeline: `/film`, `src/lib/film/`, `video-service/eval/worker*.py`)
 
 A coach uploads a game's clips on **`/film`** (`FilmLibrary.tsx`), a hosted worker reads them, and the finished game

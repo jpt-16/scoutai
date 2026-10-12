@@ -162,6 +162,17 @@ tiles: the camera zoomed out 1.6x after the snap and the people found fell from 
 `time:` line per clip (read, camera, detect, track, and windows per frame for `--region`). Compare two dumps of the same
 clip with `python -m eval.compare a_detections.json b_detections.json`.
 
+## The tracklet tracker and the truth marks
+
+    python -m eval.tracks clips/ --out tracks --seconds 8 --region --tracker tracklets
+    python -m eval.truth tracks/play_05.json eval/truth/play_05.json
+
+`--tracker tracklets` (`eval/tracklets.py`) keeps the teams apart by their jerseys and joins short clean pieces of each
+man's path instead of carrying one guess frame to frame; the default is still the first tracker until it has been
+scored on more film. `eval.truth` checks a tracks file against receiver positions marked by hand (one file per play in
+`eval/truth/`; to make one, step through the clip and write where each receiver stood at a few frames). On play 5 of
+the test recordings: 5 of 13 marks right with the first tracker, 8 of 13 with tracklets.
+
 ## Scoring the routes (the 90% goal)
 
     npx jiti scripts/score-routes.ts tracks/ --key corrected.csv

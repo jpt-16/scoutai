@@ -178,6 +178,7 @@ def write_detections(debug: dict, out_dir: Path, stem: str) -> str:
     # filters (officials, bench, sideline) and the tracking can all be replayed without the film (see `eval.replay`).
     from .officials import looks_like_official
     from .presnap import torso_color
+    from .tracklets import jersey_signature
 
     raw = []
     for f, (frame, boxes) in enumerate(zip(debug["frames"], debug["raw_boxes"])):
@@ -188,6 +189,8 @@ def write_detections(debug: dict, out_dir: Path, stem: str) -> str:
                     "score": round(float(b[4]), 3),
                     "color": [round(float(c), 0) for c in torso_color(frame, b)],
                     "official": bool(looks_like_official(frame, b)),
+                    # For `eval.tracklets` (replayed with `eval.replay --tracker tracklets`).
+                    "jersey": [round(float(v), 3) for v in jersey_signature(frame, b)],
                 }
                 for b in boxes
             ]

@@ -388,3 +388,16 @@ def test_a_saved_raw_dump_replays_to_the_same_people_without_the_film(tmp_path):
     assert [len(f) for f in again["per_frame"]] == [len(f) for f in debug["per_frame"]]
     for a, b in zip(again["per_frame"][0], debug["per_frame"][0]):
         assert abs(a[0] - b[0]) < 0.05 and abs(a[1] - b[1]) < 0.05
+
+
+def test_the_tracklet_tracker_follows_the_drawn_receivers_too(tmp_path):
+    frames, boxes, calibration, receivers, truth, _ = simulate(tmp_path)
+    result = track_play(frames, boxes, calibration, jersey_team, FPS, tracker="tracklets")
+    tracks = {t["id"]: t for t in result["tracks"]}
+    assert len(tracks) >= len(boxes[0])
+    for index, name in enumerate(receivers):
+        got = tracks[index]["points"]
+        assert len(got) >= FRAMES - 3, (name, len(got))
+        errors = [np.hypot(x - truth[name][round(t * FPS)][0], y - truth[name][round(t * FPS)][1]) for t, x, y in got]
+        assert np.median(errors) < 0.8, (name, np.median(errors))
+        assert max(errors) < 2.5, (name, max(errors))

@@ -1,0 +1,10 @@
+{
+  "play": "Hudl play 5 of the test recordings (recording 3): DUCES, coach's call FADE SPEED OUT HITCH FADE, ball on the left hash",
+  "about": "Where each receiver really was, marked by hand from the film at frames of the tracked clip (30 fps, frame 0 = the calibrated frame), in yards from the ball in the offense's view (x to its right, y upfield). Read with: python -m eval.truth tracks/play_05.json eval/truth/play_05.json",
+  "men": {
+    "Z fade": {"0": [17.8, -0.9], "15": [18.8, 0.2], "30": [17.7, 2.7]},
+    "Y speed out": {"0": [14.8, -2.5], "15": [14.6, -1.0], "30": [13.7, 1.5], "45": [16.3, 2.8], "60": [18.0, 3.1]},
+    "F hitch": {"0": [-8.6, -2.0], "30": [-6.8, 1.4], "45": [-9.1, 3.1], "60": [-9.9, 3.8]},
+    "X fade": {"0": [-11.1, -0.6], "15": [-11.8, 1.4], "30": [-12.4, 4.3], "45": [-12.1, 8.0], "60": [-14.0, 12.1]}
+  }
+}

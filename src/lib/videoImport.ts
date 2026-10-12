@@ -215,35 +215,105 @@ export function detectionSpots(
  */
 /**
  * Which of the card's letters each detected player is, for a detection in
- * yards: every skill player the model saw is matched to the card's player who
- * lines up closest to where he stood (nearest pair first), so the right route
- * goes on the right man even when the model's letter doesn't match this
- * staff's formation (the lone receiver it called Z is the card's X). Q is
- * always Q. Unmatched detections are dropped rather than guessed.
+ * yards, so the right route goes on the right man even when the model's letter
+ * doesn't match this staff's formation (the lone receiver it called Z is the
+ * card's X). Q is always Q. Backs (deep in the backfield) go to the card's backs
+ * by nearness; everyone else is matched side by side keeping the order outside
+ * in (`alignInOrder`), against the card drawn on its own hash. Real splits
+ * differ from the card's: on real film the wide side's two receivers stood 16
+ * and 18 yards out against the card's 18 and 30, and matched by nearness alone
+ * the slot took the outside man's letter. Unmatched detections are dropped
+ * rather than guessed.
  */
 export function matchDetectedLetters(detection: DetectedPlay, card: HudlPlayCard): Map<DetectedPlayer, string> {
-  const players = buildDiagram({ ...card, hash: null, routeOverrides: undefined }, "team", "offense").players.filter(
+  const players = buildDiagram({ ...card, routeOverrides: undefined }, "team", "offense").players.filter(
     (p) => p.label && p.label !== "Q",
   );
-  const spots = players.map((p) => ({ label: p.label, x: (p.x - FIELD.center.x) / YARD_X, y: (FIELD.los - p.y) / YARD_PX }));
+  // With the ball on a hash the short side's receivers stand closer to it (they keep their room to the sideline).
+  const ballX = card.hash ? FIELD.hashX[card.hash] : FIELD.center.x;
+  const spots = players.map((p) => ({ label: p.label, x: (p.x - ballX) / YARD_X, y: (FIELD.los - p.y) / YARD_PX }));
   const result = new Map<DetectedPlayer, string>();
-  const pairs: { player: DetectedPlayer; label: string; d: number }[] = [];
-  for (const player of detection.players) {
-    if (player.label === "Q") {
-      result.set(player, "Q");
-      continue;
-    }
-    for (const spot of spots) {
-      pairs.push({ player, label: spot.label, d: Math.hypot(player.start.x - spot.x, player.start.y - spot.y) });
-    }
-  }
   const taken = new Set<string>();
-  for (const { player, label } of pairs.sort((a, b) => a.d - b.d)) {
-    if (result.has(player) || taken.has(label)) continue;
-    result.set(player, label);
-    taken.add(label);
+  const field = detection.players.filter((p) => {
+    if (p.label === "Q") result.set(p, "Q");
+    return p.label !== "Q";
+  });
+  const nearest = (who: DetectedPlayer[], pool: typeof spots) => {
+    const pairs = who.flatMap((player) =>
+      pool.map((spot) => ({ player, label: spot.label, d: Math.hypot(player.start.x - spot.x, player.start.y - spot.y) })),
+    );
+    for (const { player, label } of pairs.sort((a, b) => a.d - b.d)) {
+      if (result.has(player) || taken.has(label)) continue;
+      result.set(player, label);
+      taken.add(label);
+    }
+  };
+  const back = (y: number) => y < BACK_DEPTH_YARDS;
+  nearest(
+    field.filter((p) => back(p.start.y)),
+    spots.filter((s) => back(s.y)),
+  );
+  const outsideIn = <T,>(list: T[], x: (v: T) => number) => [...list].sort((a, b) => Math.abs(x(b)) - Math.abs(x(a)));
+  for (const side of [-1, 1]) {
+    const onSide = (x: number) => (side < 0 ? x < 0 : x >= 0);
+    const men = outsideIn(field.filter((p) => !back(p.start.y) && onSide(p.start.x)), (p) => p.start.x);
+    const pool = outsideIn(spots.filter((s) => !back(s.y) && onSide(s.x) && !taken.has(s.label)), (s) => s.x);
+    for (const [player, label] of alignInOrder(men, pool, (p, s) => Math.abs(p.start.x - s.x) + Math.abs(p.start.y - s.y))) {
+      result.set(player, label);
+      taken.add(label);
+    }
   }
+  // Anyone left over (a man on a side with no free letter): the nearest free letter.
+  nearest(
+    field.filter((p) => !result.has(p)),
+    spots.filter((s) => !taken.has(s.label)),
+  );
   return result;
+}
+
+/** Men this deep (yards behind the line) are backs, matched to the card's backs. */
+const BACK_DEPTH_YARDS = -3.5;
+/** What leaving a man without a letter costs in `alignInOrder`, in yards of mismatch. */
+const SKIP_YARDS = 30;
+
+/**
+ * Pairs two lists that are both in order (outside in) without crossing: the cheapest pairing in which no man takes
+ * a letter outside the one taken by a man outside him. Either list may have some left out (a man not tracked, a
+ * letter nobody stood near): a man left out costs `SKIP_YARDS`, a letter left out costs nothing.
+ */
+export function alignInOrder<P, S extends { label: string }>(
+  players: P[],
+  spots: S[],
+  cost: (p: P, s: S) => number,
+): [P, string][] {
+  const n = players.length;
+  const m = spots.length;
+  const best: number[][] = Array.from({ length: n + 1 }, () => new Array<number>(m + 1).fill(0));
+  for (let i = 1; i <= n; i++) best[i][0] = i * SKIP_YARDS;
+  for (let i = 1; i <= n; i++) {
+    for (let j = 1; j <= m; j++) {
+      best[i][j] = Math.min(
+        best[i - 1][j - 1] + cost(players[i - 1], spots[j - 1]),
+        best[i - 1][j] + SKIP_YARDS,
+        best[i][j - 1],
+      );
+    }
+  }
+  const out: [P, string][] = [];
+  let i = n;
+  let j = m;
+  while (i > 0 && j > 0) {
+    if (best[i][j] === best[i - 1][j - 1] + cost(players[i - 1], spots[j - 1])) {
+      out.push([players[i - 1], spots[j - 1].label]);
+      i--;
+      j--;
+    } else if (best[i][j] === best[i - 1][j] + SKIP_YARDS) {
+      i--;
+    } else {
+      j--;
+    }
+  }
+  return out.reverse();
 }
 
 /**

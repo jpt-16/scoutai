@@ -74,6 +74,14 @@ const JUMP_WINDOW_SECONDS = 0.3;
 const SAME_MAN_YARDS = 2;
 /** The shortest route in the tree runs about this far; less than that hasn't shown which route it is. */
 const MIN_ROUTE_YARDS = 5;
+/**
+ * A route is what he ran before the ball got there: read his first this-many seconds from the snap. After that it is
+ * the run after the catch or a receiver giving up on a route (on real film a hitch, settled at 2 s and then run 6 yards
+ * upfield and out over the next 3, read as an OUT). Deep routes at a high-school receiver's speed (about 7 yd/s) need about
+ * this long to show (a comeback's 16-yard stem is 2.3 s), so a quick hitch caught and run with inside 3 s can still
+ * misread: the window is a ceiling, not the moment of the catch, which the tracks don't show.
+ */
+export const ROUTE_SECONDS = 3;
 
 type ReadKind = RouteKind | "block" | "unknown";
 
@@ -233,11 +241,12 @@ export function detectionFromTracks(
       continue;
     }
     if (isLineman(t, cutoff)) continue;
-    const path = t.points.map(([, x, y]) => ({ x, y }));
+    const route = t.points.filter(([s]) => s <= t.points[0][0] + ROUTE_SECONDS);
+    const path = route.map(([, x, y]) => ({ x, y }));
     const raw = readRoute(path, t.start[0] < 0 ? -1 : 1);
     // A path cut short (lost, or handed to another man) hasn't shown which route it was.
     const read =
-      raw.kind !== "block" && pathLength(t.points) < MIN_ROUTE_YARDS
+      raw.kind !== "block" && pathLength(route) < MIN_ROUTE_YARDS
         ? { ...raw, kind: "unknown" as const, confidence: 0 }
         : raw;
     const player: DetectedPlayer = {
