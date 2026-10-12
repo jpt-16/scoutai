@@ -160,7 +160,7 @@ only what the text supports; use "unknown" when it doesn't say.
 - formation: the closest of these shapes, from the offensive formation name:
   spread (2x2 gun, doubles, deuces, empty-ish 2x2), trips (3 receivers to one side, bunch),
   i-form (I backs, fullback and tailback stacked), pro (under center, one or two backs stacked,
-  a tight end), split-pro (two backs side by side), double-eagle (heavy, two tight ends, jumbo).
+  a tight end), split-pro (two backs side by side), double-eagle (the Wing T: a tight end each side, wings outside them, the back behind the QB; also written Double Eagle).
 - side: which way the formation's strength is set, "left" or "right", only if the name says
   (RT/LT, Rip/Liz, Right/Left and similar).
 - playType: "run" or "pass", from the play call (team-specific names count: judge by the words,

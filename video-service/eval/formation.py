@@ -193,6 +193,9 @@ def staff_name(
             return f"bunch{gun}{side}"
 
     if under_center:
+        # Wing T: a tight end each side, a wing outside each, the back behind the QB (the old "double eagle").
+        if sum(1 for p in attached if p.x < 0) >= 1 and sum(1 for p in attached if p.x > 0) >= 1 and backs:
+            return "wing t"
         if len(backs) >= 2 and len(attached) == 1 and len(wide) == 2:
             return f"pro{side}" if (wide_left == 1 and wide_right == 1) else f"twins{side}"
         return ""

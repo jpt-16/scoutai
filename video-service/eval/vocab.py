@@ -12,7 +12,7 @@ import re
 
 # (pattern, key) in the order the TypeScript checks them; first match wins.
 FORMATION_PATTERNS: list[tuple[str, str]] = [
-    (r"\s(DOUBLE|DBL|DBLE)\s*EAGLE\s|\sEAGLE\s", "double-eagle"),
+    (r"\sWING\s*T\s|\s(DOUBLE|DBL|DBLE)\s*EAGLE\s|\sEAGLE\s", "double-eagle"),
     (r"\s(TRIPS|TREY|TRIO|TRIPLE|BUNCH)\s", "trips"),
     (r"\s(I|IFORM|I FORM|POWER I|TIGHT I|SLOT I|MAX I)\s", "i-form"),
     (r"\s(SPLIT|SPLITS|SPLIT BACK|SPLIT BACKS|SPLITBACK|SPLITBACKS|SPLIT PRO|PRO SPLIT)\s", "split-pro"),

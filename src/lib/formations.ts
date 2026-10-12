@@ -153,7 +153,7 @@ export const FORMATION_LABELS: Record<FormationKey, string> = {
   spread: "Spread",
   trips: "Trips",
   "i-form": "I-Form",
-  "double-eagle": "Double Eagle",
+  "double-eagle": "Wing T",
   pro: "Pro",
   "split-pro": "Split Pro",
   unknown: "Other",
@@ -718,6 +718,8 @@ export interface Diagram {
   hashTicks: number[];
   /** How far the formation moved sideways to put the ball on its hash. */
   hashDx: number;
+  /** The formation shifted as one piece (Wing T), not stretched toward the wide side (`mapToHash`). */
+  rigidHash?: boolean;
   /**
    * Scout defense cards are turned 180° so the defense is at the bottom, the
    * way the scout defense sees the offense (the offense's right is on their left).
@@ -766,8 +768,10 @@ export const NUMBERS_X = { left: 75, right: 425 } as const;
  * keep their room to the sideline, so the short side bunches and the wide side
  * spreads. `dx` is the hash's offset from the middle of the field.
  */
-export function mapToHash(x: number, dx: number): number {
+export function mapToHash(x: number, dx: number, rigid = false): number {
   if (dx === 0) return x;
+  // A symmetric formation (Wing T) moves as one piece, so it still looks even on both sides cut in half.
+  if (rigid) return x + dx;
   const [inL, inR, L, R] = [180, 320, 14, 486];
   if (x < inL) return L + ((x - L) * (inL + dx - L)) / (inL - L);
   if (x > inR) return inR + dx + ((x - inR) * (R - inR - dx)) / (R - inR);
@@ -775,8 +779,9 @@ export function mapToHash(x: number, dx: number): number {
 }
 
 /** Inverse of `mapToHash`: a point on the card back to the formation's own coordinates. */
-export function unmapFromHash(x: number, dx: number): number {
+export function unmapFromHash(x: number, dx: number, rigid = false): number {
   if (dx === 0) return x;
+  if (rigid) return x - dx;
   const [inL, inR, L, R] = [180, 320, 14, 486];
   if (x < inL + dx) return L + ((x - L) * (inL - L)) / (inL + dx - L);
   if (x > inR + dx) return inR + ((x - inR - dx) * (R - inR)) / (R - inR - dx);
@@ -1286,6 +1291,10 @@ function buildRoutes(
       jobs[pl.label] = route.job;
       assigned.add(pl);
     }
+    // A concept that leaves the outside receivers to the team (MESH) takes their routes from the call's other words, right to left across
+    // them ("MESH CORNER STICK"), one word for both; untagged they clear (below).
+    const outsides = [slots.ps1, slots.bs1].filter((p): p is Placed => !!p && !assigned.has(p)).sort((a, b) => b.x - a.x);
+    if (extra.length > 0) outsides.forEach((p, i) => run(p, extra[Math.min(i, extra.length - 1)]));
     // The back's own tag on top of the concept ("MESH RAIL").
     const back = concept.backTag ? slots.back : undefined;
     if (concept.backTag && back && !assigned.has(back)) {
@@ -1796,9 +1805,10 @@ export function buildDiagram(
 
   const flipped = unit === "defense";
   const hashDx = card.hash ? FIELD.hashX[card.hash] - FIELD.center.x : 0;
+  const rigidHash = card.formationKey === "double-eagle";
   // Ball onto its hash, then (scout defense) turn the card around.
   const turn = <T extends { x: number; y: number }>(p: T): T => {
-    const x = mapToHash(p.x, hashDx);
+    const x = mapToHash(p.x, hashDx, rigidHash);
     return flipped ? { ...p, x: FIELD.width - x, y: FIELD.height - p.y } : { ...p, x };
   };
   const marks = fieldMarkings(card.yardLine ?? null);
@@ -1841,6 +1851,7 @@ export function buildDiagram(
     yardLines: marks.yardLines.map((l) => ({ ...l, y: flipY(l.y) })),
     hashTicks: marks.hashTicks.map(flipY),
     hashDx,
+    rigidHash,
     flipped,
     formationFallback,
     frontFallback,
@@ -1852,10 +1863,10 @@ export function buildDiagram(
  * before the hash shift): how moved defenders are saved, so they stay put if
  * the hash or the card's orientation changes.
  */
-export function fromCardPoint(diagram: Pick<Diagram, "flipped" | "hashDx">, p: Point): Point {
+export function fromCardPoint(diagram: Pick<Diagram, "flipped" | "hashDx" | "rigidHash">, p: Point): Point {
   const x = diagram.flipped ? FIELD.width - p.x : p.x;
   const y = diagram.flipped ? FIELD.height - p.y : p.y;
-  return { x: Math.round(unmapFromHash(x, diagram.hashDx)), y: Math.round(y) };
+  return { x: Math.round(unmapFromHash(x, diagram.hashDx, diagram.rigidHash)), y: Math.round(y) };
 }
 
 /** Offensive line keys for the assignment table, playside to backside. */

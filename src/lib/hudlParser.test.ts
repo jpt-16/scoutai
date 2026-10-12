@@ -630,7 +630,8 @@ describe("buildDiagram (offense only)", () => {
   it("MESH RAIL gives each position its own route, never one route for everyone", () => {
     const d = buildDiagram(card("spread", "MESH RAIL"));
     // Deuces going right: X F | Y Z, H in the backfield.
-    expect(routesBy(d)).toEqual({ X: "8", F: "DRAG", H: "RAIL", Y: "DRAG", Z: "7" });
+    // This staff's MESH: the two inside receivers cross and the back rails; the outside receivers are the team's tags (untagged they clear).
+    expect(routesBy(d)).toEqual({ X: "GO", F: "DRAG", H: "RAIL", Y: "DRAG", Z: "GO" });
     expect(d.jobs.H).toMatch(/Rail/);
     const at = (label: string) => d.routes.find((r) => r[0].x === d.players.find((p) => p.label === label)!.x)!;
     // The drags cross over the ball in opposite directions inside 3-5 yards: F sets the mesh at 5, Y under at 3.
@@ -692,7 +693,12 @@ describe("buildDiagram (offense only)", () => {
     expect(routesBy(buildDiagram(card("spread", "DAGGER")))).toMatchObject({ Z: "DIG", Y: "GO", X: "8" });
     // Going left, the play side flips: X is the play-side #1.
     const left = buildDiagram({ ...card("spread", "MESH RAIL"), playDirection: "left" });
-    expect(routesBy(left)).toMatchObject({ X: "7", Z: "8", H: "RAIL" });
+    expect(routesBy(left)).toMatchObject({ X: "GO", Z: "GO", H: "RAIL" });
+    // The outside routes are tagged by the call: "MESH CORNER RAIL" gives both outside receivers the corner.
+    expect(routesBy(buildDiagram(card("spread", "MESH CORNER RAIL")))).toMatchObject({ X: "7", Z: "7", F: "DRAG", Y: "DRAG", H: "RAIL" });
+    // Trips: no backside #2, so the play-side #3 is the second crosser.
+    const trips = routesBy(buildDiagram(card("trips", "MESH RAIL")));
+    expect(Object.values(trips).filter((r) => r === "DRAG")).toHaveLength(2);
     // Extra route words go to the outside receivers; CROSS alone is the concept,
     // CROSS in a list of words is just a route.
     expect(routesBy(buildDiagram(card("spread", "MESH GO")))).toMatchObject({ X: "GO", Z: "GO", F: "DRAG", Y: "DRAG" });
@@ -703,7 +709,7 @@ describe("buildDiagram (offense only)", () => {
   it("MESH and RAIL are separate: RAIL is the back's tag on any concept", () => {
     // Plain MESH: the same receivers' routes, and the back stays in to protect.
     const mesh = buildDiagram(card("spread", "MESH"));
-    expect(routesBy(mesh)).toEqual({ X: "8", F: "DRAG", Y: "DRAG", Z: "7" });
+    expect(routesBy(mesh)).toEqual({ X: "GO", F: "DRAG", Y: "DRAG", Z: "GO" });
     expect(mesh.jobs.H).toBe("Pass pro");
     // RAIL rides on another concept too.
     expect(routesBy(buildDiagram(card("spread", "SMASH RAIL")))).toEqual({

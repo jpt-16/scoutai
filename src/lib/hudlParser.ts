@@ -449,7 +449,8 @@ function has(text: string, pattern: RegExp): boolean {
 
 export function classifyFormation(formation: string): FormationKey {
   if (!formation.trim()) return "unknown";
-  if (has(formation, /\s(DOUBLE|DBL|DBLE)\s*EAGLE\s|\sEAGLE\s/)) return "double-eagle";
+  // Wing T: a tight end each side, wings outside them and the back behind the QB (Double Eagle is the older name for the same shape).
+  if (has(formation, /\sWING\s*T\s|\s(DOUBLE|DBL|DBLE)\s*EAGLE\s|\sEAGLE\s/)) return "double-eagle";
   if (has(formation, /\s(TRIPS|TREY|TRIO|TRIPLE|BUNCH)\s/)) return "trips";
   if (has(formation, /\s(I|IFORM|I FORM|POWER I|TIGHT I|SLOT I|MAX I)\s/)) return "i-form";
   // Pro is I-backs (F behind Q, H behind F); split backs only when the tag says so.

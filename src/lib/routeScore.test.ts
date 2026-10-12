@@ -21,7 +21,7 @@ describe("the key: the coach's call drawn into a route per receiver", () => {
 
   it("leaves a route the card draws by shape alone (a mesh drag) unkeyed rather than guessing a name for it", () => {
     const key = keyRoutes(mesh);
-    expect(key.get("X")).toBe("post");
+    expect(key.get("X")).toBe("fade"); // untagged outside receivers clear (GO is FADE to this staff)
     expect([...key.values()]).toContain(null);
   });
 });

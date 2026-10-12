@@ -16,7 +16,7 @@ import { buildDiagram, ROUTE_CHOICES, type DiagramMode, type ScoutUnit } from "@
 import { parseDistance, parseYardLine, updateCard, type CardEdits, type Hash, type HudlPlayCard } from "@/lib/hudlParser";
 import { cn } from "@/lib/utils";
 
-const FORMATION_PICKS = ["SPREAD", "TRIPS", "DUCES", "I-FORM", "PRO", "SPLIT PRO", "DOUBLE EAGLE"];
+const FORMATION_PICKS = ["SPREAD", "TRIPS", "DUCES", "I-FORM", "PRO", "SPLIT PRO", "WING T"];
 const PLAY_PICKS = [
   "IZ",
   "OZ",
