@@ -107,6 +107,6 @@ writeFileSync(out, JSON.stringify(script));
 console.log(`${cards.length} cards → ${out}`);
 if (checks.length) console.log(`Routes to check:\n  ${checks.join("\n  ")}`);
 if (defenses.length) {
-  console.log(`Defense read on ${defenses.filter((d) => d.read.plausible).length} of ${cards.length} plays (the rest marked "Check D"). By formation:`);
+  console.log(`Defense read on ${defenses.filter((d) => d.read.plausible).length} of ${cards.length} plays (the rest are marked "Check D" on the card).`);
   for (const line of frontsByFormation(defenses.map(({ card, read }) => ({ formation: card.formation, read })))) console.log(`  ${line}`);
 }
