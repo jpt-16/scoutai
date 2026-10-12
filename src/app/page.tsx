@@ -24,10 +24,7 @@ import { FilmToCardVisual } from "@/components/landing/FilmToCardVisual";
 import { HeroDevice } from "@/components/landing/HeroDevice";
 import { PracticeShowcase } from "@/components/landing/PracticeShowcase";
 import { Reveal, SectionHeading, TryCta } from "@/components/landing/primitives";
-import { TransformShowcase } from "@/components/landing/TransformShowcase";
 import { Button } from "@/components/ui/button";
-import {
-} from "@/components/ui/dialog";
 import { MOCK_HUDL_CSV, DEMO_FILE_NAME } from "@/lib/demoScript";
 import { parseHudlCsvText } from "@/lib/hudlParser";
 import { parseScriptFile, saveScript, storeScript } from "@/lib/scriptStore";
@@ -57,60 +54,60 @@ const HERO_CARDS = [PREVIEW_CARD, ...DEMO_CARDS];
 const HERO_TENDENCIES = computeTendencies(HERO_CARDS);
 
 const PROBLEM_POINTS = [
-  "Hours redrawing the same formations every week",
+  "Hours breaking down film, then redrawing every formation by hand",
+  "Hudl Assist tags you still re-check every Sunday",
+  "No routes in the breakdown: you draw them yourself",
   "Cards that vary with whichever coach drew them",
-  "No easy fix once a card is drawn or printed",
-  "Breakdown and cards in two separate tools",
 ];
 
 const SOLUTION_POINTS = [
-  "Cards generate straight from your Hudl tags",
-  "Same formations, symbols, and layout every time",
-  "Edit any play, route, or note right on the card",
+  "Cards come straight from the opponent's film",
+  "Formations, alignments and routes read for you",
+  "Unsure reads flagged; every route editable on the card",
   "One script: iPad-ready or printed",
 ];
 
 const FOUR_STEPS: { icon: typeof Upload; title: string; detail: string }[] = [
-  { icon: Upload, title: "Upload", detail: "Drop this week's Hudl export." },
-  { icon: Layers, title: "Generate", detail: "Formation, routes, blocking, and assignments draw themselves." },
-  { icon: ClipboardCheck, title: "Review", detail: "Tweak an assignment or a route to match your call." },
+  { icon: Upload, title: "Upload", detail: "Bring the opponent's game film." },
+  { icon: Layers, title: "Read", detail: "Every play's formation, alignment, routes and blocking are read from the film." },
+  { icon: ClipboardCheck, title: "Review", detail: "Check the plays it flagged and drag any route into shape." },
   { icon: Smartphone, title: "Practice", detail: "Swipe it on the iPad, or print 2 or 4 to a page." },
 ];
 
 const FEATURE_CARDS: { icon: typeof Upload; title: string; detail: string }[] = [
-  { icon: ClipboardList, title: "For coaches", detail: "A full scout script in minutes, not a Saturday afternoon." },
+  { icon: ClipboardList, title: "For coaches", detail: "A full scout script from the film, not a Saturday afternoon." },
   { icon: Smartphone, title: "For players", detail: "High-contrast cards built for direct sun on an iPad." },
   { icon: Printer, title: "Print-ready", detail: "2 or 4 cards a page, black on white, binder-ready." },
   { icon: Users, title: "Staff collaboration", detail: "Invite your coaches and work from one script." },
 ];
 
-/** How the AI is used on scout cards (src/lib/importReview.ts, /api/review-import): the CSV stays in charge. */
-const AI_POINTS: { icon: typeof Upload; title: string; detail: string }[] = [
+/** How the film reads are held to account (src/lib/routeScore.ts, scripts/score-routes.ts). A goal, not a claim: keep it that way until it's measured. */
+const ACCURACY_POINTS: { icon: typeof Upload; title: string; detail: string }[] = [
   {
     icon: ClipboardCheck,
-    title: "Your tags win",
+    title: "Scored, play by play",
     detail:
-      "Formation, front, play call, hash and direction come straight from your breakdown. The AI is only asked about a play the app can't place: a formation name it doesn't know, or a call that isn't clearly a run or a pass.",
+      "Every route the analyzer reads is checked against the coach's actual call for that play. The bar is 90%+ of routes right, and that's the number we measure it by.",
   },
   {
     icon: Sparkles,
-    title: "AI fills the gaps",
+    title: "Unsure? It says so",
     detail:
-      "It maps that name onto the app's own formations and fronts. For a pass with a single route word, it builds the concept: a route for each position from your route tree, not one route repeated for everyone.",
+      "A read the analyzer isn't sure of is marked \"Check routes\" on the card, with its best guess, instead of being drawn confidently wrong.",
   },
   {
     icon: Check,
-    title: "Checked, then marked",
+    title: "You have the last word",
     detail:
-      "Every answer is checked against the shapes the app can draw before it's used. Plays the AI touched are tagged \"AI\" with a notice to look them over, and any route can be changed in Edit play.",
+      "Drag any route's break points or change it in Edit play. Your fix is what the scout team runs, and the card is saved for the whole staff.",
   },
 ];
 
 const ABOUT_POINTS: { icon: typeof Upload; title: string; detail: string }[] = [
   { icon: Layers, title: "Real coaching conventions", detail: "Q/F/H/X/Y/Z, your route tree, real run schemes." },
-  { icon: Clock, title: "Minutes, not a late night", detail: "Every card draws itself from the breakdown." },
+  { icon: Clock, title: "Minutes, not a late night", detail: "Every card draws itself from the film." },
   { icon: Smartphone, title: "Built for the field", detail: "Works offline and reads in direct sunlight." },
-  { icon: Sparkles, title: "AI where it helps", detail: "Checks your breakdown and fills in the concepts it can't place." },
+  { icon: Sparkles, title: "Reads the film for you", detail: "Formation, alignment and routes, play by play, with the unsure ones flagged." },
 ];
 
 const FAQS: { q: string; a: string }[] = [
@@ -129,20 +126,24 @@ const FAQS: { q: string; a: string }[] = [
     a: "Scout O draws each play the way your scout offense runs it, with routes and blocks. Scout D shows the formation and where each defender lines up against it, turned so the offense is on top the way your defense sees it. 7v7 drops the linemen and lists the passes, RPOs and play action; Team shows all eleven on offense, runs and passes.",
   },
   {
-    q: "Does the AI change my breakdown?",
-    a: "No. Your tags always win. The AI only looks at plays the app can't place on its own, like a formation name it doesn't know or a call that isn't clearly a run or a pass, and it fills in only what the file left open. Anything it filled in is tagged \"AI\" with a notice to check it, and if it can't be reached the cards draw exactly as your file reads.",
+    q: "How accurate is it?",
+    a: "The bar is 90%+ of routes right, scored play by play against the coaches' own calls, not judged by eye. We're measuring it on real game film during the pilot and will show the number. Until a read clears the bar, the card says so: anything the analyzer isn't sure of is marked \"Check routes\", and every route can be dragged or changed.",
+  },
+  {
+    q: "What film does it need?",
+    a: "The opponent's game film, the way your staff already gets it through Hudl. The press-box (high sideline) angle reads best: the higher the camera, the more clearly receivers separate from the defenders covering them. Lower angles work, with more plays flagged for a check.",
   },
   // Working with the cards
   {
-    q: "Hudl Assist tagged some plays wrong. Can I check them fast?",
-    a: "Yes. Review (on the script reader) steps through the plays: the tags the file came with sit above the card, and one tap on Looks right checks the play, or Fix opens Edit play. It counts how many of Assist's tags were right, tag by tag, and keeps what the file said next to what you changed, so you can see where it misses. The Scorecard also downloads two sheets, as tagged and as corrected, for the plays you checked.",
+    q: "Can I check the plays fast?",
+    a: "Yes. Review (on the script reader) steps through the plays: what was read sits above the card, and one tap on Looks right checks the play, or Fix opens Edit play. It keeps a tally of what was right as read, tag by tag, and keeps the original next to what you changed, so you can see exactly where the reads miss.",
   },
   {
     q: "Can I edit a card after it's generated?",
     a: "Yes. Edit Play changes the formation, strength, play call, direction, hash, front, coverage, notes and each receiver's route, and it can duplicate or delete a play. You can type into the assignment boxes and draw on a card with Apple Pencil. Edits save automatically, are marked \"edited\" in the play list, and are saved to your device and, when you're signed in, to your team's shared copy.",
   },
   {
-    q: "Hudl doesn't say where their safeties line up. Can I show that?",
+    q: "Can I show exactly where their safeties line up?",
     a: "Yes. Set the opponent's secondary once per formation, by typing it (\"FS 12 middle, SS 8 #3 inside, corners 7 outside\") or by reading it from a pre-snap clip, then fine-tune it against a live card. It's drawn on every Scout D card in that formation, and you can still drag a single defender on one play.",
   },
   {
@@ -175,16 +176,13 @@ const FAQS: { q: string; a: string }[] = [
     q: "Can the other coaches on my staff see my script?",
     a: "Yes, if they're on the same team in the app. Everyone on a team shares one script and playsheet, so a coach who signs in on a new iPad, or a second coach, sees the same thing. If two coaches change the same one, the app asks which version to keep instead of overwriting either. Someone who isn't on your team sees nothing.",
   },
-  {
-    q: "Do I have to upload game film?",
-    a: "No. The cards come from your breakdown, which Hudl already tags from the film. The only film the app can use is an optional pre-snap clip for the secondary.",
-  },
 ];
 
 const NAV = [
   ["#top", "Home"],
-  ["#features", "Features"],
   ["#how-it-works", "How it works"],
+  ["#accuracy", "Accuracy"],
+  ["#features", "Features"],
   ["#about", "About"],
   ["#faq", "FAQ"],
 ] as const;
@@ -258,24 +256,24 @@ export default function UploadPage() {
             <div className="flex flex-col items-center gap-7 text-center lg:items-start lg:text-left">
               <p className="animate-in fade-in slide-in-from-bottom-2 flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-3.5 py-1.5 text-[11px] font-bold tracking-[0.12em] whitespace-nowrap text-primary duration-500 sm:text-xs sm:tracking-[0.16em]">
                 <span className="size-1.5 rounded-full bg-primary" aria-hidden="true" />
-                SCOUT CARDS FROM YOUR HUDL BREAKDOWN
+                OPPONENT FILM → SCOUT CARDS
               </p>
               <h1 className="animate-in fade-in slide-in-from-bottom-3 font-display text-[52px] leading-[0.9] font-extrabold uppercase duration-700 sm:text-7xl xl:text-[88px]">
-                Turn your Hudl breakdown into scout cards <span className="text-primary">in seconds.</span>
+                Turn opponent film into <span className="text-primary">scout cards.</span>
               </h1>
               <p className="animate-in fade-in slide-in-from-bottom-3 max-w-[520px] text-lg leading-relaxed text-[#c9cfc9] duration-700 sm:text-xl">
-                Every play becomes a clean, practice-ready card — on the iPad at practice or printed for the
-                whole staff.
+                ScoutCard AI reads every play of the opponent&apos;s film (formation, alignment, routes and blocking)
+                and draws the card your scout team runs. On the iPad at practice or printed for the staff.
               </p>
               <div className="animate-in fade-in slide-in-from-bottom-4 flex w-full max-w-sm flex-col items-stretch gap-3 duration-1000 sm:w-auto sm:max-w-none sm:flex-row sm:items-center sm:justify-center lg:justify-start">
                 <TryCta />
                 <Button size="xl" variant="outline" asChild className="h-14 rounded-xl border-white/15 px-6 hover:border-white/30 hover:bg-white/5">
-                  <a href="#showcase">See how it works</a>
+                  <a href="#upload">See how it works</a>
                 </Button>
               </div>
               <p className="flex items-center justify-center gap-2 text-sm text-muted-foreground lg:justify-start">
                 <Lock className="size-4 shrink-0" aria-hidden="true" />
-                Read on your device, shared only with your team.
+                Private to your staff. Nothing is shared outside your team.
               </p>
             </div>
 
@@ -293,12 +291,12 @@ export default function UploadPage() {
                 eyebrow="START HERE"
                 title={
                   <>
-                    Read the film. <span className="text-primary">Get the scout cards.</span>
+                    Film in. <span className="text-primary">Scout cards out.</span>
                   </>
                 }
               >
-                The film is the source, not someone else&apos;s tags. The film analyzer reads a game and writes a game file;
-                open it here and the cards are drawn from what the players did. You drag them into shape.
+                No breakdown to type and no tags to fix. The film analyzer reads the opponent&apos;s game play by play and
+                writes a game file; open it here and every card is drawn from what their players actually did.
               </SectionHeading>
             </Reveal>
             <Reveal delay={100} className="mt-14">
@@ -306,7 +304,7 @@ export default function UploadPage() {
             </Reveal>
             <Reveal delay={200} className="mx-auto mt-8 flex max-w-5xl flex-wrap items-center justify-between gap-4 rounded-2xl border bg-background/50 p-5">
               <p className="text-sm text-muted-foreground">
-                Already ran a game through the film analyzer? Open the game file it wrote.
+                In the pilot, film analysis is set up with each staff directly. Have a game file from the analyzer? Open it here.
               </p>
               <div className="flex flex-wrap items-center gap-3">
                 <Button variant="outline" size="lg" disabled={busy} onClick={() => gameInput.current?.click()}>
@@ -333,17 +331,17 @@ export default function UploadPage() {
           </div>
         </section>
 
-        {/* How the AI is used on the cards */}
-        <section id="ai" className={SECTION}>
+        {/* Accuracy: the bar the film reads are held to */}
+        <section id="accuracy" className={SECTION}>
           <div className="mx-auto max-w-6xl">
             <Reveal>
-              <SectionHeading eyebrow="HOW THE AI HELPS" title={<>Your tags first. <span className="text-primary">AI only fills the gaps.</span></>}>
-                Cards draw from your Hudl breakdown. When a row has a name the app doesn&apos;t know, the AI reads
-                it and fills in the blanks, and you can see exactly what it touched.
+              <SectionHeading eyebrow="MEASURED, NOT GUESSED" title={<>The bar: <span className="text-primary">90%+ of routes right.</span></>}>
+                Hudl Assist doesn&apos;t read routes. ScoutCard AI does, and every read is scored against what the
+                coach actually called, so you know how far to trust it.
               </SectionHeading>
             </Reveal>
             <ol className="mt-14 grid gap-4 lg:grid-cols-3">
-              {AI_POINTS.map(({ icon: Icon, title, detail }, i) => (
+              {ACCURACY_POINTS.map(({ icon: Icon, title, detail }, i) => (
                 <li key={title}>
                   <Reveal delay={i * 90} className="h-full">
                     <div className="flex h-full flex-col gap-3 rounded-3xl border bg-card p-7 transition-all duration-300 hover:-translate-y-1.5 hover:border-primary/50">
@@ -359,24 +357,9 @@ export default function UploadPage() {
             </ol>
             <Reveal delay={200}>
               <p className="mx-auto mt-8 max-w-3xl rounded-2xl border bg-background/50 px-5 py-4 text-center text-[15px] leading-relaxed text-muted-foreground">
-                Only the plays the app can&apos;t place are sent, as text, never your whole file or any film. If the AI
-                isn&apos;t reachable, the cards draw exactly as your breakdown reads. You can also type a play call
-                and have the AI draw it.
+                We&apos;re measuring it on real game film during the pilot. The number gets published when it&apos;s
+                proven, not before.
               </p>
-            </Reveal>
-          </div>
-        </section>
-
-        {/* Before / after */}
-        <section id="showcase" className={`${SECTION} bg-card/30`}>
-          <div className="mx-auto max-w-6xl">
-            <Reveal>
-              <SectionHeading eyebrow="FROM BREAKDOWN TO CARD" title="One row in. One card out.">
-                Every tag in your breakdown lands exactly where it belongs on the card.
-              </SectionHeading>
-            </Reveal>
-            <Reveal delay={100} className="mt-14">
-              <TransformShowcase card={DEMO_CARDS[1]} />
             </Reveal>
           </div>
         </section>
@@ -385,7 +368,7 @@ export default function UploadPage() {
         <section className={SECTION}>
           <div className="mx-auto max-w-5xl">
             <Reveal>
-              <SectionHeading eyebrow="THE PROBLEM" title="Stop drawing scout cards by hand" />
+              <SectionHeading eyebrow="THE PROBLEM" title="Stop breaking down film by hand" />
             </Reveal>
             <div className="mt-12 grid gap-5 sm:grid-cols-2">
               <Reveal>
@@ -462,8 +445,8 @@ export default function UploadPage() {
         <section id="how-it-works" className={SECTION}>
           <div className="mx-auto max-w-6xl">
             <Reveal>
-              <SectionHeading eyebrow="HOW IT WORKS" title="Upload. Generate. Review. Practice.">
-                From a Hudl breakdown to a script your whole staff can run.
+              <SectionHeading eyebrow="HOW IT WORKS" title="Upload. Read. Review. Practice.">
+                From the opponent&apos;s film to a script your whole staff can run.
               </SectionHeading>
             </Reveal>
             <div className="relative mt-14">
@@ -534,8 +517,8 @@ export default function UploadPage() {
                 <blockquote className="relative text-xl leading-relaxed text-[#dfe3de] sm:text-[22px]">
                   I played high school football, and I watched our coaching staff stay late hand-drawing scout
                   team cards off a stack of Hudl printouts — hours that should&apos;ve gone into actual
-                  gameplanning, film work, or just going home. That&apos;s the whole reason this exists: turn a
-                  breakdown into practice-ready cards in minutes, so a coordinator can walk out of the office
+                  gameplanning, film work, or just going home. That&apos;s the whole reason this exists: turn the
+                  opponent&apos;s film into practice-ready cards in minutes, so a coordinator can walk out of the office
                   instead of tracing X&apos;s and O&apos;s by hand.
                 </blockquote>
                 <figcaption className="relative mt-7 flex items-center gap-3">
@@ -599,7 +582,7 @@ export default function UploadPage() {
                 Stop drawing cards. <span className="text-primary">Start repping looks.</span>
               </h2>
               <p className="mx-auto mt-5 max-w-md text-lg leading-relaxed text-muted-foreground">
-                Drop this week&apos;s Hudl export and see your first scout card in seconds.
+                Turn this week&apos;s opponent film into practice-ready scout cards.
               </p>
               <div className="mx-auto mt-9 flex max-w-sm flex-col items-stretch gap-3 sm:max-w-none sm:flex-row sm:items-center sm:justify-center">
                 <TryCta />

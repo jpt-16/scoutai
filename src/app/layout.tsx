@@ -15,7 +15,7 @@ import { isClerkConfigured } from "@/lib/clerkConfig";
 export const metadata: Metadata = {
   title: "ScoutCard AI",
   description:
-    "Turn game film into vector scout team cards for the iPad or print.",
+    "Turn opponent game film into scout team cards for the iPad or print.",
   manifest: "/manifest.json",
   applicationName: "ScoutCard AI",
   appleWebApp: {

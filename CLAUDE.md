@@ -611,9 +611,7 @@ single-clip card, the one-click game zip import and `/api/parse-video`, `/api/pa
 removed on the staff's call): film no longer goes to Gemini to draw cards. Still in the repo, on
 purpose: the CSV parser and everything built on it (review mode's tags, practice playsheets), the secondary read
 from a pre-snap clip (`/api/read-secondary`, `/api/blob-upload`), and the libraries the tracker's
-output goes through (`videoImport.ts`, `coordinateMapper.ts`, `batchMatcher.ts`). The rest of the
-page's copy (hero, showcase, FAQ) still describes a Hudl breakdown and needs rewriting for the
-film-first story.
+output goes through (`videoImport.ts`, `coordinateMapper.ts`, `batchMatcher.ts`). The landing page copy tells the film-first story (see "Landing page").
 
 **Parked idea: measure the Secondary from a pre-snap frame, no GPU and no server.** Instead of
 Gemini guessing safety depth by eye, the coach pauses the clip on the pre-snap frame, clicks 4 yard-line /
@@ -933,26 +931,23 @@ there's still no separate database for this either.
 
 ## Landing page (`src/app/page.tsx`)
 
-Sections, in order: hero, `#upload`,
-`#ai` ("How
-the AI helps": your tags win, AI fills the gaps, checked then marked; it describes the import review
-and text cards above, so keep it true to them), `#showcase`, problem/solution, on-the-field,
-`#how-it-works`, `#features`, `#about`, `#faq`, final CTA. Visuals live in
-`src/components/landing/`:
+The message is **opponent film in, scout cards out**: hero ("Turn opponent film into scout cards."), `#upload`
+("Film in. Scout cards out.": open a game file the analyzer wrote, or the demo; in the pilot, film analysis is set up
+with each staff directly), `#accuracy` ("The bar: 90%+ of routes right": every read scored against the coach's call,
+unsure reads flagged, the coach has the last word; **a goal, not a claim**: the page says it is being measured during the
+pilot and the number is published when proven, so don't state an accuracy figure until `scripts/score-routes.ts` has
+one on real film), problem/solution, on-the-field, `#how-it-works` (Upload. Read. Review. Practice.), `#features`,
+`#about`, `#faq` (includes "How accurate is it?" and "What film does it need?": the press-box angle reads best), final
+CTA. The breakdown-row showcase (`TransformShowcase`, `HudlCsvMockup`) is no longer on the page; the components stay
+in `src/components/landing/`. Visuals live in `src/components/landing/`:
 
 - Every card shown is a real `ScoutCard` built by the real parser from demo rows
-  (`MOCK_HUDL_CSV`), never a static image. `TransformShowcase` highlights demo row 2 in
-  `HudlCsvMockup` and renders the card parsed from that same row, so "this row became this
-  card" is literally true. Keep them in sync if the demo data changes.
+  (`MOCK_HUDL_CSV`), never a static image.
 - `ScriptScreenMockup` is a static, scaled-down copy of the `/script` reader chrome (unit
   toggle, period tabs, Previous / Next) inside `DeviceFrame`. The hero (`HeroDevice`) cycles
   it through the script; `PracticeShowcase` shows Scout D with a Print Grid sheet behind it.
 - `FilmToCardVisual` pairs an SVG film-frame illustration (not footage) with a live card whose
   `source: "video"` routes can be dragged, exactly as in the app.
-- `HudlExportGuide` is the "how to get your file out of Hudl" guide: the data grid's **⋯** menu
-  → **Export Data to Excel** (`.xlsx` imports as-is). The menu is an HTML recreation rather than
-  a screenshot, so it stays crisp and keeps real game footage (minors) and school names off the
-  page. Hudl's wording varies by version, and the figure caption says so.
 - `primitives.tsx`: `Reveal` (fade-up on first scroll into view), `SectionHeading`, and `TryCta`,
   the single "Try ScoutCard AI" button used in the header, hero, and final CTA.
 - Motion keyframes (`sc-float`, `sc-draw`, `sc-flow`, `sc-row-pulse`, `sc-ping`) are in
