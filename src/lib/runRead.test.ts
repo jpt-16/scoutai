@@ -134,3 +134,17 @@ describe("putting a run on the card", () => {
     expect(applyRunRead(called, read).playCall).toBe("IZ LT");
   });
 });
+
+describe("a clip that starts after the snap", () => {
+  it("says unknown instead of guessing a run from men already in motion", () => {
+    const file = play({});
+    // The film began mid-play: every track's first points are already moving (the real play 34, calibrated 0.4 s after the snap).
+    for (const t of file.tracks.filter((tr) => tr.team === "offense").slice(0, 4)) {
+      t.points = t.points.map(([s, x, y]) => [s, x + s * 5, y + s * 1]);
+      t.start = [t.points[0][1], t.points[0][2]];
+    }
+    const r = readRun(file);
+    expect(r.kind).toBe("unknown");
+    expect(r.why.join(" ")).toMatch(/starts after the snap/);
+  });
+});

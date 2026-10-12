@@ -1,6 +1,6 @@
 # The three real plays (Knights red vs Hawks gold: plays 8, 34, 43)
 
-Hand calibrations (`play_08.json` at clip frame 130, `play_34.json` at 225, `play_43.json` at 180: each a second or two *before* the motion / snap),
+Hand calibrations (`play_08.json` at clip frame 130, `play_34.json` at 180 (it was 225, which is 0.4 s *after* the snap at about frame 212: tracking started mid-play, the snap was never found and the play read as a run; moved back through the paint registration), `play_43.json` at 180: each a second or two *before* the motion / snap),
 the answer keys from Hudl's tag bar (`hudl.csv`, also `corrected.csv`), and the coach's own route truth (`truth.json`, for `scripts/score-truth.ts`).
 
 The clips are not in the repo (minors). Make them from the three screen recordings with

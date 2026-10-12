@@ -27,6 +27,9 @@ export interface RunRead {
   why: string[];
 }
 
+/** Faster than this (yd/s) over the first half second is a man already running. */
+const STARTS_MOVING_YARDS_PER_SECOND = 3;
+
 /** Inside this many yards of the ball, on the line, are the five linemen. */
 const LINE_HALF_WIDTH = 4.5;
 /** When the line is measured: its first steps. */
@@ -58,6 +61,17 @@ const FIRST_MOVE_YARDS = 1.0;
  * run where only a few move fast), less the same lead. Everyone's role is read from his stance before it,
  * and every movement is measured from it.
  */
+/** Three or more offensive men already moving fast in the first half second: the clip began mid-play. */
+function startsMoving(file: TrackedPlayFile): boolean {
+  const moving = file.tracks.filter((t) => {
+    if (t.team !== "offense" || t.points.length < 4) return false;
+    const [t0, x0, y0] = t.points[0];
+    const p = t.points.find((q) => q[0] - t0 >= 0.5);
+    return !!p && Math.hypot(p[1] - x0, p[2] - y0) / (p[0] - t0) > STARTS_MOVING_YARDS_PER_SECOND;
+  });
+  return moving.length >= 3;
+}
+
 function snapOf(file: TrackedPlayFile): number {
   const t = snapTime(file);
   if (t > 0) return t;
@@ -98,6 +112,12 @@ export function readRun(file: TrackedPlayFile): RunRead {
   const why: string[] = [];
   // Roles from each man's stance (his track's start, before the snap); movement measured from the snap.
   const t0 = snapOf(file);
+  // A clip whose first men are already moving began after the snap: nobody's stance was seen, so the read would be a guess
+  // (play 34: calibrated 0.4 s after the snap, read as a toss when it was a pass).
+  if (startsMoving(file)) {
+    why.push("the film starts after the snap: no set to read from");
+    return { kind: "unknown", scheme: null, direction: null, carrier: null, why };
+  }
   const offense = file.tracks.filter((t) => t.team === "offense" && t.points.length >= 2);
   const none: RunRead = { kind: "unknown", scheme: null, direction: null, carrier: null, why };
   if (offense.length < 7) {
