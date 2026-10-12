@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildDiagram, FIELD, YARD_PX, YARD_X } from "./formations";
 import { parseHudlCsvText } from "./hudlParser";
-import { cardFromTracks, detectionFromTracks, motionFromTrack, snapTime, type TrackedPlayer } from "./trackedPlay";
+import { cardFromTracks, detectionFromTracks, formationCheckNote, motionFromTrack, snapTime, type TrackedPlayer, type TrackedPlayFile } from "./trackedPlay";
 import { squigglePath } from "./squiggle";
 
 /*
@@ -130,5 +130,20 @@ describe("the film's formation before and at the snap", () => {
     expect(cardFromTracks(file("deuces gun", "deuces gun"), null).card.notes).not.toContain("Motion:");
     const { card } = cardFromTracks(file("bunch gun right", "deuces gun"), row());
     expect(card.formation).toBe("DUCES");
+  });
+});
+
+describe("an incomplete film formation is shown as a guess", () => {
+  const read = (men: number, notes = ""): TrackedPlayFile =>
+    ({ fps: 30, tracks: [], formations: { set: null, snap: { key: "spread", strength: "right", staff: "aces", text: "aces gun right", notes, men }, snapSeconds: 2 } }) as unknown as TrackedPlayFile;
+
+  it("asks for a check when fewer than 11 men were found", () => {
+    expect(formationCheckNote(read(10))).toBe("Check formation: film read Aces Gun Right from 10 of 11 offensive players.");
+  });
+  it("asks for a check when the line was assumed", () => {
+    expect(formationCheckNote(read(11, "the line wasn't seen, assumed on the ball"))).toMatch(/line assumed/);
+  });
+  it("says nothing for a whole read", () => {
+    expect(formationCheckNote(read(11))).toBe("");
   });
 });

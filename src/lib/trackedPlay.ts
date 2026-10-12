@@ -411,6 +411,21 @@ export function filmFormationText(file: TrackedPlayFile): string {
   return snap && snap.key !== "unknown" ? snap.text : "";
 }
 
+/**
+ * "Check formation: film read Aces Gun Right from 10 of 11 offensive players." when the card's formation came from the film
+ * and the film didn't see the whole offense (or had to assume the line). On the first real plays a read from 9-10 men was right
+ * once in four, so an incomplete read is shown as a guess to check, never as the formation.
+ */
+export function formationCheckNote(file: TrackedPlayFile): string {
+  const snap = file.formations?.snap;
+  if (!snap || snap.key === "unknown" || !snap.text) return "";
+  const men = snap.men ?? 0;
+  const assumed = /assumed/i.test(snap.notes ?? "");
+  if (men >= 11 && !assumed) return "";
+  const cap = (t: string) => t.replace(/\b\w/g, (c) => c.toUpperCase());
+  return `Check formation: film read ${cap(snap.text)} from ${men} of 11 offensive players${assumed ? " (line assumed)" : ""}.`;
+}
+
 /** "Motion: set in Bunch Gun Right, snapped from Deuces Gun." when the formation changed between the set and the snap, else "". */
 export function motionFormationNote(file: TrackedPlayFile): string {
   const set = file.formations?.set;
@@ -431,7 +446,7 @@ export function cardFromTracks(
   opts: { formation?: string; playName?: string; source?: string; playNumber?: number; trustFilmRoutes?: boolean } = {},
 ): TrackedCard {
   const { detection, reads: raw } = detectionFromTracks(file, { ...opts, formation: opts.formation || filmFormationText(file) });
-  const motion = motionFormationNote(file);
+  const motion = [motionFormationNote(file), row?.formation?.trim() || opts.formation ? "" : formationCheckNote(file)].filter(Boolean).join(" ");
   const built0 = row
     ? applyDetectionToCard(row, detection)
     : buildCardFromDetection(detection, opts.source ?? "tracked film", opts.playNumber ?? 1);

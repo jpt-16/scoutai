@@ -212,7 +212,12 @@ export function readRun(file: TrackedPlayFile): RunRead {
     scheme = "iso";
     why.push("no pullers, the line fired straight ahead and the back went up the middle");
   }
-  if (lineDy < RUN_FIRE_YARDS && scheme !== "draw") why.push("(the line didn't fire forward much)");
+  // A run the line doesn't back up is more likely a tracking slip (one id handed to another man) than a run: real film read
+  // plays 34 and 43, both passes, as a toss and a power from a quarterback whose track had jumped. Say unknown, not run.
+  if (lineDy < RUN_FIRE_YARDS && scheme !== "draw" && scheme !== "sneak") {
+    why.push("the line didn't fire forward, so a carrier crossing isn't enough to call it a run");
+    return { ...none, why };
+  }
   return { kind: "run", scheme, direction, carrier: carrier.id, why };
 }
 
