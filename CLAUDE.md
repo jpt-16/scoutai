@@ -66,6 +66,7 @@ src/
     secondary.ts           Scout D secondary per formation: typed line / film read → DB spots
     formationFamily.ts     The staff's formation names (Pro, Twins, Aces, Duces, Trio...) as a family the defense is matched on
     defensiveAligner.ts    Scout D alignment rules: split receivers, safety roll, backers match numbers
+    coverageRead.ts        Coverage from film: man or zone, how many deep, sky / cloud, quarters match (after the snap)
     generatedCard.ts       Text-to-card: Gemini prompt, answer validation, grid → card overrides
     batchMatcher.ts        Batch plan: sort clips from the sheet, match clip ↔ row, route each row
     gemini.ts              The one Gemini JSON call: model fallback, schema fallback, real error reasons
@@ -806,6 +807,27 @@ is unchanged: on the clean sprint it still reads wheel (fade next) at low confid
 before reading changed the answer in odd ways (it made a straight sprint read as a comeback because of the frozen tail),
 so it was left alone until there are more real tracks to tune on.
 
+**Coverage from film (`src/lib/coverageRead.ts`):** the pre-snap shell only narrows it (2-high is Cover 2, 4, 6 or Tampa 2;
+1-high Cover 1 or 3), so `readCoverage` reads what the corners, safeties and backers *do* in the first `READ_SECONDS` (2) after
+`snapTime`, by plain rules with thresholds at the top: (1) **man or zone** by votes, one per coverage defender a route that broke
+across the field (3.5+ yards) came near: he `mirrors` the receiver when, from the second half of the read on (an off-man corner
+closes his cushion first), his steps match the receiver's step for step and he's on him; a zone defender lets the route run
+through (a vertical gives no vote, since a Cover 3 corner bailing with a go runs with him just like a man corner); rushers (ending
+at the line) don't vote; 60%+ man is man. (2) **How many deep** at the end (11+ yards, not counting a man defender running with
+his receiver): man gives Cover 0 / Cover 1 / 2 Man; zone gives Cover 2 (two deep, corners in the flats), Tampa 2 (the middle backer
+ran the deep middle), Cover 3 (three deep splitting the field in thirds) or Cover 6 (three deep, two on one side), Cover 4 (four).
+(3) **The details:** who took each flat (`cloud` corner, `sky` safety or nickel, `buzz` backer), Cover 4 **match** (a safety
+carried a vertical #2) or spot drop, and whether the defense rotated out of its pre-snap shell. The label is the COVERAGE column's
+own words ("COVER 3 SKY", "COVER 4 MATCH", "2 MAN", "TAMPA 2"), so `coverageStyleFor` and the card footer use it as is. A read has
+`evidence` lines and a `confidence`; it is never sure with no breaking route near a defender, a split vote, the defense at the snap
+not adding up (`readDefense` not plausible) or five deep. `applyCoverageRead` writes a sure read only where the sheet left COVERAGE
+blank (the coach's tag wins) and notes either way ("Film coverage: COVER 1." / "Check coverage: film says …, unsure.");
+`tracks-to-cards` applies it and `score-routes` scores it against the key's COVERAGE by family (`coverageFamilyOf`: "C3", "Cover 3
+Sky", "Quarters", "Tampa", "6 - DOUBLE FIRE"). Tested on drawn plays (Duces against a 4-2-5, a tracker's jitter and a tenth of
+the points missing): Cover 0, 1, 2 Man, 2, Tampa 2, 3 sky out of a two-high rotation, 3 cloud, 4 match, 4 spot drop and 6 all
+read right across 12 noise patterns, four verticals with no break is unsure. On the two real recordings every read is unsure (the
+defense at the snap reads "3-1-7" / "1-1-8"), so nothing is written: the real test is press-box film with the coverage tagged.
+
 **Tenth pass (offline, on the real dumps and recordings, plays 5 and 6):** measured against the truth for the first time.
 Receiver positions on play 5 were marked by hand from the film (`video-service/eval/truth/play_05.json`, scored by
 `python -m eval.truth tracks/play_05.json eval/truth/play_05.json`): the first tracker had **5 of 13** marks on the right
@@ -909,7 +931,7 @@ is a game filmed from two places; the 2 s tolerance was set on drawn snap times.
 
 **What film can and can't read.** From the film alone the cards get the formation (and its strength), run or pass, the routes,
 the run scheme and direction, the hash side (from where the ball is across the field), and the defense (front, shell, where the
-corners and safeties stood). **Down, distance, yard line and result are not on press-box film** (there is no scoreboard), so a
+corners and safeties stood, and the coverage they played after the snap: `coverageRead.ts`, drawn plays only so far). **Down, distance, yard line and result are not on press-box film** (there is no scoreboard), so a
 film-only card shows "—" for them until the coach types them in Edit play; with Hudl's sheet they come from the sheet. Reading
 them from a scorebug (OCR) on broadcast-style film is possible and not built; the yard line number can't be read at all from the
 paint (it is unknown which yard line a calibrated field is), so a coach enters it.

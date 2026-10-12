@@ -16,6 +16,7 @@ import { join } from "node:path";
 import { planBatch } from "../src/lib/batchMatcher";
 import { parseHudlCsvText } from "../src/lib/hudlParser";
 import { readDefense } from "../src/lib/defenseRead";
+import { coverageFamilyOf, readCoverage } from "../src/lib/coverageRead";
 import { playKind, runScheme } from "../src/lib/formations";
 import { readRun } from "../src/lib/runRead";
 import { keyRoutes, report, scorePlay, summarize, type RouteVerdict } from "../src/lib/routeScore";
@@ -46,6 +47,8 @@ let unkeyed = 0;
 const tally = { kind: [0, 0], scheme: [0, 0], direction: [0, 0] };
 const runMisses: string[] = [];
 let frontsKeyed = 0;
+// Scout D: the coverage the film read after the snap against the key's COVERAGE (by family: Cover 3 Sky = C3).
+const cover = { keyed: 0, right: 0, sure: 0, sureRight: 0, misses: [] as string[] };
 let frontsRight = 0;
 const frontMisses: string[] = [];
 for (const row of plan.rows) {
@@ -95,7 +98,21 @@ for (const row of plan.rows) {
     else frontMisses.push(`${row.card.defFront} → ${defense ? defense.label : "not read"}`);
     front = ` || front ${row.card.defFront}${right ? " ✓" : ` ✗ (${defense ? defense.label : "not read"})`}`;
   }
-  console.log(`Play ${row.card.playNumber} (${row.clip}) ${row.card.formation} · ${row.card.playCall}: ${cells.join(" | ")}${run}${front}`);
+  const keyCover = coverageFamilyOf(row.card.coverage);
+  let coverage = "";
+  if (keyCover) {
+    const read = readCoverage(file);
+    const right = read?.family === keyCover;
+    cover.keyed++;
+    if (right) cover.right++;
+    if (read?.sure) {
+      cover.sure++;
+      if (right) cover.sureRight++;
+    }
+    if (!right) cover.misses.push(`${row.card.coverage} → ${read ? read.label : "not read"}`);
+    coverage = ` || coverage ${row.card.coverage}${right ? " ✓" : ` ✗ (${read ? `${read.label}${read.sure ? "" : ", unsure"}` : "not read"})`}`;
+  }
+  console.log(`Play ${row.card.playNumber} (${row.clip}) ${row.card.formation} · ${row.card.playCall}: ${cells.join(" | ")}${run}${front}${coverage}`);
 }
 for (const clip of plan.unmatchedClips) console.log(`${clip}: no row in the key for this play`);
 console.log("");
@@ -109,5 +126,9 @@ if (tally.kind[1]) {
 if (frontsKeyed) {
   console.log(`Fronts right (Scout D): ${frontsRight} of ${frontsKeyed} (${Math.round((100 * frontsRight) / frontsKeyed)}%)`);
   if (frontMisses.length) console.log(`  missed: ${frontMisses.slice(0, 8).join(", ")}`);
+}
+if (cover.keyed) {
+  console.log(`Coverages right (Scout D): ${share([cover.right, cover.keyed])}  ·  sure reads right: ${share([cover.sureRight, cover.sure])}`);
+  if (cover.misses.length) console.log(`  missed: ${cover.misses.slice(0, 8).join(", ")}`);
 }
 if (unkeyed) console.log(`Not scored: ${unkeyed} receivers whose route on the call has no route-tree name (a mesh drag, a rail)`);

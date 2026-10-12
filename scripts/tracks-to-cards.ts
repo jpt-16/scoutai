@@ -19,6 +19,7 @@ import { basename, join } from "node:path";
 import { planBatch } from "../src/lib/batchMatcher";
 import { parseHudlCsvText } from "../src/lib/hudlParser";
 import { applyDefenseRead, frontsByFormation, readDefense, secondaryFromFilm, type DefenseRead } from "../src/lib/defenseRead";
+import { applyCoverageRead, readCoverage } from "../src/lib/coverageRead";
 import type { HudlPlayCard } from "../src/lib/hudlParser";
 import { applyRunRead, readRun } from "../src/lib/runRead";
 import { cardFromTracks, type TrackedPlayFile } from "../src/lib/trackedPlay";
@@ -66,8 +67,10 @@ const warnings: string[] = [];
 const defenses: { card: HudlPlayCard; read: DefenseRead }[] = [];
 const withDefense = (card: HudlPlayCard, file: TrackedPlayFile): HudlPlayCard => {
   const read = readDefense(file);
-  if (!read) return card;
-  const next = applyDefenseRead(card, read);
+  // The coverage: what the corners, safeties and backers did after the snap (written only where the sheet left it blank).
+  const covered = applyCoverageRead(card, readCoverage(file));
+  if (!read) return covered;
+  const next = applyDefenseRead(covered, read);
   defenses.push({ card: next, read });
   return next;
 };
