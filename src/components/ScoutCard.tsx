@@ -410,6 +410,7 @@ export function ScoutCard({
               ["route", c.route],
               ["ball", c.ball],
               ["block", c.block],
+              ["rush", c.defense],
             ] as const
           ).map(([name, color]) => (
             <marker
@@ -671,6 +672,15 @@ export function ScoutCard({
               );
             });
           })}
+
+        {/* Scout defense: the blitz, an arrow from each blitzer at the quarterback. */}
+        {diagram.rushes.length > 0 && (
+          <g fill="none" stroke={c.defense} strokeWidth={w(2.4)} strokeLinecap="butt" strokeLinejoin="miter" aria-label="Blitz">
+            {diagram.rushes.map((p, i) => (
+              <path key={`rush${i}`} d={linePath(p, 3)} markerEnd={marker("rush")} />
+            ))}
+          </g>
+        )}
 
         {/* Scout defense: X's (draggable while adjusting). */}
         {diagram.defense.map((d) => {

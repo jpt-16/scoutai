@@ -17,6 +17,8 @@ import { planBatch } from "../src/lib/batchMatcher";
 import { parseHudlCsvText } from "../src/lib/hudlParser";
 import { readDefense } from "../src/lib/defenseRead";
 import { coverageFamilyOf, readCoverage } from "../src/lib/coverageRead";
+import { parsePressure } from "../src/lib/pressure";
+import { readPressure } from "../src/lib/pressureRead";
 import { playKind, runScheme } from "../src/lib/formations";
 import { readRun } from "../src/lib/runRead";
 import { keyRoutes, report, scorePlay, summarize, type RouteVerdict } from "../src/lib/routeScore";
@@ -49,6 +51,9 @@ const runMisses: string[] = [];
 let frontsKeyed = 0;
 // Scout D: the coverage the film read after the snap against the key's COVERAGE (by family: Cover 3 Sky = C3).
 const cover = { keyed: 0, right: 0, sure: 0, sureRight: 0, misses: [] as string[] };
+// The blitz the film read against the key's (this staff tags it in COVERAGE: "6 - DOUBLE FIRE"), by the call (FIRE /
+// DOUBLE FIRE / LB) and, separately, the rush count.
+const blitz = { keyed: 0, call: 0, count: 0, misses: [] as string[] };
 let frontsRight = 0;
 const frontMisses: string[] = [];
 for (const row of plan.rows) {
@@ -98,6 +103,19 @@ for (const row of plan.rows) {
     else frontMisses.push(`${row.card.defFront} → ${defense ? defense.label : "not read"}`);
     front = ` || front ${row.card.defFront}${right ? " ✓" : ` ✗ (${defense ? defense.label : "not read"})`}`;
   }
+  const keyBlitz = parsePressure(row.card.coverage);
+  let pressure = "";
+  if (keyBlitz) {
+    const read = readPressure(file);
+    const said = read?.tag ? parsePressure(read.tag) : null;
+    const callRight = said?.call === keyBlitz.call;
+    const countRight = keyBlitz.rushers != null && read?.rushers === keyBlitz.rushers;
+    blitz.keyed++;
+    if (callRight) blitz.call++;
+    if (countRight) blitz.count++;
+    if (!callRight) blitz.misses.push(`${row.card.coverage} → ${read?.tag ?? "no blitz read"}`);
+    pressure = ` || blitz ${row.card.coverage}${callRight ? " ✓" : ` ✗ (${read?.tag ?? "none"}${read && !read.sure ? ", unsure" : ""})`}`;
+  }
   const keyCover = coverageFamilyOf(row.card.coverage);
   let coverage = "";
   if (keyCover) {
@@ -112,7 +130,7 @@ for (const row of plan.rows) {
     if (!right) cover.misses.push(`${row.card.coverage} → ${read ? read.label : "not read"}`);
     coverage = ` || coverage ${row.card.coverage}${right ? " ✓" : ` ✗ (${read ? `${read.label}${read.sure ? "" : ", unsure"}` : "not read"})`}`;
   }
-  console.log(`Play ${row.card.playNumber} (${row.clip}) ${row.card.formation} · ${row.card.playCall}: ${cells.join(" | ")}${run}${front}${coverage}`);
+  console.log(`Play ${row.card.playNumber} (${row.clip}) ${row.card.formation} · ${row.card.playCall}: ${cells.join(" | ")}${run}${front}${coverage}${pressure}`);
 }
 for (const clip of plan.unmatchedClips) console.log(`${clip}: no row in the key for this play`);
 console.log("");
@@ -126,6 +144,10 @@ if (tally.kind[1]) {
 if (frontsKeyed) {
   console.log(`Fronts right (Scout D): ${frontsRight} of ${frontsKeyed} (${Math.round((100 * frontsRight) / frontsKeyed)}%)`);
   if (frontMisses.length) console.log(`  missed: ${frontMisses.slice(0, 8).join(", ")}`);
+}
+if (blitz.keyed) {
+  console.log(`Blitzes right (Scout D): call ${share([blitz.call, blitz.keyed])}  ·  rush count ${share([blitz.count, blitz.keyed])}`);
+  if (blitz.misses.length) console.log(`  missed: ${blitz.misses.slice(0, 8).join(", ")}`);
 }
 if (cover.keyed) {
   console.log(`Coverages right (Scout D): ${share([cover.right, cover.keyed])}  ·  sure reads right: ${share([cover.sureRight, cover.sure])}`);

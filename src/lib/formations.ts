@@ -9,6 +9,7 @@ import {
   type ConceptRoute,
   type ConceptSlot,
 } from "./conceptMapper";
+import { isPressureTag, parsePressure, type Blitzer } from "./pressure";
 import { placeDb, type DbAlignment, type DbSlot } from "./secondary";
 import {
   alignDefense,
@@ -264,7 +265,7 @@ function buildDefense(
   alignment?: DbAlignment,
   coverage = "",
   call?: DefensiveAlignment,
-): { defenders: Defender[]; notes: string[] } {
+): { defenders: Defender[]; notes: string[]; rushes: Pt[][] } {
   const front = FRONTS[frontKey];
   const xs = skill.map(({ at: [x] }) => x);
   const leftmost = Math.min(...xs);
@@ -336,7 +337,43 @@ function buildDefense(
     const moved = overrides[id];
     return { id, label, x: moved?.x ?? at[0], y: moved?.y ?? at[1] };
   });
-  return { defenders, notes: aligned.notes };
+  // A blitz in the COVERAGE column ("6 - DOUBLE FIRE"): an arrow from each blitzer to the quarterback.
+  const pressure = parsePressure(coverage);
+  const rushes: Pt[][] = [];
+  const notes = [...aligned.notes];
+  if (pressure && !dropLine) {
+    const sdir = strength === "left" ? -1 : 1;
+    const backers = defenders.filter((d) => BACKER_LABELS.has(d.label));
+    const taken = new Set<string>();
+    for (const b of pressure.blitzers) {
+      const who = pickBlitzer(b, backers, sdir, taken);
+      if (!who) continue;
+      taken.add(who.id);
+      rushes.push(rushPath(b, who));
+    }
+    if (rushes.length) notes.unshift(pressure.describe.replace(/\.$/, ""));
+  }
+  return { defenders, notes, rushes };
+}
+
+/** Backers: the ones a blitz call sends. */
+const BACKER_LABELS = new Set(["W", "M", "S", "B"]);
+/** Outside the tackle (who stands 44 px off the ball): where an edge blitz comes. */
+const EDGE_X = 66;
+
+/** The backer a blitz call sends: the outermost on that side for FIRE, the one nearest the ball for LB. */
+function pickBlitzer(b: Blitzer, backers: Defender[], sdir: number, taken: Set<string>): Defender | undefined {
+  const free = backers.filter((d) => !taken.has(d.id));
+  if (b === "inside") return [...free].sort((a, c) => Math.abs(a.x - 250) - Math.abs(c.x - 250))[0];
+  const dir = b === "outside-strong" ? sdir : -sdir;
+  return free.filter((d) => (d.x - 250) * dir > 0).sort((a, c) => Math.abs(c.x - 250) - Math.abs(a.x - 250))[0];
+}
+
+/** His rush: off the edge (outside backers) or through the A gap (inside), then at the quarterback. */
+function rushPath(b: Blitzer, who: Defender): Pt[] {
+  const dir = Math.sign(who.x - 250) || 1;
+  const gap: Pt = b === "inside" ? [250 + dir * 9, 136] : [250 + dir * EDGE_X, 136];
+  return [[who.x, who.y], gap, [250 + dir * (b === "inside" ? 2 : 12), 170]];
 }
 
 /* -------------------------------------------------------------------------- */
@@ -655,6 +692,8 @@ export interface Diagram {
   fakes: Point[][];
   /** Scout defense cards only: where each defender lines up. */
   defense: Defender[];
+  /** Scout defense cards only: the blitzers' rush arrows, when the COVERAGE column is a blitz ("6 - DOUBLE FIRE"). */
+  rushes: Point[][];
   /**
    * Scout defense cards only: what the alignment rules did ("SS apex Y",
    * "S apex H", "FS middle"), shown in the NOTES box until a coach writes one.
@@ -1759,6 +1798,7 @@ export function buildDiagram(
     pulls: turnAll(points(pulls)),
     fakes: turnAll(points(fakes)),
     defense: defense.map(turn),
+    rushes: (aligned?.rushes ?? []).map((path) => path.map(toPoint).map(turn)),
     defenseNotes: aligned?.notes ?? [],
     ballHashX: ballHashX != null && flipped ? FIELD.width - ballHashX : ballHashX,
     losY: flipY(FIELD.los),
@@ -1872,9 +1912,11 @@ export function buildAssignments(
   };
 
   if (diagram.unit === "defense") {
+    // The column is COVERAGE, but this staff puts the blitz there ("6 - DOUBLE FIRE"): say which it is.
+    const coverage = row("COVERAGE", card.coverage || "—");
     return [
       row("FRONT", card.defFront || "4-3 (default)"),
-      row("COVERAGE", card.coverage || "—"),
+      isPressureTag(card.coverage) ? { ...coverage, label: "BLITZ:" } : coverage,
       notes,
     ];
   }

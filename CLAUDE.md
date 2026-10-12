@@ -239,6 +239,14 @@ Free-text tags are classified by keyword (`classifyFormation`, `classifyFront`,
   E/T/N/W/M/S/B/C/FS/SS. Corners go over the widest receivers and safeties shade to the
   receiver-heavy side. An unknown front draws as 4-3, and the card footer says so. `COVERAGE`
   shows in the footer.
+  **Blitzes** (`src/lib/pressure.ts`): this staff writes the blitz in the COVERAGE column, not a coverage: "6 - DOUBLE
+  FIRE", "5 - LB". The number is how many rush; **FIRE** is one outside backer blitzing off the edge (the strong side's
+  unless the tag says WEAK / WILL), **DOUBLE FIRE** both outside backers, **LB** an inside backer. `parsePressure` reads
+  the tag; the Scout D card draws a rush arrow (`Diagram.rushes`, defense color) from each blitzer (the outermost backer
+  on that side, or the one nearest the ball for LB) off the edge or through the A gap at the quarterback, puts "Double
+  Fire: both outside backers off the edge, 6 rush" first in NOTES, and labels the table's box BLITZ. None in 7v7. There is
+  no Cover 6 in this staff's calls: a "6" there is a rush count, and `coverageStyleFor` no longer reads it as a two-high
+  shell.
   Scout defense cards are **flipped 180°** (`Diagram.flipped`, `losY` = 160). The defense is at
   the bottom and the offense on top, as the scout defense sees it, so the offense's right is on
   their left. Text stays upright. The header's `HASH` stays as recorded in Hudl.
@@ -806,6 +814,15 @@ prove bench hops are gone. **Third run:** the far-sideline receivers are now fol
 is unchanged: on the clean sprint it still reads wheel (fade next) at low confidence, and smoothing the jittery 30 fps path
 before reading changed the answer in odd ways (it made a straight sprint read as a comeback because of the frozen tail),
 so it was left alone until there are more real tracks to tune on.
+
+**Blitz from film (`src/lib/pressureRead.ts`):** `readPressure` counts who rushed in the first 1.5 s after `snapTime`
+(a down lineman who stayed at the line rushed, one who ran 4+ yards back dropped into coverage; a backer, nickel or DB who
+reached the line blitzed) and where each blitzer crossed the line (4.5+ yards from the ball is off the edge: an outside
+backer's FIRE, strong or weak by the side with more receivers; inside it, LB), and writes the staff's tag (`pressureTag`:
+"6 - DOUBLE FIRE", "5 - FIRE", "5 - LB"; a straight four-man rush is none). Sure only when the defense at the snap adds up;
+`applyPressureRead` writes it in a blank COVERAGE (the coach's tag wins) before the coverage read, and notes it either way.
+`score-routes` scores the call and the rush count against a key whose COVERAGE is a blitz. Tested on drawn plays
+(`pressure.test.ts`); unsure on the two real recordings.
 
 **Coverage from film (`src/lib/coverageRead.ts`):** the pre-snap shell only narrows it (2-high is Cover 2, 4, 6 or Tampa 2;
 1-high Cover 1 or 3), so `readCoverage` reads what the corners, safeties and backers *do* in the first `READ_SECONDS` (2) after

@@ -20,6 +20,7 @@ import { planBatch } from "../src/lib/batchMatcher";
 import { parseHudlCsvText } from "../src/lib/hudlParser";
 import { applyDefenseRead, frontsByFormation, readDefense, secondaryFromFilm, type DefenseRead } from "../src/lib/defenseRead";
 import { applyCoverageRead, readCoverage } from "../src/lib/coverageRead";
+import { applyPressureRead, readPressure } from "../src/lib/pressureRead";
 import type { HudlPlayCard } from "../src/lib/hudlParser";
 import { applyRunRead, readRun } from "../src/lib/runRead";
 import { cardFromTracks, type TrackedPlayFile } from "../src/lib/trackedPlay";
@@ -67,8 +68,9 @@ const warnings: string[] = [];
 const defenses: { card: HudlPlayCard; read: DefenseRead }[] = [];
 const withDefense = (card: HudlPlayCard, file: TrackedPlayFile): HudlPlayCard => {
   const read = readDefense(file);
-  // The coverage: what the corners, safeties and backers did after the snap (written only where the sheet left it blank).
-  const covered = applyCoverageRead(card, readCoverage(file));
+  // The blitz, then the coverage: what the backers and DBs did after the snap. This staff writes the blitz in the COVERAGE
+  // column ("6 - DOUBLE FIRE"), so a blitz read goes there first; each is written only where the sheet left it blank.
+  const covered = applyCoverageRead(applyPressureRead(card, readPressure(file)), readCoverage(file));
   if (!read) return covered;
   const next = applyDefenseRead(covered, read);
   defenses.push({ card: next, read });
