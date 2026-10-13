@@ -79,8 +79,8 @@ describe("route concepts", () => {
   it("sends one-route passes with their positions, never tree numbers or named concepts", () => {
     expect(cards.map((c) => unplaced(c).routes)).toEqual([true, false, false]);
     const [row] = reviewRows(cards);
-    expect(row.positions).toBe("ps1 Z, ps2 Y, ps3 H, bs1 X, back F");
-    expect(buildReviewPrompt([row])).toContain("build routes for: ps1 Z, ps2 Y, ps3 H, bs1 X, back F");
+    expect(row.positions).toBe("ps1 Z, ps2 Y, ps3 F, bs1 X, back H");
+    expect(buildReviewPrompt([row])).toContain("build routes for: ps1 Z, ps2 Y, ps3 F, bs1 X, back H");
   });
 
   it("applies the AI's concept per letter, marked AI, and a new call drops it", () => {
@@ -101,12 +101,12 @@ describe("route concepts", () => {
     expect(out[0].routeOverrides).toEqual({
       Z: { route: "slant", source: "ai" },
       Y: { route: "flat", source: "ai" },
-      H: { route: "curl", source: "ai" },
+      F: { route: "curl", source: "ai" },
       X: { route: "slant", source: "ai" },
-      F: { route: "protect", source: "ai" },
+      H: { route: "protect", source: "ai" },
     });
     const d = buildDiagram(out[0]);
-    expect(d.jobs).toMatchObject({ Z: "2 Slant", Y: "Flat", H: "4 Curl", F: "Pass pro" });
+    expect(d.jobs).toMatchObject({ Z: "2 Slant", Y: "Flat", F: "4 Curl", H: "Pass pro" });
     const retyped = updateCard(out[0], { playCall: "SMASH" });
     expect(retyped.routeOverrides).toEqual({});
     expect(retyped.aiHints).toBeUndefined();

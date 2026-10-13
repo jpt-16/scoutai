@@ -114,7 +114,8 @@ describe("Scout D alignment rules", () => {
   it("3x1 Trips, Cover 3: SS apexes #2, Sam apexes #3, one deep", () => {
     const c = card("Trips Rt", "Cover 3");
     const s = spots(buildDiagram(c, "team", "defense"));
-    const [h, y] = ["H", "Y"].map((l) => receiverX(c, l));
+    // The staff's letters run X, F, Y, Z left to right: the #3 inside the trips is F.
+    const [h, y] = ["F", "Y"].map((l) => receiverX(c, l));
     expect(s.SS1.x).toBeCloseTo((y + h) / 2, 0);
     expect(s.S1.x).toBeCloseTo((h + 294) / 2, 0);
     expect(depth(s.S1.y)).toBe(6);
@@ -127,7 +128,8 @@ describe("Scout D alignment rules", () => {
   it("mirrors for Trips Left, and plays man over with an inside shade in Cover 1", () => {
     const c = card("Trips Lt", "Cover 1");
     const s = spots(buildDiagram(c, "team", "defense"));
-    const [h, y] = ["H", "Y"].map((l) => receiverX(c, l));
+    // Trips left is X, F, Y across the left (X widest, Y the #3 inside) and Z alone on the right.
+    const [h, y] = ["Y", "F"].map((l) => receiverX(c, l));
     expect(y).toBeLessThan(250);
     // Head up on Y a yard inside (toward the ball), 6 off.
     expect(s.SS1.x).toBeCloseTo(y + YARD_X, 0);
@@ -152,7 +154,7 @@ describe("Scout D alignment rules", () => {
     expect(backersInBox).toHaveLength(1);
     // ...and he bumps over the ball.
     expect(backersInBox[0].x).toBe(250);
-    expect(d.defenseNotes).toContain("M apex H");
+    expect(d.defenseNotes).toContain("M apex F");
   });
 
   it("changes nothing against Pro, I-Form or Double Eagle (one split receiver a side at most)", () => {
@@ -171,8 +173,8 @@ describe("Scout D alignment rules", () => {
     const c = { ...card("Trips Rt", "Cover 3"), secondary: table };
     const d = buildDiagram(c, "team", "defense");
     const s = spots(d);
-    const h = receiverX(c, "H");
-    // SS is where the table says: over #3 (H), a yard and a half inside, 8 deep.
+    const h = receiverX(c, "F");
+    // SS is where the table says: over #3 (F), a yard and a half inside, 8 deep.
     expect(s.SS1.x).toBeCloseTo(h - 1.5 * YARD_X, 0);
     expect(depth(s.SS1.y)).toBe(8);
     // Y (#2) is still alone, so the Sam walks out on him.

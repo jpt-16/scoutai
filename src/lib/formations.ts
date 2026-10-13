@@ -91,10 +91,10 @@ export const FORMATIONS: Record<Exclude<FormationKey, "unknown">, FormationShape
   },
   trips: {
     qb: [250, 190],
-    backs: [{ label: "F", role: "RB", at: [224, 192] }],
+    backs: [{ label: "H", role: "RB", at: [224, 192] }],
     skill: [
       { label: "X", role: "WR", at: [36, 150] },
-      { label: "H", role: "WR", at: [336, 160] },
+      { label: "F", role: "WR", at: [336, 160] },
       { label: "Y", role: "WR", at: [400, 160] },
       { label: "Z", role: "WR", at: [464, 150] },
     ],
@@ -753,6 +753,34 @@ function place(slot: Slot, side: Side): Placed {
   return { label: slot.label, role: slot.role, x: at[0], y: at[1], at, ...(ball ? { ball } : {}) };
 }
 
+/** Formations whose letters follow the staff's rule: from the offense's left, receivers are X, F, Y, Z across and H is the back. */
+const LETTERED_LEFT_TO_RIGHT = new Set<string>(["spread", "trips"]);
+const RECEIVER_LETTERS = ["X", "F", "Y", "Z"];
+
+/** `placeBacksAndSkill` as the [backs, skill] pair `alignOffense` takes. */
+const placeBacksAndSkillArgs = (shape: FormationShape, key: string, side: Side): [Placed[], Placed[]] => {
+  const { backs, skill } = placeBacksAndSkill(shape, key, side);
+  return [backs, skill];
+};
+
+/**
+ * The backs and skill players of a formation, placed for a strength side and lettered the staff's way. The staff names a receiver
+ * by where he stands across the formation, not by the formation's shape: X is the leftmost, then F, Y and Z, and H is the back
+ * (usually in the backfield), whichever side is strong. So a mirrored set is lettered again after it is mirrored (Trio left is X, F, Y
+ * across the trips and Z alone on the right). Pro, I-form, Wing T and Split Pro keep their own letters.
+ */
+function placeBacksAndSkill(shape: FormationShape, key: string, side: Side): { backs: Placed[]; skill: Placed[] } {
+  const backs = shape.backs.map((s) => place(s, side));
+  const skill = shape.skill.map((s) => place(s, side));
+  if (!LETTERED_LEFT_TO_RIGHT.has(key === "unknown" ? "spread" : key)) return { backs, skill };
+  const receivers = skill.filter((p) => p.role === "WR").sort((a, b) => a.x - b.x);
+  const letter = new Map(receivers.map((p, i) => [p, RECEIVER_LETTERS[i] ?? p.label]));
+  return {
+    backs: backs.map((p) => (p.role === "RB" || p.role === "FB" ? { ...p, label: "H" } : p)),
+    skill: skill.map((p) => (letter.has(p) ? { ...p, label: letter.get(p)! } : p)),
+  };
+}
+
 /** Pixels per yard, vertically. 7 keeps deep routes on the card; yard lines use the same scale. */
 export const YARD_PX = 7;
 
@@ -953,8 +981,7 @@ export function routeSlots(
 ): Partial<Record<ConceptSlot, string>> {
   const shape = FORMATIONS[card.formationKey === "unknown" ? "spread" : card.formationKey];
   const d = card.playDirection === "right" ? 1 : -1;
-  const skill = shape.skill.map((s) => place(s, card.formationSide));
-  const backs = shape.backs.map((s) => place(s, card.formationSide));
+  const { backs, skill } = placeBacksAndSkill(shape, card.formationKey, card.formationSide);
   const sideOf = (x: number) => (x > 250 ? 1 : x < 250 ? -1 : d);
   const outsideIn = (list: Placed[]) => list.sort((a, b) => Math.abs(b.x - 250) - Math.abs(a.x - 250));
   const ps = outsideIn(skill.filter((p) => sideOf(p.x) === d));
@@ -1035,8 +1062,7 @@ export function namedRouteDeltas(
   const { qb, backs, skill } = alignOffense(
     card,
     place({ label: "Q", role: "QB", at: shape.qb }, side),
-    shape.backs.map((s) => place(s, side)),
-    shape.skill.map((s) => place(s, side)),
+    ...placeBacksAndSkillArgs(shape, card.formationKey, side),
     d,
   );
   const pl = [qb, ...backs, ...skill].find((p) => p.label === letter);
@@ -1061,8 +1087,7 @@ export function wingLetters(
   const { skill } = alignOffense(
     card,
     place({ label: "Q", role: "QB", at: shape.qb }, side),
-    shape.backs.map((s) => place(s, side)),
-    shape.skill.map((s) => place(s, side)),
+    ...placeBacksAndSkillArgs(shape, card.formationKey, side),
     card.playDirection === "right" ? 1 : -1,
   );
   const wings = new Set<string>();
@@ -1553,8 +1578,7 @@ export function buildDiagram(
   const { qb, backs, skill } = alignOffense(
     card,
     place({ label: "Q", role: "QB", at: shape.qb }, side),
-    shape.backs.map((s) => place(s, side)),
-    shape.skill.map((s) => place(s, side)),
+    ...placeBacksAndSkillArgs(shape, card.formationKey, side),
     d,
   );
   const tightEndsOnLine = skill.filter((p) => p.role === "TE" && p.y === 150);

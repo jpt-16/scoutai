@@ -1,5 +1,5 @@
 {
-  "8":  { "Z": "corner", "Y": "shallow", "F": "shallow", "X": "hitch|curl", "H": "wheel" },
-  "34": { "Z": "post", "Y": "dig", "H": "speed-out", "X": "hitch|slant|shallow", "F": "speed-out" },
-  "43": { "Z": "corner", "X": "hitch|curl", "F": "wheel" }
+  "8":  { "X": "hitch|curl", "F": "shallow", "Y": "shallow", "Z": "corner", "H": "wheel" },
+  "34": { "X": "hitch|slant|shallow", "F": "speed-out", "Y": "dig", "Z": "post", "H": "speed-out" },
+  "43": { "X": "hitch|curl", "F": "shallow", "Y": "shallow", "Z": "corner", "H": "wheel" }
 }

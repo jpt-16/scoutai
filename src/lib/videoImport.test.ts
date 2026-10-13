@@ -163,21 +163,21 @@ describe("film read in field yards (a sideline Hudl recording, Trio Slot RPO Bub
 
   it("puts each route on the player who actually lined up there, whatever the model called him", () => {
     const o = card.routeOverrides!;
-    // The lone receiver (the card's X) goes straight upfield 4 yards: 4 × 7 px, nothing across.
-    expect(o.X.path).toEqual([[0, -4 * 7]]);
-    // The inside trips receiver (H) is the bubble: out to the left and back first, marked BALL.
-    expect(o.H.tag).toBe("BALL");
-    const [first] = o.H.path!;
+    // The lone receiver (the card's Z, the staff's rightmost) goes straight upfield 4 yards: 4 × 7 px, nothing across.
+    expect(o.Z.path).toEqual([[0, -4 * 7]]);
+    // The inside trips receiver (Y, the staff's letters run X, F, Y, Z left to right) is the bubble: out to the left and back first, marked BALL.
+    expect(o.Y.tag).toBe("BALL");
+    const [first] = o.Y.path!;
     expect(first[0]).toBeLessThan(0); // toward the offense's left
     expect(first[1]).toBeGreaterThan(0); // behind the line
-    // The widest trips receiver (the card's Z) got the route the model labeled X.
-    expect(o.Z.path).toEqual([[0, -5 * 7]]);
+    // The widest trips receiver (the card's X) got the route the model labeled X.
+    expect(o.X.path).toEqual([[0, -5 * 7]]);
   });
 
   it("is scale-true, so a sideline angle doesn't turn routes sideways", () => {
     const d = buildDiagram(card, "team", "offense");
-    const x = d.players.find((p) => p.label === "X")!;
-    const xRoute = d.routes[d.routeVideoLetters.indexOf("X")];
+    const x = d.players.find((p) => p.label === "Z")!;
+    const xRoute = d.routes[d.routeVideoLetters.indexOf("Z")];
     expect(xRoute[xRoute.length - 1].x).toBeCloseTo(x.x, 0);
     expect(x.y - xRoute[xRoute.length - 1].y).toBeCloseTo(4 * 7, 0);
   });
@@ -206,17 +206,17 @@ describe("real alignment from film (offenseSpots)", () => {
   const spot = (label: string) => buildDiagram(card).players.find((p) => p.label === label)!;
 
   it("draws each player where he stood on film, not the formation's standard spot", () => {
-    expect(card.offenseSpots?.H).toEqual({ x: 6.5, y: -1 });
-    expect(spot("H").x).toBeCloseTo(250 + 6.5 * (500 / (160 / 3)), 0);
-    expect(spot("H").y).toBe(160); // a yard off the ball
+    expect(card.offenseSpots?.F).toEqual({ x: 6.5, y: -1 });
+    expect(spot("F").x).toBeCloseTo(250 + 6.5 * (500 / (160 / 3)), 0);
+    expect(spot("F").y).toBe(160); // a yard off the ball
     expect(spot("Z").y).toBe(150); // on the line
     expect(spot("Q").y).toBe(140 + 5 * 7);
   });
 
   it("so the alignment check sees the real wing", () => {
-    expect(buildDiagram({ ...card, routeOverrides: undefined }).jobs.H).toBe("WING: slide to the flat");
-    expect(buildDiagram(card).jobs.H).toBe("WING · Route"); // the film's own route, still labeled
-    expect(buildDiagram(sheet).jobs.H).toBe("Slide to the flat"); // the standard Trips #3 is a slot
+    expect(buildDiagram({ ...card, routeOverrides: undefined }).jobs.F).toBe("WING: slide to the flat");
+    expect(buildDiagram(card).jobs.F).toBe("WING · Route"); // the film's own route, still labeled
+    expect(buildDiagram(sheet).jobs.F).toBe("Slide to the flat"); // the standard Trips #3 is a slot
   });
 
   it("needs at least three players, in field yards, and drops when the formation is retyped", () => {
@@ -233,7 +233,7 @@ describe("real alignment from film (offenseSpots)", () => {
       players: detection.players.map((p) => (p.label === "H" ? { ...p, start: { x: 3, y: 0 } } : p)),
     });
     const d = buildDiagram(tight);
-    const h = d.players.find((p) => p.label === "H")!;
+    const h = d.players.find((p) => p.label === "F")!;
     for (const ol of d.players.filter((p) => p.role === "OL")) {
       expect(Math.hypot(h.x - ol.x, h.y - ol.y)).toBeGreaterThanOrEqual(20);
     }
@@ -243,15 +243,15 @@ describe("real alignment from film (offenseSpots)", () => {
 describe("standard spots", () => {
   it("a coach can drop the film's spots and go back to the formation's own", () => {
     const sheet = parseHudlCsvText("OFF FORM,OFF PLAY\nTrips Rt,IZ\n").cards[0];
-    const withSpots = { ...sheet, offenseSpots: { H: { x: 6.5, y: -1 } } };
+    const withSpots = { ...sheet, offenseSpots: { F: { x: 6.5, y: -1 } } };
     expect(updateCard(withSpots, { offenseSpots: undefined }).offenseSpots).toBeUndefined();
   });
 });
 
 describe("film routes by this staff's names", () => {
   const sheet = parseHudlCsvText("PLAY #,OFF FORM,OFF PLAY,OFF STR,PLAY DIR\n1,Trio Slot,RPO BUBBLE,L,L\n").cards[0];
-  // The user's clip: trips left, the wing (model's "Y", the card's H) goes out on a slide and
-  // catches it, then runs 7 yards up the sideline; Y blocks; F fakes the mesh.
+  // The user's clip: trips left, the wing (model's "Y", the card's Y: the staff's letters run X, F, Y, Z left to right) goes out on a slide and
+  // catches it, then runs 7 yards up the sideline; F blocks; H (the back) fakes the mesh.
   const detection: DetectedPlay = {
     playName: "RPO SLIDE / WING FLAT",
     formation: "Trips",
@@ -271,20 +271,20 @@ describe("film routes by this staff's names", () => {
   const d = buildDiagram(card);
 
   it("draws a SLIDE exactly as route 0 from the wing's own spot, still draggable, and tagged BALL", () => {
-    const o = card.routeOverrides!.H;
+    const o = card.routeOverrides!.Y;
     expect(o).toMatchObject({ route: "slide", source: "video", tag: "BALL" });
-    const h = d.players.find((p) => p.label === "H")!;
-    const i = d.routeVideoLetters.indexOf("H");
+    const h = d.players.find((p) => p.label === "Y")!;
+    const i = d.routeVideoLetters.indexOf("Y");
     const path = d.routes[i];
     expect(path[path.length - 1].x).toBeLessThan(h.x); // out to the offense's left
     expect(path[path.length - 1].y).toBeCloseTo(140 - 5 * 7, 0); // builds up to 5 yards
-    expect(d.jobs.H).toMatch(/Slide · BALL$/);
+    expect(d.jobs.Y).toMatch(/Slide · BALL$/);
   });
 
   it("blocks are blocks and the fake is the card's own mesh, not red routes", () => {
-    expect(card.routeOverrides!.Y).toEqual({ route: "stalk", source: "video" });
-    expect(card.routeOverrides!.F).toBeUndefined();
-    expect(d.jobs.F).toBe("Mesh: run it if given");
+    expect(card.routeOverrides!.F).toEqual({ route: "stalk", source: "video" });
+    expect(card.routeOverrides!.H).toBeUndefined();
+    expect(d.jobs.H).toBe("Mesh: run it if given");
   });
 
   it("reads a route name out of free text when the model answers without the schema", () => {
@@ -295,7 +295,7 @@ describe("film routes by this staff's names", () => {
   });
 
   it("names the card's player in the ball note, not the model's letter", () => {
-    expect(card.notes).toBe("Ball: H, left (from film)");
+    expect(card.notes).toBe("Ball: Y, left (from film)");
   });
 });
 

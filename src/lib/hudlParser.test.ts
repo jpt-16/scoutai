@@ -607,8 +607,8 @@ describe("buildDiagram (offense only)", () => {
 
   it("fewer numbers than receivers are the same on both sides, outside in (81 = post / speed out)", () => {
     expect(routesBy(buildDiagram(card("spread", "81")))).toEqual({ X: "8", F: "1", Y: "1", Z: "8" });
-    // Trips right: Z #1, Y #2, H #3 on the right; X #1 on the left.
-    expect(routesBy(buildDiagram(card("trips", "964")))).toEqual({ Z: "9", Y: "6", H: "4", X: "9" });
+    // Trips right: Z #1, Y #2, F #3 on the right (the staff letters X, F, Y, Z left to right, H the back); X #1 on the left.
+    expect(routesBy(buildDiagram(card("trips", "964")))).toEqual({ Z: "9", Y: "6", F: "4", X: "9" });
   });
 
   it("a single number is run by every receiver, like a single route word", () => {
@@ -689,7 +689,7 @@ describe("buildDiagram (offense only)", () => {
 
   it("maps other concepts by position and mirrors them with the play direction", () => {
     expect(routesBy(buildDiagram(card("spread", "SMASH")))).toEqual({ X: "HITCH", F: "7", Y: "7", Z: "HITCH" });
-    expect(routesBy(buildDiagram(card("trips", "FLOOD")))).toEqual({ Z: "GO", Y: "SAIL", H: "FLAT", X: "DIG" });
+    expect(routesBy(buildDiagram(card("trips", "FLOOD")))).toEqual({ Z: "GO", Y: "SAIL", F: "FLAT", X: "DIG" });
     expect(routesBy(buildDiagram(card("spread", "DAGGER")))).toMatchObject({ Z: "DIG", Y: "GO", X: "8" });
     // Going left, the play side flips: X is the play-side #1.
     const left = buildDiagram({ ...card("spread", "MESH RAIL"), playDirection: "left" });
@@ -722,10 +722,10 @@ describe("buildDiagram (offense only)", () => {
   });
 
   it("a lone route word is a combination, not everyone running it", () => {
-    // Trips right: Z #1, Y #2, H #3; X alone backside.
+    // Trips right: Z #1, Y #2, F #3; X alone backside.
     const quick = buildDiagram(card("trips", "QUICK SLANT"));
-    expect(routesBy(quick)).toEqual({ Z: "2", Y: "FLAT", H: "HITCH", X: "2" });
-    expect(quick.jobs).toMatchObject({ Z: "2 Slant", Y: "Flat", H: "Hitch", X: "2 Slant" });
+    expect(routesBy(quick)).toEqual({ Z: "2", Y: "FLAT", F: "HITCH", X: "2" });
+    expect(quick.jobs).toMatchObject({ Z: "2 Slant", Y: "Flat", F: "Hitch", X: "2 Slant" });
     expect(routesBy(buildDiagram(card("spread", "CURL")))).toEqual({ X: "4", F: "FLAT", Y: "FLAT", Z: "4" });
     expect(routesBy(buildDiagram(card("spread", "POST")))).toEqual({ X: "8", F: "DIG", Y: "DIG", Z: "8" });
     // An inside route goes to the #2s while the #1s clear.
@@ -817,7 +817,7 @@ describe("buildDiagram (offense only)", () => {
       "EVEN",
       "COVER 3",
       // What the alignment rules did against trips, until a coach writes a note.
-      "SS apex Y · S apex H · FS middle",
+      "SS apex Y · S apex F · FS middle",
     ]);
   });
 
@@ -963,7 +963,7 @@ describe("buildDiagram (offense only)", () => {
       expect(d.defense.every((p) => p.y > d.losY)).toBe(true);
       expect(d.players.every((p) => p.y < d.losY)).toBe(true);
       // Trips to the offense's right shows up on the defense's left.
-      const receivers = d.players.filter((p) => ["H", "Y", "Z"].includes(p.label));
+      const receivers = d.players.filter((p) => ["F", "Y", "Z"].includes(p.label));
       expect(receivers.every((p) => p.x < 250)).toBe(true);
       // Scout offense cards are not flipped.
       expect(buildDiagram(withFront("trips", "EVEN")).flipped).toBe(false);
@@ -1228,7 +1228,7 @@ describe("wing slide RPO", () => {
     expect(eagle.jobs.Y).toBeUndefined();
     // Trips: #3 is 4½ yards off the tackle, a slot, so he slides without the WING tag.
     const trips = buildDiagram(card("Trips", "RPO SLIDE"));
-    expect(trips.jobs.H).toBe("Slide to the flat");
+    expect(trips.jobs.F).toBe("Slide to the flat");
   });
 
   it("puts a WING in the formation tag or the call at a real wing spot", () => {
@@ -1238,7 +1238,7 @@ describe("wing slide RPO", () => {
     expect(insideAlignment((y.x - 250 - 44) / (500 / (160 / 3)), y.y > 150)).toBe("wing");
     expect(ace.jobs.Y).toBe("WING: slide to the flat");
     // "WING SLIDE" from Trips: the call says #3 is a wing, so he's drawn as one.
-    expect(buildDiagram(card("Trips", "WING SLIDE")).jobs.H).toBe("WING: slide to the flat");
+    expect(buildDiagram(card("Trips", "WING SLIDE")).jobs.F).toBe("WING: slide to the flat");
     // Pro Wing: Z comes in off the tight end, not on top of him.
     const pro = buildDiagram(card("Pro Wing", "IZ"));
     const [te, z] = ["Y", "Z"].map((l) => pro.players.find((p) => p.label === l)!);
