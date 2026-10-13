@@ -431,6 +431,7 @@ FORMATION_BACK_SECONDS = 1.5
 
 
 ONSET_STARTERS = 3
+ONSET_COMBINED_STARTERS = 6  # from both teams together
 ONSET_WINDOW = 0.6
 ONSET_STEP = 0.1
 ONSET_STILL = 0.6
@@ -448,27 +449,43 @@ def _spot_at(points: list, s: float):
 
 
 def _onset_snap(tracks: list[dict]) -> float | None:
-    """The snap as an onset: three men who were standing all start within half a second (a man in motion starts once, and
-    men shuffling in their stances don't get 1.2 yd from a standstill in 0.6 s). Mirrors `trackedPlay.ts`'s `onsetSnap`."""
-    offense = [t for t in tracks if t["team"] == "offense" and len(t["points"]) >= 8]
-    if len(offense) < ONSET_STARTERS:
+    """The snap as an onset: men who were standing all start together (a man in motion starts once, and men shuffling in their
+    stances don't get 1.2 yd from a standstill in 0.6 s). Both teams move at the snap and only then, so the densest cluster of
+    starts from the two teams together (`ONSET_COMBINED_STARTERS`) is the snap; with too few defenders followed, three offensive
+    men starting together. Mirrors `trackedPlay.ts`'s `onsetSnap`."""
+    every = [t for t in tracks if len(t["points"]) >= 8]
+    if not every:
         return None
-    first = min(t["points"][0][0] for t in offense)
-    last = max(t["points"][-1][0] for t in offense)
-    onsets: list[float] = []
-    for t in offense:
-        s = first + ONSET_WINDOW
-        while s <= last - ONSET_WINDOW:
-            a, b, c = _spot_at(t["points"], s - ONSET_WINDOW), _spot_at(t["points"], s), _spot_at(t["points"], s + ONSET_WINDOW)
-            if a and b and c and np.hypot(b[0] - a[0], b[1] - a[1]) < ONSET_STILL and np.hypot(c[0] - b[0], c[1] - b[1]) > ONSET_GO:
-                left = next((p[0] for p in t["points"] if p[0] >= s and np.hypot(p[1] - b[0], p[2] - b[1]) > ONSET_LEFT), s)
-                onsets.append(left)
-                break
-            s += ONSET_STEP
-    onsets.sort()
-    for i in range(len(onsets) - ONSET_STARTERS + 1):
-        if onsets[i + ONSET_STARTERS - 1] - onsets[i] <= ONSET_SPREAD:
-            return max(0.0, onsets[i] - ONSET_LEAD)
+    first = min(t["points"][0][0] for t in every)
+    last = max(t["points"][-1][0] for t in every)
+
+    def onsets_of(team: str) -> list[float]:
+        out: list[float] = []
+        for t in every:
+            if t["team"] != team:
+                continue
+            s = first + ONSET_WINDOW
+            while s <= last - ONSET_WINDOW:
+                a, b, c = _spot_at(t["points"], s - ONSET_WINDOW), _spot_at(t["points"], s), _spot_at(t["points"], s + ONSET_WINDOW)
+                if a and b and c and np.hypot(b[0] - a[0], b[1] - a[1]) < ONSET_STILL and np.hypot(c[0] - b[0], c[1] - b[1]) > ONSET_GO:
+                    left = next((p[0] for p in t["points"] if p[0] >= s and np.hypot(p[1] - b[0], p[2] - b[1]) > ONSET_LEFT), s)
+                    out.append(left)
+                    break
+                s += ONSET_STEP
+        return sorted(out)
+
+    offense, defense = onsets_of("offense"), onsets_of("defense")
+    together = sorted(offense + defense)
+    best, best_count = None, 0
+    for v in together:
+        count = sum(1 for u in together if v <= u <= v + ONSET_SPREAD)
+        if count >= ONSET_COMBINED_STARTERS and count >= best_count:
+            best, best_count = v, count
+    if best is not None:
+        return max(0.0, best - ONSET_LEAD)
+    for i in range(len(offense) - ONSET_STARTERS + 1):
+        if offense[i + ONSET_STARTERS - 1] - offense[i] <= ONSET_SPREAD:
+            return max(0.0, offense[i] - ONSET_LEAD)
     return None
 
 

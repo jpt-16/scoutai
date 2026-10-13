@@ -82,6 +82,8 @@ const MOVED_YARDS = 1.5;
 /** Take the snap a little before the third man's move shows. */
 const SNAP_LEAD_SECONDS = 0.35;
 const ONSET_STARTERS = 3;
+/** From both teams together. */
+const ONSET_COMBINED_STARTERS = 6;
 const ONSET_WINDOW_SECONDS = 0.6;
 const ONSET_STEP_SECONDS = 0.1;
 const ONSET_STILL_YARDS = 0.6;
@@ -259,28 +261,47 @@ function spotAt(t: TrackedPlayer, s: number): [number, number] | null {
  * snap doesn't set it off (first real film: that rule fired 0.85 s early on a Bunch zapped to Deuces). Null when too few start.
  */
 function onsetSnap(file: TrackedPlayFile): number | null {
-  const offense = file.tracks.filter((t) => t.team === "offense" && t.points.length >= 8);
-  if (offense.length < ONSET_STARTERS) return null;
-  const first = Math.min(...offense.map((t) => t.points[0][0]));
-  const last = Math.max(...offense.map((t) => t.points[t.points.length - 1][0]));
-  const onsets: number[] = [];
-  for (const t of offense) {
-    for (let s = first + ONSET_WINDOW_SECONDS; s <= last - ONSET_WINDOW_SECONDS; s += ONSET_STEP_SECONDS) {
-      const a = spotAt(t, s - ONSET_WINDOW_SECONDS);
-      const b = spotAt(t, s);
-      const c = spotAt(t, s + ONSET_WINDOW_SECONDS);
-      if (!a || !b || !c) continue;
-      if (Math.hypot(b[0] - a[0], b[1] - a[1]) < ONSET_STILL_YARDS && Math.hypot(c[0] - b[0], c[1] - b[1]) > ONSET_GO_YARDS) {
-        // The forward window sees a start up to 0.6 s early: the onset is when he got 0.5 yd from where he stood.
-        const left = t.points.find(([u, x, y]) => u >= s && Math.hypot(x - b[0], y - b[1]) > ONSET_LEFT_YARDS);
-        onsets.push(left ? left[0] : s);
-        break;
+  const all = file.tracks.filter((t) => t.points.length >= 8);
+  if (!all.length) return null;
+  const first = Math.min(...all.map((t) => t.points[0][0]));
+  const last = Math.max(...all.map((t) => t.points[t.points.length - 1][0]));
+  const onsetsOf = (team: string): number[] => {
+    const out: number[] = [];
+    for (const t of all.filter((tr) => tr.team === team)) {
+      for (let s = first + ONSET_WINDOW_SECONDS; s <= last - ONSET_WINDOW_SECONDS; s += ONSET_STEP_SECONDS) {
+        const a = spotAt(t, s - ONSET_WINDOW_SECONDS);
+        const b = spotAt(t, s);
+        const c = spotAt(t, s + ONSET_WINDOW_SECONDS);
+        if (!a || !b || !c) continue;
+        if (Math.hypot(b[0] - a[0], b[1] - a[1]) < ONSET_STILL_YARDS && Math.hypot(c[0] - b[0], c[1] - b[1]) > ONSET_GO_YARDS) {
+          // The forward window sees a start up to 0.6 s early: the onset is when he got 0.5 yd from where he stood.
+          const left = t.points.find(([u, x, y]) => u >= s && Math.hypot(x - b[0], y - b[1]) > ONSET_LEFT_YARDS);
+          out.push(left ? left[0] : s);
+          break;
+        }
       }
     }
+    return out.sort((x, y) => x - y);
+  };
+  const offense = onsetsOf("offense");
+  const defense = onsetsOf("defense");
+  // Both teams move at the snap, and only then: a formation shifting, a man in motion or tracker jitter start two or three offensive men
+  // early (real play 43: three at 1.0 s, the snap at 4.4), but not the defense too. So the densest cluster of starts from the two teams
+  // together, at least `ONSET_COMBINED_STARTERS` of them, is the snap.
+  const together = [...offense, ...defense].sort((x, y) => x - y);
+  let best = -1;
+  let bestCount = 0;
+  for (let i = 0; i < together.length; i++) {
+    const count = together.filter((v) => v >= together[i] && v - together[i] <= ONSET_SPREAD_SECONDS).length;
+    if (count >= ONSET_COMBINED_STARTERS && count >= bestCount) {
+      best = i;
+      bestCount = count;
+    }
   }
-  onsets.sort((x, y) => x - y);
-  for (let i = 0; i + ONSET_STARTERS <= onsets.length; i++) {
-    if (onsets[i + ONSET_STARTERS - 1] - onsets[i] <= ONSET_SPREAD_SECONDS) return Math.max(0, onsets[i] - ONSET_LEAD_SECONDS);
+  if (best >= 0) return Math.max(0, together[best] - ONSET_LEAD_SECONDS);
+  // Too few defenders were followed: the offense alone, three men starting together.
+  for (let i = 0; i + ONSET_STARTERS <= offense.length; i++) {
+    if (offense[i + ONSET_STARTERS - 1] - offense[i] <= ONSET_SPREAD_SECONDS) return Math.max(0, offense[i] - ONSET_LEAD_SECONDS);
   }
   return null;
 }
