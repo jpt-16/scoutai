@@ -21,3 +21,11 @@ Jersey numbers on the red team, with the staff's letters (left to right at the s
 - **Play 34** (Trio right): X #8, Y #4, Z #15, QB #11, H #21; the coach's list gave #81 as "z" twice, taken as F (the other man of the trips) until the coach says otherwise.
 
 Matching a jersey to a tracker id is read off the film (`eval/label.py` pictures): on play 8 track 1 is #15 (X) and track 16 is #11 (QB); track 13 is the back (#30); the bunch men are tracks 0, 2 and 3, and #4 after the zap has no track at all.
+
+## Stage 1 findings (which stage misses each route)
+
+**Play 34** (men matched by jersey on the film: X #8 track 0, Y #4 track 2, F #81 track 18, Z #15 track 13, H #21 track 6, QB #11 track 5; replay of `rt6`, paths from the snap to +3 s): every skill man is followed as himself for 2.3-3 s (Z the whole play, jersey 15 readable at 0.1, 2.5 and 5.4 s). The reader's names on those correct paths: Y **dig** ✓, F **speed out** ✓, X speed out (truth: in / stick / hitch ✗), Z dig with post third (truth post ✗), H slide with speed out third (truth speed out ✗). So the three misses on play 34 are the reader's (a slow-developing post read as a dig, a stick drifting outward read as a speed out, a back's route measured from his own spot behind the line), not tracking.
+
+**Play 8:** X #15 (track 1), QB #11 (track 16) and the back (track 13) are followed as themselves. The F (#4) zaps from the right bunch to the left slot and has **no track at all after the zap**, and one bunch man's track (3) slides onto a lineman in the pile by 3.5 s. Those are tracker misses (identity), not reader misses.
+
+**Play 43:** jerseys not readable at the compressed clips' size; waiting on the coach's / Jake's matching of numbers on the full-resolution sheet.
