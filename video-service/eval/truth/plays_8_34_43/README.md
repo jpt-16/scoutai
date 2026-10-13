@@ -12,3 +12,12 @@ The clips are not in the repo (minors). Make them from the three screen recordin
     cd .. && npx jiti scripts/score-truth.ts video-service/game-work/tracks --sheet video-service/eval/truth/plays_8_34_43/hudl.csv --truth video-service/eval/truth/plays_8_34_43/truth.json
 
 Known: play 34's calibration skews about 4 yd across the field (see CLAUDE.md, "What counts as the playing field").
+
+## Who is who (the coach's jersey numbers) and the formation, from the coach
+
+Jersey numbers on the red team, with the staff's letters (left to right at the snap):
+
+- **Play 8** (and **43**, "the exact same play"): X #15, F #4, Y #81, Z #8, H #30, QB #11. In both the formation is **Bunch right, then one man (F, #4) zapped across (motion) into Deuces**, the formation it is snapped from. Hudl's tag for 8 is DUCES; its tag for 43 is TRIO, which the coach says is wrong.
+- **Play 34** (Trio right): X #8, Y #4, Z #15, QB #11, H #21; the coach's list gave #81 as "z" twice, taken as F (the other man of the trips) until the coach says otherwise.
+
+Matching a jersey to a tracker id is read off the film (`eval/label.py` pictures): on play 8 track 1 is #15 (X) and track 16 is #11 (QB); track 13 is the back (#30); the bunch men are tracks 0, 2 and 3, and #4 after the zap has no track at all.
