@@ -135,6 +135,11 @@ export interface HudlPlayCard {
    * written at the arrow tip ("HOT").
    */
   routeOverrides?: Record<string, RouteOverride>;
+  /**
+   * What the film read for a letter, kept apart from the routes drawn: the sheet's call stays the play until a coach taps "Use film's route"
+   * in Edit play (which copies it into `routeOverrides`). Film routes are not proven (`FILM_ROUTES_PROVEN`), so none reaches the card unseen.
+   */
+  filmRoutes?: Record<string, FilmRoute>;
   /** Pencil drawings on the card, per scout unit, in card (SVG) coordinates. */
   drawings?: Partial<Record<"offense" | "defense", InkStroke[]>>;
   /**
@@ -209,6 +214,13 @@ export interface AiHints {
   playType?: "Run" | "Pass";
   /** The AI built the play's route concept (per-letter `routeOverrides` with `source: "ai"`). */
   routes?: boolean;
+}
+
+/** What the film read for one letter: the route's shape plus how sure the reader was (its margin over the runner-up, 0-1). */
+export interface FilmRoute extends RouteOverride {
+  confidence: number;
+  /** The reader's second choice, as the route name. */
+  runnerUp?: string;
 }
 
 /** A coach's route assignment for one letter (see `routeOverrides`). */

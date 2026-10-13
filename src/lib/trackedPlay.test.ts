@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildDiagram, FIELD, routeTemplateYards, YARD_PX, YARD_X, type RouteKind } from "./formations";
-import { parseHudlCsvText } from "./hudlParser";
+import { parseHudlCsvText, updateCard } from "./hudlParser";
 import { cardFromTracks, detectionFromTracks, fromTheSnap, snapTime, trimAtJump, type TrackedPlayer, type TrackedPlayFile } from "./trackedPlay";
 
 const CSV = "PLAY #,DN,DIST,OFF FORM,OFF PLAY,PLAY TYPE,OFF STR,PLAY DIR\n1,1,10,Spread,QUICK SLANT,Pass,R,R\n";
@@ -72,6 +72,15 @@ describe("cardFromTracks", () => {
     expect(card.notes).toContain("not drawn");
     expect(card.notes).toContain(`${a.label} post`);
     expect(reads.find((r) => r.letter === a.label)?.kind).toBe("post"); // the read itself is still there for scoring
+    // What the film saw is kept beside the routes for Edit play's "Use the film route", with how sure it was.
+    expect(card.filmRoutes?.[a.label]?.route).toBe("post");
+    expect(card.filmRoutes?.[a.label]?.path?.length).toBeGreaterThan(1);
+    expect(typeof card.filmRoutes?.[a.label]?.confidence).toBe("number");
+    expect(card.filmRoutes?.[b.label]?.route).toBe("out");
+    // Taking it is the coach's copy into routeOverrides, and then it draws.
+    const taken = updateCard(card, { routeOverrides: { [a.label]: { route: card.filmRoutes![a.label].route, path: card.filmRoutes![a.label].path, source: "video" } } });
+    expect(taken.routeOverrides?.[a.label]?.source).toBe("video");
+    expect(taken.filmRoutes?.[a.label]).toBeDefined();
     // Film only, no sheet: the read is drawn but every route is called unchecked.
     const film = cardFromTracks(file, null, { formation: "Spread" });
     expect(film.card.notes).toContain("unchecked");

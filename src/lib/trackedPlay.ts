@@ -15,7 +15,7 @@
  */
 
 import type { RouteKind } from "./formations";
-import { deriveCard, type HudlPlayCard } from "./hudlParser";
+import { deriveCard, type FilmRoute, type HudlPlayCard } from "./hudlParser";
 import { readRoute } from "./routeReader";
 import {
   applyDetectionToCard,
@@ -495,7 +495,18 @@ export function cardFromTracks(
   if (row) {
     // The sheet's call stays the routes; the film's reads are only listed, so a wrong one can't be mistaken for the play.
     const kept = Object.fromEntries(Object.entries(built.routeOverrides ?? {}).filter(([, v]) => v.source !== "video"));
-    const stripped = { ...built, routeOverrides: Object.keys(kept).length ? kept : undefined };
+    // What the film saw is kept beside the routes, not in them: Edit play offers "Use film's route" per letter.
+    const filmRoutes: Record<string, FilmRoute> = {};
+    for (const [letter, o] of Object.entries(built.routeOverrides ?? {})) {
+      if (o.source !== "video") continue;
+      const r = reads.find((x) => x.letter === letter);
+      filmRoutes[letter] = { ...o, confidence: r?.confidence ?? 0, runnerUp: r?.runnerUp ? routeName(r.runnerUp).toLowerCase() : undefined };
+    }
+    const stripped = {
+      ...built,
+      routeOverrides: Object.keys(kept).length ? kept : undefined,
+      filmRoutes: Object.keys(filmRoutes).length ? filmRoutes : undefined,
+    };
     const note = named.length ? `Film's route reads (unchecked, not drawn): ${named.join(", ")}.` : "";
     return { card: deriveCard({ ...stripped, notes: notesOf(stripped, note) }), reads, unsure };
   }

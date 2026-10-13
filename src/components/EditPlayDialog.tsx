@@ -13,7 +13,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { buildDiagram, ROUTE_CHOICES, type DiagramMode, type ScoutUnit } from "@/lib/formations";
-import { parseDistance, parseYardLine, updateCard, type CardEdits, type Hash, type HudlPlayCard } from "@/lib/hudlParser";
+import { parseDistance, parseYardLine, updateCard, type CardEdits, type FilmRoute, type Hash, type HudlPlayCard } from "@/lib/hudlParser";
 import { cn } from "@/lib/utils";
 
 const FORMATION_PICKS = ["SPREAD", "TRIPS", "DUCES", "I-FORM", "PRO", "SPLIT PRO", "WING T"];
@@ -335,7 +335,8 @@ export function EditPlayDialog({
                   )}
                 </div>
                 {["X", "H", "Y", "Z", "F"].map((letter) => (
-                  <div key={letter} className="grid grid-cols-[36px_minmax(0,1fr)_96px] items-center gap-2">
+                  <div key={letter} className="flex flex-col gap-1">
+                  <div className="grid grid-cols-[36px_minmax(0,1fr)_96px] items-center gap-2">
                     <span
                       className="flex size-9 items-center justify-center rounded-full border-2 border-foreground font-display text-lg font-extrabold"
                       aria-hidden="true"
@@ -363,6 +364,17 @@ export function EditPlayDialog({
                       value={routes[letter]?.tag ?? ""}
                       onChange={(e) => setRoute(letter, { tag: e.target.value.toUpperCase() })}
                     />
+                  </div>
+                  {card.filmRoutes?.[letter] && routes[letter]?.source !== "video" && (
+                    <FilmSuggestion
+                      letter={letter}
+                      film={card.filmRoutes[letter]}
+                      onUse={() => {
+                        const film = card.filmRoutes![letter];
+                        set({ routeOverrides: { ...routes, [letter]: { route: film.route, path: film.path, tag: film.tag, source: film.source } } });
+                      }}
+                    />
+                  )}
                   </div>
                 ))}
               </div>
@@ -412,5 +424,22 @@ export function EditPlayDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/** What the film read for one letter, beside the route the card draws: a suggestion the coach takes or leaves, never drawn on its own. */
+function FilmSuggestion({ letter, film, onUse }: { letter: string; film: FilmRoute; onUse: () => void }) {
+  const name = (film.route ?? "").replace(/-/g, " ").toUpperCase() || "A ROUTE";
+  const sure = film.confidence >= 0.25;
+  return (
+    <div className="ml-11 flex items-center justify-between gap-2 rounded-md border border-dashed border-border px-2 py-1">
+      <span className="text-sm text-muted-foreground">
+        Film saw <b className="text-foreground">{name}</b> for {letter}
+        {film.runnerUp ? ` (or ${film.runnerUp.toUpperCase()})` : ""} · {sure ? "fairly sure" : "unsure, check the film"}
+      </span>
+      <button type="button" onClick={onUse} className="h-9 shrink-0 rounded-md px-2 text-sm font-bold text-primary hover:bg-accent">
+        Use the film route
+      </button>
+    </div>
   );
 }
