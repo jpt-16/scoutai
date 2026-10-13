@@ -67,6 +67,7 @@ const FROM_KEY: Record<FormationKey, FormationFamily> = {
   "i-form": "i-form",
   "double-eagle": "double-eagle",
   "split-pro": "split-pro",
+  empty: "empty",
   unknown: "unknown",
 };
 
@@ -95,7 +96,7 @@ const FAMILY_SHAPE: Record<FormationFamily, FormationKey> = {
   twins: "pro",
   aces: "spread",
   duces: "spread",
-  empty: "spread",
+  empty: "empty",
   trio: "trips",
   bunch: "trips",
   "i-form": "i-form",

@@ -85,6 +85,7 @@ const FORMATION_ORDER: FormationKey[] = [
   "pro",
   "split-pro",
   "double-eagle",
+  "empty",
   "unknown",
 ];
 const SWIPE_THRESHOLD = 60;

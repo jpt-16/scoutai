@@ -23,7 +23,7 @@ import { deriveCard, type AiHints, type HudlPlayCard, type RouteOverride } from 
 /** One Gemini call reviews at most this many plays; a bigger import reviews the first ones. */
 export const MAX_REVIEW_ROWS = 150;
 
-export const REVIEW_FORMATIONS = ["spread", "trips", "i-form", "pro", "split-pro", "double-eagle"] as const;
+export const REVIEW_FORMATIONS = ["spread", "trips", "i-form", "pro", "split-pro", "double-eagle", "empty"] as const;
 export const REVIEW_FRONTS = ["4-3", "3-4", "5-2", "bear"] as const;
 /** Routes the AI may give a position: the staff's route tree plus the named routes. */
 export const REVIEW_ROUTES = [

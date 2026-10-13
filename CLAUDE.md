@@ -354,7 +354,7 @@ Free-text tags are classified by keyword (`classifyFormation`, `classifyFront`,
 - Positions: linemen are unlabeled, and skill players are **Q, F, H, X, Y, Z** only. **The staff's letters go by where a man stands, left to right from the
   offense's view: X, F, Y, Z across the receivers, H the back** (usually in the backfield), whichever side is strong (`formations.ts`'s `placeBacksAndSkill`, for
   Spread and Trips: a mirrored formation is lettered again after it is mirrored, so Trio right is X alone then F, Y, Z across the trips, and Trio left is X, F, Y across
-  the trips and Z alone on the right). **Empty** is X, H on the left and F, Y, Z on the right (not drawn yet: it reads as Spread). Pro, I-Form, Wing T and Split Pro keep their
+  the trips and Z alone on the right). **Empty** is X, H on the left and F, Y, Z on the right (five receivers across, no back, `FormationKey` `empty`; a QB run carries the ball there). Pro, I-Form, Wing T and Split Pro keep their
   own letters until the staff says otherwise. Until this rule Trips lettered the inside receiver H and the back F (the old truth for plays 34 and 43 was keyed to those).
 - Formations: Spread, Trips, I-Form, Double Eagle, **Pro** (Q under center, F behind him, H behind
   the F) and **Split Pro** (backs side by side, used only when the tag says SPLIT).

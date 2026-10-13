@@ -111,6 +111,18 @@ export const FORMATIONS: Record<Exclude<FormationKey, "unknown">, FormationShape
       { label: "Z", role: "WR", at: [444, 160] },
     ],
   },
+  // Empty Gun: five receivers and no back. The staff's letters run X, H | F, Y, Z from the offense's left (see `placeBacksAndSkill`).
+  empty: {
+    qb: [250, 190],
+    backs: [],
+    skill: [
+      { label: "X", role: "WR", at: [36, 150] },
+      { label: "H", role: "WR", at: [112, 160] },
+      { label: "F", role: "WR", at: [336, 160] },
+      { label: "Y", role: "WR", at: [400, 160] },
+      { label: "Z", role: "WR", at: [464, 150] },
+    ],
+  },
   "double-eagle": {
     qb: [250, 166],
     backs: [{ label: "F", role: "RB", at: [250, 214] }],
@@ -156,6 +168,7 @@ export const FORMATION_LABELS: Record<FormationKey, string> = {
   "double-eagle": "Wing T",
   pro: "Pro",
   "split-pro": "Split Pro",
+  empty: "Empty",
   unknown: "Other",
 };
 
@@ -753,9 +766,11 @@ function place(slot: Slot, side: Side): Placed {
   return { label: slot.label, role: slot.role, x: at[0], y: at[1], at, ...(ball ? { ball } : {}) };
 }
 
-/** Formations whose letters follow the staff's rule: from the offense's left, receivers are X, F, Y, Z across and H is the back. */
-const LETTERED_LEFT_TO_RIGHT = new Set<string>(["spread", "trips"]);
+/** Formations whose letters follow the staff's rule: from the offense's left, receivers are X, F, Y, Z across and H is the back (Empty: X, H | F, Y, Z). */
+const LETTERED_LEFT_TO_RIGHT = new Set<string>(["spread", "trips", "empty"]);
 const RECEIVER_LETTERS = ["X", "F", "Y", "Z"];
+/** Empty has no back: X, H on the left and F, Y, Z on the right. */
+const EMPTY_LETTERS = ["X", "H", "F", "Y", "Z"];
 
 /** `placeBacksAndSkill` as the [backs, skill] pair `alignOffense` takes. */
 const placeBacksAndSkillArgs = (shape: FormationShape, key: string, side: Side): [Placed[], Placed[]] => {
@@ -774,7 +789,8 @@ function placeBacksAndSkill(shape: FormationShape, key: string, side: Side): { b
   const skill = shape.skill.map((s) => place(s, side));
   if (!LETTERED_LEFT_TO_RIGHT.has(key === "unknown" ? "spread" : key)) return { backs, skill };
   const receivers = skill.filter((p) => p.role === "WR").sort((a, b) => a.x - b.x);
-  const letter = new Map(receivers.map((p, i) => [p, RECEIVER_LETTERS[i] ?? p.label]));
+  const order = key === "empty" ? EMPTY_LETTERS : RECEIVER_LETTERS;
+  const letter = new Map(receivers.map((p, i) => [p, order[i] ?? p.label]));
   return {
     backs: backs.map((p) => (p.role === "RB" || p.role === "FB" ? { ...p, label: "H" } : p)),
     skill: skill.map((p) => (letter.has(p) ? { ...p, label: letter.get(p)! } : p)),
@@ -1599,7 +1615,7 @@ export function buildDiagram(
           .filter((p) => p.role === "WR")
           .sort((a, b) => Number((a.x - 250) * d > 0) - Number((b.x - 250) * d > 0) || Math.abs(a.x - 250) - Math.abs(b.x - 250))[0]
       : undefined;
-  const ballCarrier = jetMan ?? (card.concept === "qb-run" ? qb : backs[backs.length - 1]);
+  const ballCarrier = jetMan ?? (card.concept === "qb-run" ? qb : (backs[backs.length - 1] ?? qb));
 
   const frontFallback = unit === "defense" && card.frontKey === "unknown";
   const aligned =

@@ -17,6 +17,7 @@ export type FormationKey =
   | "double-eagle"
   | "pro"
   | "split-pro"
+  | "empty"
   | "unknown";
 
 export type FrontKey = "4-3" | "3-4" | "5-2" | "bear" | "unknown";
@@ -463,6 +464,8 @@ export function classifyFormation(formation: string): FormationKey {
   if (!formation.trim()) return "unknown";
   // Wing T: a tight end each side, wings outside them and the back behind the QB (Double Eagle is the older name for the same shape).
   if (has(formation, /\sWING\s*T\s|\s(DOUBLE|DBL|DBLE)\s*EAGLE\s|\sEAGLE\s/)) return "double-eagle";
+  // Empty: five receivers, no back (X, H on the left, F, Y, Z on the right).
+  if (has(formation, /\sEMPTY\s/)) return "empty";
   if (has(formation, /\s(TRIPS|TREY|TRIO|TRIPLE|BUNCH)\s/)) return "trips";
   if (has(formation, /\s(I|IFORM|I FORM|POWER I|TIGHT I|SLOT I|MAX I)\s/)) return "i-form";
   // Pro is I-backs (F behind Q, H behind F); split backs only when the tag says so.
@@ -470,7 +473,7 @@ export function classifyFormation(formation: string): FormationKey {
     return "split-pro";
   }
   if (has(formation, /\s(PRO|WEAK|STRONG|TWINS)\s/)) return "pro";
-  if (has(formation, /\s(SPREAD|DOUBLES|DBLS|2X2|GUN|SHOTGUN|ACE|ACES|DEUCE|DEUCES|DUCES|EMPTY|DOUBLE)\s/)) return "spread";
+  if (has(formation, /\s(SPREAD|DOUBLES|DBLS|2X2|GUN|SHOTGUN|ACE|ACES|DEUCE|DEUCES|DUCES|DOUBLE)\s/)) return "spread";
   return "unknown";
 }
 

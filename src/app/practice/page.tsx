@@ -54,7 +54,7 @@ import { cn } from "@/lib/utils";
 const inputClass =
   "h-11 w-full rounded-lg border-2 border-input bg-background px-3 text-base font-semibold outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50";
 
-const ALIAS_SHAPES: FormationKey[] = ["spread", "trips", "i-form", "pro", "split-pro", "double-eagle"];
+const ALIAS_SHAPES: FormationKey[] = ["spread", "trips", "i-form", "pro", "split-pro", "double-eagle", "empty"];
 
 const PLACEHOLDER = `1. TRIPS RT 836
 2. DEUCES LT IZ

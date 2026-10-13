@@ -7,7 +7,7 @@ import { parseHudlCsvText } from "./hudlParser";
  * a drawn path starts at his spot (a route, a block, a pull, a fake or the carrier's
  * path), whatever the formation, the call, the period or the direction.
  */
-const FORMATIONS = ["spread", "trips", "i-form", "double-eagle", "pro", "split-pro"] as const;
+const FORMATIONS = ["spread", "trips", "i-form", "double-eagle", "pro", "split-pro", "empty"] as const;
 const CALLS = [
   // Runs
   "IZ", "G ISO", "POWER", "COUNTER", "TREY", "DRAW", "QB SNEAK", "OUTSIDE ZONE", "SWEEP", "DIVE", "TOSS", "JET",

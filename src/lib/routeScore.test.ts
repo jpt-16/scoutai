@@ -3,7 +3,7 @@ import { parseHudlCsvText } from "./hudlParser";
 import { keyRoutes, report, scorePlay, summarize } from "./routeScore";
 import type { TrackedRead } from "./trackedPlay";
 
-const CSV = "PLAY #,OFF FORM,OFF PLAY,PLAY TYPE,OFF STR,PLAY DIR\n5,DUCES,FADE SPEED OUT HITCH FADE,Pass,,L\n6,EMPTY RT,READ POWER,Run,R,R\n7,DUCES,MESH RAIL,Pass,,R\n";
+const CSV = "PLAY #,OFF FORM,OFF PLAY,PLAY TYPE,OFF STR,PLAY DIR\n5,DUCES,FADE SPEED OUT HITCH FADE,Pass,,L\n6,DUCES RT,READ POWER,Run,R,R\n7,DUCES,MESH RAIL,Pass,,R\n";
 const [deuces, power, mesh] = parseHudlCsvText(CSV).cards;
 
 describe("the key: the coach's call drawn into a route per receiver", () => {

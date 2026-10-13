@@ -27,4 +27,12 @@ describe("the staff's letters: left to right X, F, Y, Z, with H the back", () =>
     expect(left.filter((p) => p.x < 250).map((p) => p.label).sort()).toEqual(["F", "X", "Y"]);
     expect(left.find((p) => p.label === "Z")!.x).toBeGreaterThan(250);
   });
+  it("empty is five across, no back: X, H on the left and F, Y, Z on the right, either strength", () => {
+    for (const str of ["L", "R"] as const) {
+      const d = buildDiagram(cardFor("Empty", str));
+      expect(d.players.filter((p) => p.role === "RB")).toHaveLength(0);
+      const skill = d.players.filter((p) => p.role === "WR" || p.role === "TE").sort((a, b) => a.x - b.x);
+      expect(skill.map((p) => p.label)).toEqual(["X", "H", "F", "Y", "Z"]);
+    }
+  });
 });
