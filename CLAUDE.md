@@ -989,6 +989,14 @@ Y runs a 7-yd dig and the path is tracked cleanly, and the reader still ranks sh
 question, not a tracking one. Scores after all this: play 34 routes 2 of 5 (H speed out, F slide), run/pass `unknown` instead of wrong, formation Trio right (set).
 **Still not proven on any play; film routes stay off the cards (`FILM_ROUTES_PROVEN = false`).**
 
+**Fourteenth pass (original-quality film, then the numbered pictures).** The three plays re-run from the **original 2940 x 1912, 56 fps recordings** (cropped, 30 fps, calibration doubled)
+scored 3 of 13 routes against 2 of 13 on the compressed clips, within noise: **video quality is not the main limit** (the originals did find a little more of the offense), and every
+skill man is now followed 4-8 s after the snap on both. So `eval/label.py` (numbered offense pictures at the set, the snap, +1.5 s and +3 s, from a saved dump) was built to
+attribute each miss to a stage. First thing it showed on play 34: **the outside receiver had no track at all**, because `team_by_jersey` called him a defender: his spot was 0.4 yd past
+the line (the field's skew) while his torso is 63% red, the scouted team's color, and the defense wears none. `team_by_jersey(..., scout_color)` now corrects the position split by
+who wears the scouted team's color (`COLOR_SURE_SHARE` 0.15 offense, `COLOR_NOT_SHARE` 0.06 the other side, between them the spot's label stands); the tracker passes `--scout-color` /
+`SCOUT_COLOR` in. Replayed on the saved dumps: 4 of 13 routes (2 before), Y's dig on play 34 now reads dig; confident-wrong reads remain. Next: per-man truth from the pictures, then the stage they point at.
+
 ## Game film upload (the hosted pipeline: `/film`, `src/lib/film/`, `video-service/eval/worker*.py`)
 
 A coach uploads a game's clips on **`/film`** (`FilmLibrary.tsx`), a hosted worker reads them, and the finished game

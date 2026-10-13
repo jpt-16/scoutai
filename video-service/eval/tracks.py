@@ -726,8 +726,16 @@ def track_play(
     }
 
 
-def team_by_jersey(frame: np.ndarray, boxes: list[Box], spots: list[tuple[float, float]]) -> list[str]:
-    """Offense or defense for each person at the snap: the group lined up behind the other."""
+# With the scouted team's color known, a man wearing it is on its side whatever his spot says: the share of his torso in that color
+# (real film: the red offense 0.19-0.53, the gold defense 0.0). Between the two he keeps the label his spot gave him.
+COLOR_SURE_SHARE = 0.15
+COLOR_NOT_SHARE = 0.06
+
+
+def team_by_jersey(frame: np.ndarray, boxes: list[Box], spots: list[tuple[float, float]], scout_color: str = "") -> list[str]:
+    """Offense or defense for each person at the snap: the group lined up behind the other, and, when `scout_color` is given and
+    the two groups wear it differently, corrected by who wears it (play 34's outside receiver stood 0.4 yd past the line on a
+    field fitted 1-2 yd skewed, so his spot called him a defender; he is 63% red)."""
     from .presnap import torso_color
 
     from .officials import looks_like_official
@@ -741,6 +749,22 @@ def team_by_jersey(frame: np.ndarray, boxes: list[Box], spots: list[tuple[float,
         labels, offense = split_teams([torso_color(frame, boxes[i]) for i in players], [spots[i][1] for i in players])
         for i, label in zip(players, labels):
             out[i] = "offense" if label == offense else "defense"
+        color = scout_color.strip().lower()
+        if color:
+            from .scoutteam import COLORS, MIN_GAP, color_share
+
+            if color in COLORS:
+                share = {i: color_share(frame, boxes[i], color) for i in players}
+                mine = [share[i] for i in players if out[i] == "offense"]
+                theirs = [share[i] for i in players if out[i] == "defense"]
+                if mine and theirs and abs(float(np.median(mine)) - float(np.median(theirs))) >= MIN_GAP:
+                    scout_side = "offense" if float(np.median(mine)) > float(np.median(theirs)) else "defense"
+                    other = "defense" if scout_side == "offense" else "offense"
+                    for i in players:
+                        if share[i] >= COLOR_SURE_SHARE:
+                            out[i] = scout_side
+                        elif share[i] < COLOR_NOT_SHARE:
+                            out[i] = other
     return out
 
 
@@ -836,7 +860,10 @@ def track_clip(
     frames, boxes = frames[:end], boxes[:end]
     if to_snap is not None:
         to_snap = to_snap[:end]
-    result = track_play(frames, boxes, calibration, team_by_jersey, fps, debug, to_snap=to_snap, tracker=tracker, scout_color=scout_color)
+    color = (scout_color if scout_color is not None else SCOUT_COLOR).strip().lower()
+    result = track_play(
+        frames, boxes, calibration, lambda f, b, sp: team_by_jersey(f, b, sp, color), fps, debug, to_snap=to_snap, tracker=tracker, scout_color=scout_color
+    )
     result["timing"] = {k: round(v, 2) for k, v in {**timing, **result["timing"]}.items()}
     result["timing"]["frames"] = len(frames)
     return result

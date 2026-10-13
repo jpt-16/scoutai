@@ -529,3 +529,29 @@ def test_a_receiver_split_just_outside_the_strip_is_not_cut_for_stepping_into_it
     t = Track(0, (pts[0][1], pts[0][2]), list(pts), matched=[(f, 0) for f in range(60)])
     trim_at_sideline([t], 26.7, 1)
     assert len(t.points) == 60
+
+
+def test_a_receiver_the_spot_calls_a_defender_is_offense_when_he_wears_the_scouted_teams_color():
+    from eval.tracks import team_by_jersey
+
+    # Real play 34: the outside receiver stood 0.4 yd past the line on a field fitted skewed, so where he stood called him a
+    # defender; he is 63% red, the scouted team's color, and the defense wears none.
+    frame = np.full((400, 600, 3), (40, 120, 40), np.uint8)  # grass (BGR)
+    boxes, spots = [], []
+
+    def man(x, y, bgr, spot):
+        frame[y : y + 40, x : x + 20] = bgr
+        boxes.append((float(x), float(y), float(x + 20), float(y + 100), 0.9))
+        spots.append(spot)
+
+    red, gold = (40, 40, 200), (60, 200, 230)
+    for i in range(5):
+        man(40 + 40 * i, 100, red, (-2.0 + i, -1.0))  # the offensive line
+    man(40, 200, red, (-1.0, -5.0))  # the quarterback
+    for i in range(6):
+        man(300 + 40 * i, 100, gold, (-3.0 + 1.2 * i, 1.5))  # the defense
+    man(560, 100, red, (11.9, 1.0))  # the receiver the spot puts level with the defense
+    got = team_by_jersey(frame, boxes, spots, "red")
+    assert got[-1] == "offense"
+    assert all(g == "defense" for g in got[6:12])
+    assert all(g == "offense" for g in got[:6])
