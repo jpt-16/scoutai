@@ -81,6 +81,8 @@ const SNAP_MOVERS = 4;
 const MOVED_YARDS = 1.5;
 /** Take the snap a little before the third man's move shows. */
 const SNAP_LEAD_SECONDS = 0.35;
+/** A route is read only from a track followed at least this long after the snap. */
+const MIN_TRACK_SECONDS = 2;
 const ONSET_STARTERS = 3;
 /** From both teams together. */
 const ONSET_COMBINED_STARTERS = 6;
@@ -386,8 +388,11 @@ export function detectionFromTracks(
     const path = route.map(([, x, y]) => ({ x, y }));
     const raw = readRoute(path, t.start[0] < 0 ? -1 : 1);
     // A path cut short (lost, or handed to another man) hasn't shown which route it was.
+    // A track that ends before the route can show itself says nothing, not even "he blocked": real play 43 read two receivers as
+    // blocking at full confidence because their tracks were lost a second after the snap.
+    const seen = route.length ? route[route.length - 1][0] - route[0][0] : 0;
     const read =
-      raw.kind !== "block" && pathLength(route) < MIN_ROUTE_YARDS
+      seen < MIN_TRACK_SECONDS || (raw.kind !== "block" && pathLength(route) < MIN_ROUTE_YARDS)
         ? { ...raw, kind: "unknown" as const, confidence: 0 }
         : raw;
     const motion = motionFromTrack(file.tracks.find((o) => o.id === t.id) ?? t, snap);

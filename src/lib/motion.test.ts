@@ -147,3 +147,16 @@ describe("an incomplete film formation is shown as a guess", () => {
     expect(formationCheckNote(read(11))).toBe("");
   });
 });
+
+describe("a track that ends before the route can show itself", () => {
+  it("reads unknown, never blocking, for a receiver lost a second after the snap", () => {
+    const { tracks } = playWith(null);
+    const lostId = tracks.find((t) => t.start[0] > 5)!.id;
+    // The points stop 0.6 s after the snap (the snap here is about 2.0 s).
+    const cut = tracks.map((t) => (t.id === lostId ? { ...t, points: t.points.filter(([s]) => s <= 2.6) } : t));
+    const { reads } = detectionFromTracks({ tracks: cut });
+    const lost = reads.find((r) => Math.hypot(r.player.start.x - tracks.find((t) => t.id === lostId)!.start[0], r.player.start.y - tracks.find((t) => t.id === lostId)!.start[1]) < 0.5);
+    expect(lost?.kind).toBe("unknown");
+    expect(lost?.confidence).toBe(0);
+  });
+});
