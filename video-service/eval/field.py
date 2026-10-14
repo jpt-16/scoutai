@@ -27,13 +27,20 @@ is not known and not needed.
 from __future__ import annotations
 
 import itertools
+import os
 from dataclasses import dataclass, field
 
 import cv2
 import numpy as np
 
-FIELD_WIDTH = 160 / 3  # yards
-HASH_IN = 17.78
+FIELD_WIDTH = 160 / 3  # yards, at every level
+# Where the hash marks are, in yards in from each sideline: high school (NFHS) 53' 4", college 60', the NFL 70' 9". Set
+# `FIELD_LEVEL` (hs, college, nfl) for film that isn't high school, or every calibration puts the hash rows in the wrong place.
+HASH_IN_BY_LEVEL = {"hs": 17.78, "college": 20.0, "nfl": 23.58}
+FIELD_LEVEL = os.environ.get("FIELD_LEVEL", "hs").strip().lower() or "hs"
+if FIELD_LEVEL not in HASH_IN_BY_LEVEL:
+    raise SystemExit(f"FIELD_LEVEL must be one of {', '.join(HASH_IN_BY_LEVEL)} (got {FIELD_LEVEL!r})")
+HASH_IN = HASH_IN_BY_LEVEL[FIELD_LEVEL]
 ROW_X = (0.0, HASH_IN, FIELD_WIDTH - HASH_IN, FIELD_WIDTH)  # sideline, hash, hash, sideline
 LINE_YARDS = 5.0
 

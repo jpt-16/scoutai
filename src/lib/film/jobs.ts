@@ -24,9 +24,9 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import type { TierLimits } from "../usageLimits";
 import { groupVideos } from "./pairing";
-import { CLIP_RETENTION_DAYS, MAX_CLIP_BYTES, MAX_VIDEOS, MAX_VIDEO_BYTES, isValidClipName } from "./shared";
+import { CLIP_RETENTION_DAYS, MAX_CLIP_BYTES, MAX_GAME_NAME, MAX_VIDEOS, MAX_VIDEO_BYTES, isValidClipName } from "./shared";
 
-export { CLIP_RETENTION_DAYS, MAX_CLIP_BYTES, MAX_VIDEOS, MAX_VIDEO_BYTES, isValidClipName } from "./shared";
+export { CLIP_RETENTION_DAYS, MAX_CLIP_BYTES, MAX_GAME_NAME, MAX_VIDEOS, MAX_VIDEO_BYTES, isValidClipName } from "./shared";
 /** A job still waiting for its uploads this long is abandoned and removed. */
 export const ABANDONED_UPLOAD_DAYS = 2;
 /** A job the worker never finished in this long is marked failed (the worker died, or lost the job). */
@@ -95,6 +95,20 @@ export interface FilmJob {
   error?: string;
   /** When the film was deleted (by retention, or by the coach). The game file stays. */
   clipsDeletedAt?: string;
+  /** The staff's name for the game ("vs Central"); unset shows as the date. */
+  name?: string;
+  /** The staff's own copy of the cards (edits, review checks, route ratings), when it was last saved and how far the review is. */
+  saved?: GameProgress;
+}
+
+/** How far a staff has gone through a game's cards, counted when its copy is saved. */
+export interface GameProgress {
+  at: string;
+  plays: number;
+  /** Plays checked in Review mode. */
+  checked: number;
+  routesRated: number;
+  routesTotal: number;
 }
 
 export type ClipStatusKind = "done" | "needs_hand" | "failed";
@@ -136,6 +150,9 @@ export interface JobView {
   /** When the film is deleted (null once it has been). */
   filmDeletedAt: string | null;
   filmExpiresAt: string | null;
+  /** The staff's name for it, "" when none. */
+  name: string;
+  saved?: GameProgress;
 }
 
 /* ------------------------------------------------------------------ names and paths */
@@ -175,7 +192,15 @@ export const paths = {
   tracksDir: (team: string, job: string) => `${prefix(team, job)}tracks/`,
   assembling: (team: string, job: string) => `${prefix(team, job)}assembling`,
   game: (team: string, job: string) => `${prefix(team, job)}game.json`,
+  /** The staff's working copy of the cards: opened instead of `game` once there is one, and kept, like it, after the film goes. */
+  cards: (team: string, job: string) => `${prefix(team, job)}cards.json`,
 };
+
+/** A game name as typed: one line, trimmed, at most `MAX_GAME_NAME` characters; "" clears it. Null when it isn't text. */
+export function cleanGameName(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  return value.replace(/[\u0000-\u001f\u007f]+/g, " ").replace(/\s+/g, " ").trim().slice(0, MAX_GAME_NAME).trim();
+}
 
 /** `film/<team>/<job>/videos/<n>/<name>`, or null. */
 export function parseVideoPath(pathname: string): { team: string; job: string; index: number; name: string } | null {
@@ -424,6 +449,8 @@ export function viewOf(job: FilmJob, statuses: ClipStatus[]): JobView {
     plan: job.plan,
     plays: job.plays,
     error: job.error,
+    name: job.name ?? "",
+    ...(job.saved ? { saved: job.saved } : {}),
     filmDeletedAt: job.clipsDeletedAt ?? null,
     filmExpiresAt: job.clipsDeletedAt ? null : new Date(Date.parse(job.createdAt) + CLIP_RETENTION_DAYS * DAY).toISOString(),
   };

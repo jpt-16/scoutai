@@ -15,3 +15,6 @@ export const CLIP_RETENTION_DAYS = 14;
 export function isValidClipName(name: unknown): name is string {
   return typeof name === "string" && /^[A-Za-z0-9][A-Za-z0-9 _.()+-]{0,119}\.(mp4|mov|m4v)$/i.test(name) && !name.includes("..");
 }
+
+/** The longest a game's name can be ("vs Central, Week 7"). */
+export const MAX_GAME_NAME = 60;

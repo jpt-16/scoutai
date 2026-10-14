@@ -12,7 +12,7 @@ the higher yard numbers. Then click the ball and say which way the offense is go
 
 Writes clips/play_01.json beside the clip. The detector and the formation rules take
 it from there (`python -m eval.presnap`). High school fields: hashes 17.78 yards in
-from each sideline, 53.33 yards wide (NFHS).
+from each sideline, 53.33 yards wide (NFHS); college and NFL film: set FIELD_LEVEL (see field.py).
 """
 
 from __future__ import annotations
@@ -24,8 +24,9 @@ from pathlib import Path
 
 import cv2
 
-FIELD_WIDTH = 160 / 3  # yards
-HASH_X = {"SL": 0.0, "HL": 17.78, "HR": FIELD_WIDTH - 17.78, "SR": FIELD_WIDTH}
+from .field import FIELD_WIDTH, HASH_IN  # the hash rows for FIELD_LEVEL (high school unless set)
+
+HASH_X = {"SL": 0.0, "HL": HASH_IN, "HR": FIELD_WIDTH - HASH_IN, "SR": FIELD_WIDTH}
 
 
 def parse_spot(text: str) -> tuple[float, float]:

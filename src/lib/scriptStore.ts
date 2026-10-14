@@ -29,6 +29,13 @@ export interface StoredScript {
   warnings: string[];
   /** The opponent's secondary per formation, for Scout D cards (src/lib/secondary.ts). */
   dbAlignments?: DbAlignments;
+  /**
+   * The game in the staff's film library these cards came from (`/film`): while it is set, every save also goes back to that game's
+   * own copy (`src/lib/film/gameSave.ts`), so its edits, checks and route ratings are there the next time it is opened.
+   */
+  gameId?: string;
+  /** That game's name in the library ("vs Central"), shown as the script's title. */
+  gameName?: string;
 }
 
 export function scriptTitle(films: string[], slot: ScriptSlot = "script"): string {
@@ -100,6 +107,8 @@ export function loadScript(slot: ScriptSlot = "script"): StoredScript | null {
       cards: script.cards.map((c) => deriveCard({ ...c, source: c.source || films[0] })),
       warnings: script.warnings ?? [],
       ...(script.dbAlignments ? { dbAlignments: script.dbAlignments } : {}),
+      ...(typeof script.gameId === "string" ? { gameId: script.gameId } : {}),
+      ...(typeof script.gameName === "string" ? { gameName: script.gameName } : {}),
     };
   } catch {
     return null;

@@ -119,7 +119,9 @@ export default function PrivacyPage() {
           never finishes uploading is removed after two days. You can delete a game, its film and its
           scout cards yourself at any time from the Game film page. The scout cards (the finished
           game file, which holds positions and play calls, no video) stay in your team&apos;s library
-          until you delete the game or ask us to.
+          until you delete the game or ask us to, and so does your staff&apos;s own copy of each game&apos;s
+          cards: its name, your edits, the plays you checked in Review and your ratings of the routes, saved
+          with the game so anyone on your staff who opens it sees them.
         </p>
       </LegalSection>
 

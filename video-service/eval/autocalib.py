@@ -31,7 +31,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from .field import FieldFailure, FieldFit, calibrate_field
+from .field import HASH_IN, FieldFailure, FieldFit, calibrate_field
 from .teams import two_means
 
 # People further than this (yards) from the rest of the crowd's middle are fans and sideline staff.
@@ -128,7 +128,7 @@ def draw_debug(frame: np.ndarray, to_field: np.ndarray, ball: tuple[float, float
     start = 5 * round((ball[1] - 30) / 5)
     for y in range(int(start), int(start) + 65, 5):
         cv2.line(out, px(0, y), px(FIELD_WIDTH, y), (0, 255, 255), 2)
-    for x in (0, 17.78, FIELD_WIDTH - 17.78, FIELD_WIDTH):
+    for x in (0, HASH_IN, FIELD_WIDTH - HASH_IN, FIELD_WIDTH):
         cv2.line(out, px(x, ball[1] - 30), px(x, ball[1] + 30), (255, 200, 0), 2)
     cv2.circle(out, px(*ball), 10, (0, 0, 255), -1)
     cv2.putText(out, text, (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)

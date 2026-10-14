@@ -61,6 +61,7 @@ import {
 } from "@/lib/practicePlan";
 import { applyReview, reviewRows, type ReviewResult } from "@/lib/importReview";
 import { SyncBadge } from "@/components/CloudSync";
+import { GameSaveBack } from "@/components/GameSaveBack";
 import { ReviewBar, ReviewSummaryDialog } from "@/components/ReviewBar";
 import { loadScript, saveScript, storeScript, type ScriptSlot, type StoredScript } from "@/lib/scriptStore";
 import { nextUnchecked, reviewStatus, withRouteCheck } from "@/lib/review";
@@ -601,11 +602,12 @@ function ScriptApp({ demoMode = false }: { demoMode?: boolean }) {
       onValueChange={(v) => setView(v as View)}
       className={cn("gap-0", view === "field" ? "h-dvh overflow-hidden" : "min-h-dvh")}
     >
+      {script.gameId && !demoMode && <GameSaveBack />}
       <header className="no-print flex h-16 shrink-0 items-center gap-4 border-b px-4 sm:px-6">
         <Button asChild variant="outline" size="icon" className="border">
           <Link
-            href={practice ? `/practice?day=${practice.day.id}` : "/"}
-            aria-label={practice ? "Back to the playsheet" : "Back to upload"}
+            href={practice ? `/practice?day=${practice.day.id}` : script.gameId ? "/film" : "/"}
+            aria-label={practice ? "Back to the playsheet" : script.gameId ? "Back to your games" : "Back to upload"}
           >
             <ChevronLeft className="size-5" />
           </Link>
@@ -622,7 +624,7 @@ function ScriptApp({ demoMode = false }: { demoMode?: boolean }) {
               ? `${practicePeriod.name} · ${practicePeriod.kind === "7v7" ? "7v7" : "Team"} · ${
                   unit === "defense" ? "Scout D" : "Scout O"
                 }`
-              : `${script.fileName} · ${cards.length} plays`}
+              : `${script.gameName || script.fileName} · ${cards.length} plays`}
           </span>
         </div>
         {!practicePeriod && (

@@ -15,8 +15,11 @@
  */
 
 import { gunzipSync } from "node:zlib";
+import type { HudlPlayCard } from "../hudlParser";
+import { summarizeRoutes } from "../review";
 import type { TierLimits } from "../usageLimits";
 import {
+  cleanGameName,
   cleanupFor,
   checkNewJob,
   checkNewVideoJob,
@@ -37,6 +40,7 @@ import {
   type ClipStatus,
   type ClipStatusKind,
   type FilmJob,
+  type GameProgress,
   type JobClip,
   type JobKind,
   type SplitReport,
@@ -176,8 +180,10 @@ export async function createJob(
   limits: TierLimits["film"],
   files: unknown,
   kind: JobKind = "clips",
+  name: unknown = "",
 ): Promise<{ job: JobView; uploads: Upload[] }> {
   const team = teamKey(owner);
+  const named = cleanGameName(name) || undefined;
   const existing = await jobsOf(ctx, team);
   const id = newJobId();
   const at = iso(ctx.now());
@@ -185,11 +191,11 @@ export async function createJob(
   if (kind === "video") {
     const checked = checkNewVideoJob(files, limits, existing, ctx.now());
     if (!checked.ok) throw new FilmError(429, "limit", checked.message);
-    job = { id, state: "uploading", createdAt: at, updatedAt: at, kind: "video", videos: checked.value, maxPlays: limits.maxPlays, clips: [] };
+    job = { id, state: "uploading", createdAt: at, updatedAt: at, kind: "video", videos: checked.value, maxPlays: limits.maxPlays, clips: [], ...(named ? { name: named } : {}) };
   } else {
     const checked = checkNewJob(files, limits, existing, ctx.now());
     if (!checked.ok) throw new FilmError(429, "limit", checked.message);
-    job = { id, state: "uploading", createdAt: at, updatedAt: at, clips: checked.value };
+    job = { id, state: "uploading", createdAt: at, updatedAt: at, clips: checked.value, ...(named ? { name: named } : {}) };
   }
   if (!(await ctx.storage.putJson(paths.job(team, id), job, { exclusive: true }))) {
     throw new FilmError(500, "collision", "Couldn't start that game. Try again.");
@@ -521,9 +527,64 @@ export async function openGame(ctx: FilmContext, owner: string, id: string): Pro
   const job = await readJob(ctx, team, id);
   if (!job) throw new FilmError(404, "not_found", "That game isn't in your library.");
   if (job.state !== "ready") throw new FilmError(409, "not_ready", "That game isn't finished yet.");
-  const found = await ctx.storage.getStream(paths.game(team, id));
+  // The staff's own copy (edits, checks, route ratings) once there is one, else the cards as the film built them.
+  const found = (job.saved ? await ctx.storage.getStream(paths.cards(team, id)) : null) ?? (await ctx.storage.getStream(paths.game(team, id)));
   if (!found) throw new FilmError(404, "gone", "That game's file is missing.");
   return found;
+}
+
+/** The staff names (or renames) a game; "" clears the name. */
+export async function renameJob(ctx: FilmContext, owner: string, id: string, name: unknown): Promise<JobView> {
+  const team = teamKey(owner);
+  const job = await readJob(ctx, team, id);
+  if (!job) throw new FilmError(404, "not_found", "That game isn't in your library.");
+  const clean = cleanGameName(name);
+  if (clean === null) throw new FilmError(400, "bad_name", "Type a name for the game.");
+  const next = { ...job };
+  if (clean) next.name = clean;
+  else delete next.name;
+  return viewFor(ctx, team, await writeJob(ctx, team, next, {}));
+}
+
+/** The most a saved copy of a game's cards may be (as sent, gzipped or not; a function takes 4.5 MB). */
+export const MAX_SAVED_GAME_BYTES = 4_000_000;
+
+/**
+ * The staff saves its working copy of a game's cards (`body`: the stored script's JSON, gzipped by the browser or plain). It is
+ * checked to be a script, stored beside the film's own game file, and the job records how far the review has got, for the
+ * library. Last save wins: two coaches editing one game at once is not merged.
+ */
+export async function saveGameCards(ctx: FilmContext, owner: string, id: string, body: Uint8Array): Promise<JobView> {
+  const team = teamKey(owner);
+  const job = await readJob(ctx, team, id);
+  if (!job) throw new FilmError(404, "not_found", "That game isn't in your library.");
+  if (job.state !== "ready") throw new FilmError(409, "not_ready", "That game isn't finished yet.");
+  if (body.byteLength > MAX_SAVED_GAME_BYTES) throw new FilmError(413, "too_big", "This game is too big to save to your staff.");
+  let text: string;
+  try {
+    text = new TextDecoder().decode(body[0] === 0x1f && body[1] === 0x8b ? gunzipSync(body) : body);
+  } catch {
+    throw new FilmError(400, "bad_body", "That isn't a game's cards.");
+  }
+  const progress = gameProgress(text, iso(ctx.now()));
+  if (!progress) throw new FilmError(400, "bad_body", "That isn't a game's cards.");
+  await ctx.storage.putBytes(paths.cards(team, id), new TextEncoder().encode(text), "application/json");
+  return viewFor(ctx, team, await writeJob(ctx, team, job, { saved: progress }));
+}
+
+/** A saved script's review progress, or null when the text isn't a script with cards. */
+export function gameProgress(text: string, at: string): GameProgress | null {
+  let script: { cards?: unknown };
+  try {
+    script = JSON.parse(text) as { cards?: unknown };
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(script.cards) || script.cards.length === 0) return null;
+  const cards = script.cards as HudlPlayCard[];
+  if (!cards.every((c) => c && typeof c === "object" && typeof c.id === "string")) return null;
+  const routes = summarizeRoutes(cards);
+  return { at, plays: cards.length, checked: cards.filter((c) => c.reviewedAt).length, routesRated: routes.rated, routesTotal: routes.total };
 }
 
 /** The coach deletes a game now: the film, the tracks, the game file and the record. */
@@ -546,8 +607,9 @@ export interface CleanupReport {
 
 async function removeFilm(ctx: FilmContext, team: string, id: string): Promise<void> {
   const found = await ctx.storage.list(paths.prefix(team, id));
-  // The finished game stays; everything else (clips, tracks, reports, the marker) goes.
-  await ctx.storage.remove(found.map((o) => o.pathname).filter((p) => p !== paths.game(team, id)));
+  // The finished game and the staff's copy of it stay; everything else (clips, tracks, reports, the marker) goes.
+  const keep = new Set([paths.game(team, id), paths.cards(team, id)]);
+  await ctx.storage.remove(found.map((o) => o.pathname).filter((p) => !keep.has(p)));
 }
 
 export async function cleanup(ctx: FilmContext): Promise<CleanupReport> {

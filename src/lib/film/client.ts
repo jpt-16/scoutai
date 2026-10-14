@@ -2,6 +2,7 @@
  * The browser's side of `/api/film/*`: plain fetches that turn an error answer into a readable message.
  */
 
+import { encodeBody } from "../cloudSync";
 import type { JobView } from "./jobs";
 import type { Upload } from "./service";
 
@@ -27,8 +28,16 @@ export const filmApi = {
   async list(): Promise<JobView[]> {
     return (await call<{ jobs: JobView[] }>("/api/film/jobs", { cache: "no-store" })).jobs;
   },
-  create(files: { name: string; size: number; read?: boolean }[], kind: "clips" | "video" = "clips"): Promise<{ job: JobView; uploads: Upload[] }> {
-    return call("/api/film/jobs", json({ files, kind }));
+  create(files: { name: string; size: number; read?: boolean }[], kind: "clips" | "video" = "clips", name = ""): Promise<{ job: JobView; uploads: Upload[] }> {
+    return call("/api/film/jobs", json({ files, kind, ...(name.trim() ? { name } : {}) }));
+  },
+  async rename(id: string, name: string): Promise<JobView> {
+    return (await call<{ job: JobView }>(`/api/film/jobs/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ name }) })).job;
+  },
+  /** Saves the staff's working copy of a game's cards (the stored script), gzipped on the way up. */
+  async saveGame(id: string, scriptJson: string): Promise<JobView> {
+    const { body, contentType } = await encodeBody(scriptJson);
+    return (await call<{ job: JobView }>(`/api/film/jobs/${id}/game`, { method: "PUT", headers: { "content-type": contentType }, body: body as BodyInit })).job;
   },
   async start(id: string): Promise<JobView> {
     return (await call<{ job: JobView }>(`/api/film/jobs/${id}/start`, { method: "POST" })).job;

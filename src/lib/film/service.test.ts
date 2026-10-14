@@ -15,6 +15,8 @@ import {
   openForWorker,
   openGame,
   openVideoForWorker,
+  renameJob,
+  saveGameCards,
   startJob,
   storeResult,
   storeTracks,
@@ -553,5 +555,66 @@ describe("a whole game's video", () => {
     const left = [...storage.objects.keys()];
     expect(left.some((k) => k.includes("/videos/") || k.includes("/split/") || k.includes("/status/"))).toBe(false);
     expect(left).toContain(paths.game(team, id));
+  });
+});
+
+describe("the staff's games: names and their own copy of the cards", () => {
+  async function readyGame(name?: string) {
+    const { job, uploads } = await createJob(ctx, OWNER, limits, files(1), "clips", name);
+    for (const u of uploads) storage.addClip(u.pathname, 4000 + u.index);
+    await startJob(ctx, OWNER, job.id);
+    const team = teamKey(OWNER);
+    await handleEvent(ctx, team, job.id, clipEvent(0));
+    await storeResult(ctx, team, job.id, gz({ fileName: "g", cards: [{ id: "a" }, { id: "b" }] }));
+    await handleEvent(ctx, team, job.id, { type: "assembled", plays: 2 });
+    return { id: job.id, team };
+  }
+  const text = async (id: string, owner = OWNER) => JSON.parse(await new Response((await openGame(ctx, owner, id)).stream).text());
+  const edited = {
+    fileName: "g",
+    cards: [
+      { id: "a", reviewedAt: "2026-10-21T10:00:00Z", routeOverrides: { X: { path: [[0, -30]], source: "video" }, Z: { path: [[0, -40]], source: "video" } }, routeChecks: { X: "right" } },
+      { id: "b" },
+    ],
+  };
+
+  it("names a game at upload, renames it, and clears the name", async () => {
+    const { id } = await readyGame("  vs   Central\n");
+    expect((await getView(ctx, OWNER, id)).name).toBe("vs Central");
+    expect((await renameJob(ctx, OWNER, id, "Week 7 at North")).name).toBe("Week 7 at North");
+    expect((await renameJob(ctx, OWNER, id, "x".repeat(200))).name).toHaveLength(60);
+    expect((await renameJob(ctx, OWNER, id, "")).name).toBe("");
+    await expect(renameJob(ctx, OWNER, id, 5)).rejects.toMatchObject({ status: 400 });
+    await expect(renameJob(ctx, "org_other", id, "mine")).rejects.toMatchObject({ status: 404 });
+  });
+
+  it("opens the film's cards until the staff saves its own copy, then that copy, with the review's progress on the game", async () => {
+    const { id } = await readyGame();
+    expect((await text(id)).cards[0].routeChecks).toBeUndefined();
+    clock += HOUR;
+    const view = await saveGameCards(ctx, OWNER, id, gz(edited));
+    expect(view.saved).toEqual({ at: new Date(clock).toISOString(), plays: 2, checked: 1, routesRated: 1, routesTotal: 2 });
+    expect((await text(id)).cards[0].routeChecks).toEqual({ X: "right" });
+    // Plain JSON is taken too.
+    await saveGameCards(ctx, OWNER, id, new TextEncoder().encode(JSON.stringify({ ...edited, cards: [{ id: "a" }] })));
+    expect((await text(id)).cards).toHaveLength(1);
+  });
+
+  it("refuses a copy that isn't a game's cards, a game that isn't finished, and another staff", async () => {
+    const { id } = await readyGame();
+    await expect(saveGameCards(ctx, OWNER, id, gz({ cards: [] }))).rejects.toMatchObject({ status: 400 });
+    await expect(saveGameCards(ctx, OWNER, id, new TextEncoder().encode("not json"))).rejects.toMatchObject({ status: 400 });
+    await expect(saveGameCards(ctx, "org_other", id, gz(edited))).rejects.toMatchObject({ status: 404 });
+    const { id: running } = await startGame(1);
+    await expect(saveGameCards(ctx, OWNER, running, gz(edited))).rejects.toMatchObject({ status: 409 });
+  });
+
+  it("keeps the staff's copy when the film is deleted after the retention", async () => {
+    const { id, team } = await readyGame();
+    await saveGameCards(ctx, OWNER, id, gz(edited));
+    clock += (CLIP_RETENTION_DAYS + 1) * DAY;
+    expect(await cleanup(ctx)).toMatchObject({ filmDeleted: 1 });
+    expect([...storage.objects.keys()]).toContain(paths.cards(team, id));
+    expect((await text(id)).cards[0].routeChecks).toEqual({ X: "right" });
   });
 });

@@ -776,6 +776,11 @@ is its own card, its formation from `--formations ours.csv` (`eval.presnap`). `g
 script: the landing page's upload box opens it (`allowGameFile`, `parseScriptFile`). **Not run on real film
 yet**.
 
+**College and NFL film (`FIELD_LEVEL`).** Every level's field is 53 1/3 yards wide, but the hash marks are not: high school 17.78
+yards in from each sideline, college 20, the NFL 23.58 (`field.py`'s `HASH_IN_BY_LEVEL`). `FIELD_LEVEL=college` or `nfl` in the
+environment (the Colab notebook's `FIELD_LEVEL` setting) moves the hash rows for `eval.calibrate`, `eval.autocalib` and the field fit;
+unset is high school. Testing on college or NFL film also needs `SCOUT_COLOR` set to the scouted team's jersey (`scoutteam.COLORS`).
+
 **No-click calibration (`video-service/eval/field.py`, `autocalib.py`, `game.py`).** `eval.calibrate`'s four
 clicks per clip are replaced by `python -m eval.autocalib clips/` (it writes the same `<clip>.json`, plus an
 `auto` block and `debug/<clip>_auto.jpg`: the yard lines it believes in drawn back over the frame). Snap:
@@ -1067,6 +1072,19 @@ of the Clerk org (or `user-<id>`), so a path never names a team.
 through the app's own `/api/film/worker/...` routes (`workerGate`), gzipped on the way up (functions take 4.5 MB). The app
 is the only thing that touches the store. Coach routes are off wherever the AI gate is bypassed (one library for anyone
 holding the URL) and need `BLOB_READ_WRITE_TOKEN`.
+
+**The games dashboard (`/film`, "Your games").** Every game the staff uploaded, newest first, games before the upload box once there
+are any. A game has a **name** (typed at upload or with the pencil, `PATCH /api/film/jobs/<id>` `{name}`, `cleanGameName`, at most
+`MAX_GAME_NAME` 60; unnamed shows as "Game · Oct 4"), its review progress (plays checked, film routes rated: `FilmJob.saved`, a
+`GameProgress` counted by `gameProgress` when the staff's copy is saved), and **Open N scout cards**. **Each game keeps the staff's
+own copy of its cards** (`.../cards.json`, `saveGameCards`, `PUT /api/film/jobs/<id>/game`, gzipped, 4 MB): opening a game reads that
+copy once there is one (else the film's `game.json`), and the opened script carries `gameId` / `gameName` (`StoredScript`), so the
+reader's title is the game's name, its back button goes to `/film`, and every save is sent back to that game a moment later
+(`src/lib/gameSave.ts`, `GameSaveBack` on `/script`: a pending marker in `scoutcard:game-save:v1` survives no signal and is retried on
+`online`, tab hide and leaving the reader). Opening another game sends the open one first and asks before dropping changes it couldn't
+send; reopening the game already on the device keeps the device's copy ("OPEN ON THIS DEVICE"). The retention sweep keeps `cards.json`
+with `game.json`. Last save wins: two coaches editing one game at once are not merged. Tested on the memory store and in a browser
+against a faked API; not yet run against a live Blob store.
 
 **Deleting the film.** A daily cron (`vercel.json` → `/api/film/cleanup`, `Bearer CRON_SECRET`) deletes the clips, tracks
 and reports `CLIP_RETENTION_DAYS` (14) after upload (the game file stays, the card shows "Film deleted"), removes an upload
