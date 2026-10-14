@@ -254,9 +254,24 @@ export function matchDetectedLetters(detection: DetectedPlay, card: HudlPlayCard
   const spots = players.map((p) => ({ label: p.label, x: (p.x - ballX) / YARD_X, y: (FIELD.los - p.y) / YARD_PX }));
   const result = new Map<DetectedPlayer, string>();
   const taken = new Set<string>();
+  // A card that already carries this detection's spots (`detectionSpots`, the first match, made on the card as it was) keeps
+  // those letters: matched again against the card as drawn from them, a man moved off a lineman or a hash-spread receiver can
+  // land beside another and the two swap (real play 43: Y was drawn out level with Z and took Z's corner).
+  if (detection.units === "yards" && card.offenseSpots) {
+    for (const p of detection.players) {
+      if (p.label === "Q") continue;
+      const same = Object.entries(card.offenseSpots).filter(
+        ([, s]) => s && Math.abs(s.x - Math.round(p.start.x * 10) / 10) < 0.01 && Math.abs(s.y - Math.round(p.start.y * 10) / 10) < 0.01,
+      );
+      if (same.length === 1 && same[0][0] !== "Q" && !taken.has(same[0][0])) {
+        result.set(p, same[0][0]);
+        taken.add(same[0][0]);
+      }
+    }
+  }
   const field = detection.players.filter((p) => {
     if (p.label === "Q") result.set(p, "Q");
-    return p.label !== "Q";
+    return p.label !== "Q" && !result.has(p);
   });
   const nearest = (who: DetectedPlayer[], pool: typeof spots) => {
     const pairs = who.flatMap((player) =>

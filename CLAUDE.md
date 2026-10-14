@@ -1003,7 +1003,21 @@ who wears the scouted team's color (`COLOR_SURE_SHARE` 0.15 offense, `COLOR_NOT_
 play 34's men are followed as themselves, so its misses were the reader's, and play 8's are the tracker's (the zapped F has no track after the motion; a bunch man's track slides onto a
 lineman). Reader fixes from the coach's own words: **a dig or shallow crosses flat** (a route that keeps climbing across is a slant or post: `FLAT_CROSS_SLOPE`, `CLIMB_COST`), and **a back's
 routes are drawn and read from his own depth**, his speed out angled out to the flat two yards past the line (`BACKFIELD_YARDS`; `routeTemplateYards(kind, outside, behind)`,
-`readRoute(track, outside, behind)`). Score: 6 of 15 routes right (4 before), play 34 4 of 5; still not proven, film routes stay behind the coach's tap.
+`readRoute(track, outside, behind)`). Score: 6 of 15 routes right (4 before), play 34 4 of 5; still not proven, film routes stay behind the coach's tap. **Sixteenth pass (the tracker, measured man by man):** hand marks for every receiver and back of plays 8, 34 and 43
+(`truth/plays_8_34_43/play_*_men.json`, each mark a detection whose zoomed crop shows that man's jersey) showed the first tracker 43 of 81
+right. Its failure: a far man's spot in yards jumps 1.5-2.5 yd a frame with his box's bottom edge, so a tracker pairing people by yards either
+loses him or jumps to the man beside him, and a lost track was picked up by defenders. **`eval/boxtrack.py` is now the default tracker**
+(`TRACKER=boxes`): each box warped onto the snap frame, a man continued by the box overlapping where his was heading (`MIN_IOU` 0.25, a
+`GAP_SLACK` after missed frames), never across the scouted team's jersey (`color_share`: red offense 0.07-0.68, gold defense 0.00; `WEARS` /
+`NOT_WEARS`), his spots smoothed once identity is settled (`SMOOTH_MEDIAN` 7, `SMOOTH_MEAN` 5; unsmoothed, `trimAtJump` cut the far tracks at
+the first spike). Marks: **78 of 81 right, none wrong** across a range of settings (the misses: 43's #81 lost in the mesh, its zapped F in the
+pile). Three downstream fixes it exposed: a card that carries the detection's own `offenseSpots` keeps those letters in `matchDetectedLetters`
+(re-matching against the drawn card swapped 43's Y and Z, after Y was moved off a lineman); the quarterback is the shallowest man behind the
+center of the line (`QB_SAME_DEPTH_YARDS`; 43's ball spot was 2.5 yd off and the back was taken for him); a back's route is read from both
+sides and the closer fit kept (`readFromHisSide`: 43's back lined up left and ran his rail right). Routes against the coach's calls: **9 of 15**
+(11 counting the runner-up), against 6 for the first tracker and 1 for tracklets; run or pass 3 of 3. Still three plays, all from one camera; not
+proven, film routes stay behind the coach's tap. Play 8's and 43's X (the coach: a stick at 10) reads slant on both: the tracked path angles in
+to 10 yd deep, so what this staff's stick looks like is the coach's call.
 
 ## Game film upload (the hosted pipeline: `/film`, `src/lib/film/`, `video-service/eval/worker*.py`)
 

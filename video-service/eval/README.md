@@ -162,14 +162,26 @@ tiles: the camera zoomed out 1.6x after the snap and the people found fell from 
 `time:` line per clip (read, camera, detect, track, and windows per frame for `--region`). Compare two dumps of the same
 clip with `python -m eval.compare a_detections.json b_detections.json`.
 
+## The box tracker (the default)
+
+    python -m eval.tracks clips/ --out tracks --seconds 8 --region --scout-color red      # --tracker boxes is the default
+
+`eval/boxtrack.py` follows each man by his own box in the camera-held picture (every box warped onto the snap frame), continued by
+the box that overlaps where his was heading, never across the scouted team's jersey color, and smooths his spots in yards once the
+boxes have said who is who. Why: a far man's spot in yards jumps 1.5-2.5 yd a frame with his box's bottom edge, so the trackers that
+pair people by yards either lost him or jumped onto the man beside him. On plays 8, 34 and 43 (hand marks in
+`eval/truth/plays_8_34_43/play_*_men.json`, each checked against the man's jersey in zoomed crops): 78 of 81 marks right and none wrong,
+against 43 for the first tracker; routes against the coach's own calls (`scripts/score-truth.ts`): 9 of 15 right, against 6 (first
+tracker) and 1 (tracklets); run or pass 3 of 3. Replay a saved dump with it: `python -m eval.replay <dump> boxes` (a dump written with a
+scout color carries each box's `share` of it).
+
 ## The tracklet tracker and the truth marks
 
     python -m eval.tracks clips/ --out tracks --seconds 8 --region --tracker tracklets
     python -m eval.truth tracks/play_05.json eval/truth/play_05.json
 
 `--tracker tracklets` (`eval/tracklets.py`) keeps the teams apart by their jerseys and joins short clean pieces of each
-man's path instead of carrying one guess frame to frame; the default is still the first tracker until it has been
-scored on more film. `eval.truth` checks a tracks file against receiver positions marked by hand (one file per play in
+man's path instead of carrying one guess frame to frame. On plays 8, 34 and 43 it read 1 of 15 routes right, so it stays a choice. `eval.truth` checks a tracks file against receiver positions marked by hand (one file per play in
 `eval/truth/`; to make one, step through the clip and write where each receiver stood at a few frames). On play 5 of
 the test recordings: 5 of 13 marks right with the first tracker, 8 of 13 with tracklets.
 

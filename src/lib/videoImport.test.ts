@@ -6,6 +6,7 @@ import {
   ballFromDetection,
   buildCardFromDetection,
   filmRouteName,
+  matchDetectedLetters,
   validateDetectedPlay,
   type DetectedPlay,
 } from "./videoImport";
@@ -334,5 +335,29 @@ describe("the user's Trio Slot clip (card 28)", () => {
     const widest = left.sort((a, b) => a.x - b.x)[0];
     expect(widest.y).toBe(150);
     for (const p of left.slice(1)) expect(p.y).toBeGreaterThan(150);
+  });
+});
+
+describe("a card carrying a detection's own spots keeps its letters (real play 43)", () => {
+  it("matches each man to the letter whose stored spot is his, not to the card as drawn from those spots", () => {
+    const row = parseHudlCsvText("PLAY #,OFF FORM,OFF PLAY,PLAY DIR\n43,DUCES,MESH RAIL,R\n").cards[0];
+    // Y stood outside and behind Z here (a stack after the motion): drawn, the card would put them in its own order.
+    const detection: DetectedPlay = {
+      playName: "",
+      formation: "",
+      units: "yards",
+      players: [
+        { label: "Q", start: { x: 0, y: -4 }, waypoints: [], endpoint: { x: 0, y: -4 }, routeType: "NONE" },
+        { label: "?", start: { x: -17.9, y: 0.4 }, waypoints: [], endpoint: { x: -17.9, y: 0.4 } },
+        { label: "?", start: { x: -11.4, y: -2.7 }, waypoints: [], endpoint: { x: -11.4, y: -2.7 } },
+        { label: "?", start: { x: 7.0, y: -2.0 }, waypoints: [], endpoint: { x: 7.0, y: -2.0 } },
+        { label: "?", start: { x: 5.2, y: 0.0 }, waypoints: [], endpoint: { x: 5.2, y: 0.0 } },
+      ],
+    };
+    const card = { ...row, offenseSpots: { Q: { x: 0, y: -4 }, X: { x: -17.9, y: 0.4 }, F: { x: -11.4, y: -2.7 }, Y: { x: 7.0, y: -2.0 }, Z: { x: 5.2, y: 0.0 } } };
+    const letters = matchDetectedLetters(detection, card);
+    expect(letters.get(detection.players[3])).toBe("Y");
+    expect(letters.get(detection.players[4])).toBe("Z");
+    expect(letters.get(detection.players[1])).toBe("X");
   });
 });

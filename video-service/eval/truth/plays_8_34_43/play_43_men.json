@@ -1,0 +1,141 @@
+{
+ "play": "Hudl play 43: Bunch right, F zapped across into Deuces (the same play as 8), MESH RAIL. X #15, F #4, Y #81, Z #8, H #30, QB #11.",
+ "about": "Where each man really was (frames of the tracked clip, 30 fps, frame 0 = the calibrated frame 180 of play_43.mp4; the snap is frame 131), in yards from the ball in the offense's view, from detections whose zoomed crops show that man (Y's #81 is readable from frame 173 on). F (#4) is not found by the detector after about frame 150 (his shallow runs behind the mesh and the pile), so he has no later marks.",
+ "snap": 131,
+ "men": {
+  "X": {
+   "131": [
+    -17.8,
+    0.3
+   ],
+   "146": [
+    -17.8,
+    1.9
+   ],
+   "161": [
+    -16.9,
+    4.1
+   ],
+   "176": [
+    -15.0,
+    6.1
+   ],
+   "191": [
+    -13.2,
+    7.2
+   ],
+   "206": [
+    -8.8,
+    8.4
+   ],
+   "221": [
+    -6.1,
+    8.9
+   ]
+  },
+  "F": {
+   "131": [
+    -11.5,
+    -2.8
+   ],
+   "137": [
+    -10.7,
+    -1.5
+   ],
+   "143": [
+    -7.8,
+    0.8
+   ]
+  },
+  "Y": {
+   "131": [
+    5.3,
+    -0.0
+   ],
+   "137": [
+    5.2,
+    0.0
+   ],
+   "143": [
+    4.8,
+    0.0
+   ],
+   "149": [
+    3.0,
+    -0.3
+   ],
+   "173": [
+    0.9,
+    2.3
+   ],
+   "179": [
+    -2.0,
+    1.8
+   ],
+   "191": [
+    -2.0,
+    3.8
+   ],
+   "197": [
+    -2.2,
+    4.5
+   ],
+   "203": [
+    -2.4,
+    5.1
+   ]
+  },
+  "Z": {
+   "131": [
+    7.0,
+    -2.1
+   ],
+   "146": [
+    7.2,
+    -0.3
+   ],
+   "161": [
+    7.5,
+    2.3
+   ],
+   "191": [
+    8.4,
+    7.0
+   ],
+   "206": [
+    8.6,
+    10.1
+   ]
+  },
+  "H": {
+   "131": [
+    -2.7,
+    -5.7
+   ],
+   "146": [
+    -0.1,
+    -4.2
+   ],
+   "161": [
+    1.7,
+    -3.9
+   ],
+   "176": [
+    4.4,
+    -2.4
+   ],
+   "191": [
+    7.5,
+    0.8
+   ],
+   "206": [
+    9.5,
+    4.5
+   ],
+   "221": [
+    8.5,
+    7.3
+   ]
+  }
+ }
+}

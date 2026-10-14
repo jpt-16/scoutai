@@ -14,7 +14,7 @@
  * Framework-free, so Vitest and the Node script run it directly.
  */
 
-import type { RouteKind } from "./formations";
+import { BACKFIELD_YARDS, type RouteKind } from "./formations";
 import { deriveCard, type FilmRoute, type HudlPlayCard } from "./hudlParser";
 import { readRoute } from "./routeReader";
 import {
@@ -63,6 +63,13 @@ const LINEMAN_MAX_TRAVEL_YARDS = 6;
 const LINEMAN_WINDOW_SECONDS = 4;
 /** The quarterback is the man nearest the ball behind the center. */
 const QB_MAX_ACROSS_YARDS = 2.5;
+/**
+ * When more than one man stands behind the center (a back behind the quarterback, or beside him), the quarterback is the nearest one
+ * to the line: under center, in the gun and in the pistol the back stands deeper or level. Men within this much of the same depth are
+ * told apart by who is nearer the center. (Real play 43: the ball's spot was 2.5 yd off, the quarterback 2.7 yd from it at 3.7 deep,
+ * the back 2.5 yd from it at 5.6 deep, and the nearest-to-the-ball rule called the back the quarterback.)
+ */
+const QB_SAME_DEPTH_YARDS = 1;
 /** He stands at least this far behind the line's depth (a guard a yard off the ball does not). */
 const QB_BEHIND_LINE_YARDS = 0.8;
 /** A read this unsure (margin over the runner-up) is flagged for a coach. */
@@ -346,9 +353,13 @@ function isLineman(t: TrackedPlayer, cutoff: number): boolean {
  */
 function pickQuarterback(offense: TrackedPlayer[]): TrackedPlayer | undefined {
   const cutoff = lineCutoff(offense);
+  // Behind the center: the middle of the men on the line in the box (the ball's own spot can be a couple of yards off), else the ball.
+  const line = offense.filter((t) => Math.abs(t.start[0]) <= BOX_HALF_WIDTH_YARDS + 1 && t.start[1] >= cutoff).map((t) => t.start[0]).sort((a, b) => a - b);
+  const center = line.length >= 3 ? line[Math.floor(line.length / 2)] : 0;
+  const near = (t: TrackedPlayer) => Math.min(Math.abs(t.start[0] - center), Math.abs(t.start[0]));
   return offense
-    .filter((t) => t.start[1] < cutoff && Math.abs(t.start[0]) <= QB_MAX_ACROSS_YARDS)
-    .sort((a, b) => Math.abs(a.start[0]) - Math.abs(b.start[0]) || b.start[1] - a.start[1])[0];
+    .filter((t) => t.start[1] < cutoff && near(t) <= QB_MAX_ACROSS_YARDS)
+    .sort((a, b) => (Math.abs(a.start[1] - b.start[1]) < QB_SAME_DEPTH_YARDS ? near(a) - near(b) : b.start[1] - a.start[1]))[0];
 }
 
 /**
@@ -386,7 +397,7 @@ export function detectionFromTracks(
     if (isLineman(t, cutoff)) continue;
     const route = t.points.filter(([s]) => s <= t.points[0][0] + ROUTE_SECONDS);
     const path = route.map(([, x, y]) => ({ x, y }));
-    const raw = readRoute(path, t.start[0] < 0 ? -1 : 1, -t.start[1]);
+    const raw = readFromHisSide(t, path);
     // A path cut short (lost, or handed to another man) hasn't shown which route it was.
     // A track that ends before the route can show itself says nothing, not even "he blocked": real play 43 read two receivers as
     // blocking at full confidence because their tracks were lost a second after the snap.
@@ -412,6 +423,21 @@ export function detectionFromTracks(
     detection: { playName: opts.playName ?? "", formation: opts.formation ?? "", players, units: "yards" },
     reads,
   };
+}
+
+/**
+ * The reader's call for his path, from his own sideline: the side of the ball he lined up on. A back in the backfield
+ * (`BACKFIELD_YARDS` deep, within `BACK_BOX_YARDS` of the ball) has no sideline of his own and releases either way, so his path is
+ * read from both and the closer fit kept (real play 43: the back stood 2.5 yd left of the ball's spot and ran his rail out to the
+ * right, which read from the left as an inside-breaking slant).
+ */
+const BACK_BOX_YARDS = 4;
+function readFromHisSide(t: TrackedPlayer, path: { x: number; y: number }[]) {
+  const lined = t.start[0] < 0 ? -1 : 1;
+  const own = readRoute(path, lined, -t.start[1]);
+  if (-t.start[1] < BACKFIELD_YARDS || Math.abs(t.start[0]) > BACK_BOX_YARDS) return own;
+  const other = readRoute(path, lined > 0 ? -1 : 1, -t.start[1]);
+  return other.distance < own.distance ? other : own;
 }
 
 /** "Check routes: H (curl or hitch)" for the plays the reader wasn't sure of. */

@@ -70,9 +70,11 @@ MIN_PAINT = 150.0
 # A track missing for this many frames is dropped.
 MAX_MISSED = 45
 MIN_MATCHES = 25
-# Which tracker follows people: "greedy" (`follow`, frame to frame) or "tracklets" (`eval.tracklets`: clean pieces
-# joined up, teams kept apart by their jerseys). Set per run with --tracker, or for the worker with TRACKER.
-TRACKER = os.environ.get("TRACKER", "greedy")
+# Which tracker follows people: "boxes" (`eval.boxtrack`: each man's box in the camera-held picture, continued by the box that
+# overlaps where it was heading, never across the scouted team's jersey; the default, measured on three real plays), "greedy"
+# (`follow`, frame to frame in yards) or "tracklets" (`eval.tracklets`: clean pieces joined up). Set per run with --tracker, or for
+# the worker with TRACKER.
+TRACKER = os.environ.get("TRACKER", "boxes")
 # The jersey color of the team being scouted ("red"): each clip then says which side of the ball that team is on (`eval.scoutteam`).
 SCOUT_COLOR = os.environ.get("SCOUT_COLOR", "")
 
@@ -577,9 +579,11 @@ def _shift(tracks, by: int) -> None:
         t.matched = [(f + by, j) for f, j in t.matched]
 
 
-def follow_two_pass(per_frame, colors, tracker: str, fps: float, signatures=None, labels_for=None):
+def follow_two_pass(per_frame, colors, tracker: str, fps: float, signatures=None, labels_for=None, boxes=None, shares=None):
     """(tracks, labels): the play followed from the set, then again from just before the snap (see above). `labels_for(frame, spots)`
-    names each person at that frame "offense" / "defense" for the frame-to-frame tracker (the tracklet tracker names its own)."""
+    names each person at that frame "offense" / "defense" for the frame-to-frame trackers (the tracklet tracker names its own).
+    The "boxes" tracker needs `boxes[f][j]`, each person's box warped onto the snap frame (`boxtrack.warp_boxes`), and takes
+    `shares[f][j]`, the share of his torso in the scouted team's color, when there is one."""
 
     def one(start: int):
         spots = per_frame[start:]
@@ -588,6 +592,11 @@ def follow_two_pass(per_frame, colors, tracker: str, fps: float, signatures=None
 
             tracks = follow_tracklets(spots, signatures[start:], fps)  # type: ignore[index]
             labels = [t.team for t in tracks]  # type: ignore[attr-defined]
+        elif tracker == "boxes":
+            from .boxtrack import follow_boxes
+
+            tracks = follow_boxes(boxes[start:], spots, shares[start:] if shares else None)  # type: ignore[index]
+            labels = labels_for(start, spots[0]) if labels_for else ["offense"] * len(tracks)
         else:
             tracks = follow(spots[0], spots, colors[start:])
             labels = labels_for(start, spots[0]) if labels_for else ["offense"] * len(tracks)
@@ -687,19 +696,27 @@ def track_play(
     drop_standing_weak(per_frame, kept_boxes, colors, weak)
     drop_standing_sideline(per_frame, kept_boxes, colors, ball[0], direction)
     kind = tracker or TRACKER
+    color = (scout_color if scout_color is not None else SCOUT_COLOR).strip().lower()
     signatures = None
+    warped = shares = None
     if kind == "tracklets":
         from .tracklets import jersey_signature
 
         signatures = [[jersey_signature(frames_bgr[snap + f], b) for b in kept] for f, kept in enumerate(kept_boxes)]
+    if kind == "boxes":
+        from .boxtrack import warp_boxes
+        from .scoutteam import COLORS, color_share
+
+        warped = [warp_boxes(kept, to_snap[f]) for f, kept in enumerate(kept_boxes)]
+        if color in COLORS:
+            shares = [[color_share(frames_bgr[snap + f], b, color) for b in kept] for f, kept in enumerate(kept_boxes)]
     tracks, labels = follow_two_pass(
-        per_frame, colors, kind, fps, signatures, lambda k, spots: team_of(frames_bgr[snap + k], kept_boxes[k], spots)
+        per_frame, colors, kind, fps, signatures, lambda k, spots: team_of(frames_bgr[snap + k], kept_boxes[k], spots), warped, shares
     )
     trim_at_sideline(tracks, ball[0], direction)
     if debug is not None:  # what a picture of the tracking needs
-        debug.update(frames=frames_bgr[snap:], boxes=kept_boxes, tracks=tracks, labels=labels, fps=fps, to_snap=to_snap, per_frame=per_frame, colors=colors, raw_boxes=boxes[snap:], calibration=calibration, ball=ball, direction=direction)
+        debug.update(frames=frames_bgr[snap:], boxes=kept_boxes, tracks=tracks, labels=labels, fps=fps, to_snap=to_snap, per_frame=per_frame, colors=colors, raw_boxes=boxes[snap:], calibration=calibration, ball=ball, direction=direction, scout_color=color)
     scout = None
-    color = (scout_color if scout_color is not None else SCOUT_COLOR).strip().lower()
     if color:
         from .scoutteam import scout_side
 
@@ -876,7 +893,7 @@ def main() -> None:
     ap.add_argument("--seconds", type=float, default=6.0, help="how long after the snap to follow")
     ap.add_argument("--tiles", type=int, default=2)
     ap.add_argument("--region", action="store_true", help="hold the camera first, then detect only on the field, with a man the same size to the model all play (see eval.regiondetect); --tiles is then unused")
-    ap.add_argument("--tracker", choices=["greedy", "tracklets"], default=None, help="who follows people: greedy (frame to frame) or tracklets (eval.tracklets); default TRACKER or greedy")
+    ap.add_argument("--tracker", choices=["boxes", "greedy", "tracklets"], default=None, help="who follows people: boxes (eval.boxtrack), greedy (frame to frame in yards) or tracklets (eval.tracklets); default TRACKER or boxes")
     ap.add_argument("--scout-color", default=None, help="the jersey color of the team being scouted (red, blue, gold...): each play then says which side of the ball it is on; default SCOUT_COLOR")
     ap.add_argument("--debug", type=Path, default=None, help="also write pictures of the tracking here (see eval.trackdebug)")
     ap.add_argument("--detections", type=Path, default=None, help="also write everyone the detector found in every frame here, so the tracking can be tuned without the film")

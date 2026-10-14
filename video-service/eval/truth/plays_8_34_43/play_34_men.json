@@ -1,0 +1,141 @@
+{
+ "play": "Hudl play 34: Trio right, SLANT SLANT OUT (the coach: X stick, F speed out, Y dig at 7, Z slant / skinny post, H speed out). X #8, F #81, Y #4, Z #15, H #21, QB #11.",
+ "about": "Where each man really was (frames of the tracked clip, 30 fps, frame 0 = the calibrated frame 180 of play_34.mp4; the snap is frame 34), in yards from the ball in the offense's view. Each mark is a detection whose zoomed crop shows that man's jersey (or, where the number is hidden, the same man as the crops either side), read off eval/label-style strips of every track.",
+ "snap": 34,
+ "men": {
+  "X": {
+   "34": [
+    -15.1,
+    -0.7
+   ],
+   "49": [
+    -15.5,
+    1.2
+   ],
+   "64": [
+    -13.5,
+    2.2
+   ],
+   "79": [
+    -13.3,
+    2.6
+   ],
+   "94": [
+    -12.8,
+    2.8
+   ],
+   "109": [
+    -9.9,
+    1.7
+   ],
+   "124": [
+    -11.8,
+    4.5
+   ]
+  },
+  "F": {
+   "34": [
+    4.8,
+    -2.2
+   ],
+   "49": [
+    4.4,
+    -0.8
+   ],
+   "64": [
+    4.7,
+    1.5
+   ],
+   "79": [
+    7.1,
+    2.3
+   ],
+   "94": [
+    9.7,
+    2.4
+   ],
+   "109": [
+    12.0,
+    2.2
+   ]
+  },
+  "Y": {
+   "34": [
+    9.2,
+    -0.5
+   ],
+   "49": [
+    9.5,
+    1.1
+   ],
+   "64": [
+    8.9,
+    3.6
+   ],
+   "79": [
+    7.4,
+    5.6
+   ],
+   "94": [
+    1.7,
+    9.1
+   ]
+  },
+  "Z": {
+   "34": [
+    12.3,
+    0.2
+   ],
+   "49": [
+    12.5,
+    1.5
+   ],
+   "64": [
+    11.3,
+    4.2
+   ],
+   "79": [
+    11.4,
+    5.1
+   ],
+   "94": [
+    9.1,
+    6.9
+   ],
+   "109": [
+    6.4,
+    8.3
+   ],
+   "118": [
+    3.8,
+    9.7
+   ]
+  },
+  "H": {
+   "34": [
+    -2.5,
+    -5.1
+   ],
+   "40": [
+    -3.1,
+    -4.9
+   ],
+   "46": [
+    -4.5,
+    -4.3
+   ],
+   "52": [
+    -5.1,
+    -4.2
+   ],
+   "94": [
+    -13.2,
+    1.6
+   ],
+   "100": [
+    -14.9,
+    2.0
+   ]
+  }
+ }
+}

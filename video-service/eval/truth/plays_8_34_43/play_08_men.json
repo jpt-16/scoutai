@@ -1,0 +1,12 @@
+{
+  "play": "Hudl play 8: Bunch right, F (#4) zapped across into Deuces; MESH RAIL. X #15, F #4, Y #81, Z #8, H #30, QB #11.",
+  "about": "Where each man really was, marked by hand from the film (frames of the tracked clip, 30 fps, frame 0 = the calibrated frame 130 of play_08.mp4; the snap is frame 113), in yards from the ball in the offense's view. Each mark is a detection read off the numbered pictures, identity from jerseys where readable and from continuity where not. Y at frame 188 is the less sure of the two mesh crossers (F and Y meet at the ball there).",
+  "snap": 113,
+  "men": {
+    "X": {"0": [-11.4, 0.2], "113": [-11.5, 0.2], "128": [-11.3, 1.9], "143": [-10.2, 4.2], "158": [-7.5, 6.6], "173": [-4.2, 8.6], "188": [-1.8, 9.4], "203": [-0.2, 9.7]},
+    "F": {"0": [8.3, -2.4], "60": [1.3, -2.2], "90": [-5.2, -2.3], "113": [-8.4, -1.9], "128": [-9.6, -1.0], "143": [-9.4, 1.0], "158": [-7.2, 2.8], "173": [-4.0, 3.6], "188": [0.3, 3.5], "203": [2.7, 2.5]},
+    "Y": {"0": [9.0, -0.4], "113": [9.1, -0.4], "128": [9.1, 0.0], "143": [8.7, 2.1], "158": [6.4, 2.7], "188": [1.4, 4.5], "203": [-1.9, 5.2]},
+    "Z": {"0": [10.9, -2.8], "113": [11.2, -2.7], "128": [10.8, -1.8], "143": [11.8, 0.6], "158": [14.2, 4.1], "173": [12.9, 7.1], "188": [17.0, 11.3], "203": [19.0, 13.9]},
+    "H": {"0": [-3.8, -4.7], "113": [-4.0, -4.7], "128": [-4.5, -4.2], "143": [-7.0, -3.7], "158": [-9.6, -1.9], "173": [-11.8, 0.6], "188": [-11.8, 5.1], "203": [-14.2, 8.1]}
+  }
+}

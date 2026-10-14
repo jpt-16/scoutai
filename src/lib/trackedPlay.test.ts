@@ -235,3 +235,38 @@ describe("snapTime when the formation shifts before the snap", () => {
     expect(at).toBeLessThan(5.2);
   });
 });
+
+describe("who is who in the backfield (real play 43)", () => {
+  // The ball's spot 2.5 yd off: the line stands left of it, the quarterback 3.7 deep behind its middle, the back 5.6 deep behind him.
+  const still = (id: number, x: number, y: number): TrackedPlayer => ({ id, team: "offense", start: [x, y], points: Array.from({ length: 40 }, (_, i) => [i / 10, x, y] as [number, number, number]) });
+  const line = [-4.5, -3.5, -2.5, -1.5, -0.5].map((x, i) => still(i, x, -0.8));
+  const backRail = (): TrackedPlayer => {
+    // From 5.6 deep, out to the right and up the sideline: the rail, drawn as the card draws a back's wheel.
+    const shape = routeTemplateYards("wheel", 1, 5.6);
+    const pts: [number, number, number][] = [];
+    let t = 0;
+    let prev: [number, number] | null = null;
+    for (let i = 0; i < shape.length - 1; i++)
+      for (let k = 0; k < 8; k++) {
+        const f = k / 8;
+        const p: [number, number] = [-2.5 + shape[i][0] + (shape[i + 1][0] - shape[i][0]) * f, -5.6 + shape[i][1] + (shape[i + 1][1] - shape[i][1]) * f];
+        if (prev) t += Math.hypot(p[0] - prev[0], p[1] - prev[1]) / 7;
+        prev = p;
+        pts.push([t, p[0], p[1]]);
+      }
+    return { id: 7, team: "offense", start: [-2.5, -5.6], points: pts };
+  };
+  const file: TrackedPlayFile = { tracks: [...line, still(9, -2.7, -3.7), backRail()] };
+
+  it("takes the shallowest man behind the center of the line as the quarterback, not the deeper back nearer the ball's spot", () => {
+    const { detection } = detectionFromTracks(file);
+    const q = detection.players.find((p) => p.label === "Q");
+    expect(q?.start).toEqual({ x: -2.7, y: -3.7 });
+  });
+
+  it("reads a back's route from the side he went: lined up left of the ball, he ran his rail out to the right", () => {
+    const { reads } = detectionFromTracks(file);
+    const back = reads.find((r) => r.player.start.y === -5.6);
+    expect(back?.kind).toBe("wheel");
+  });
+});

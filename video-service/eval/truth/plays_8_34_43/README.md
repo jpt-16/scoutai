@@ -41,3 +41,10 @@ Scored on the replayed tracks against `corrected.csv` (43 corrected to DUCES, th
 8 of 15 counting the runner-up (7)**; play 34 is **4 of 5** (the miss is X, lost by the tracker at his break). Nothing that read right before
 reads wrong now. Plays 8 and 43 (the mesh crossers, the zap) are the tracker's to fix next. Confident-wrong reads remain (play 8's X slant 0.39,
 F hitch 0.48), so film routes stay behind the coach's tap.
+
+## The tracker, man by man (Stage 1 and 2, tracking side)
+
+`play_08_men.json`, `play_34_men.json`, `play_43_men.json`: where each receiver and back really was, frame by frame from the snap, each mark a
+detection whose zoomed crop shows that man (jersey numbers where readable). Scored with any tracker: the man's track is the one on him at the
+snap; a later mark is right within 1.5 yd. First tracker (yards, frame to frame): 43 of 81. Box tracker (`eval/boxtrack.py`, now the default):
+78 of 81, none wrong. The three misses are detector misses (43's #81 after the mesh, its F in the pile at the snap), not swaps.

@@ -19,21 +19,26 @@ import cv2
 import numpy as np
 
 from .replay import replay
-from .tracks import snap_seconds, team_by_jersey
+from .tracks import TRACKER, snap_seconds, team_by_jersey
 from .trackdebug import TRAIL_SECONDS, _foot, _in_frame, track_color
 
 MOMENTS = (None, 0.0, 1.5, 3.0)  # None = the first frame; the rest are seconds after the snap
 SHEET_WIDTH = 2400
 
 
-def play_tracks(dump: dict, frames: list[np.ndarray], scout_color: str = "red") -> dict:
+def play_tracks(dump: dict, frames: list[np.ndarray], scout_color: str = "red", tracker: str = TRACKER) -> dict:
     """The replayed tracker with offense / defense named from the film's jersey colors."""
-    kept = replay(dump)["boxes"]
+    from .scoutteam import COLORS, color_share
+
+    kept = replay(dump, "greedy")["boxes"]
 
     def labels_for(k: int, spots):
         return team_by_jersey(frames[k], kept[k], spots, scout_color)
 
-    return replay(dump, "greedy", None, labels_for)
+    def shares_from(k: int, box):
+        return color_share(frames[k], box, scout_color)
+
+    return replay(dump, tracker, None, labels_for, shares_from if scout_color in COLORS else None)
 
 
 def picture(frame, boxes, tracks, labels, k: int, fps: float, to_snap, title: str):

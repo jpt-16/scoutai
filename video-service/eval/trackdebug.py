@@ -180,6 +180,9 @@ def write_detections(debug: dict, out_dir: Path, stem: str) -> str:
     from .presnap import torso_color
     from .tracklets import jersey_signature
 
+    from .scoutteam import COLORS, color_share
+
+    scout = str(debug.get("scout_color") or "")
     raw = []
     for f, (frame, boxes) in enumerate(zip(debug["frames"], debug["raw_boxes"])):
         raw.append(
@@ -191,6 +194,8 @@ def write_detections(debug: dict, out_dir: Path, stem: str) -> str:
                     "official": bool(looks_like_official(frame, b)),
                     # For `eval.tracklets` (replayed with `eval.replay --tracker tracklets`).
                     "jersey": [round(float(v), 3) for v in jersey_signature(frame, b)],
+                    # For `eval.boxtrack`'s jersey gate: the share of his torso in the scouted team's color.
+                    **({"share": round(color_share(frame, b, scout), 3)} if scout in COLORS else {}),
                 }
                 for b in boxes
             ]
@@ -208,6 +213,7 @@ def write_detections(debug: dict, out_dir: Path, stem: str) -> str:
                 "calibration": debug["calibration"],
                 "ball": [float(v) for v in debug["ball"]],
                 "direction": debug["direction"],
+                **({"scout_color": scout} if scout else {}),
             },
             default=lambda o: o.tolist() if hasattr(o, "tolist") else float(o),
         )
