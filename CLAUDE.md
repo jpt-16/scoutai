@@ -999,7 +999,11 @@ skill man is now followed 4-8 s after the snap on both. So `eval/label.py` (numb
 attribute each miss to a stage. First thing it showed on play 34: **the outside receiver had no track at all**, because `team_by_jersey` called him a defender: his spot was 0.4 yd past
 the line (the field's skew) while his torso is 63% red, the scouted team's color, and the defense wears none. `team_by_jersey(..., scout_color)` now corrects the position split by
 who wears the scouted team's color (`COLOR_SURE_SHARE` 0.15 offense, `COLOR_NOT_SHARE` 0.06 the other side, between them the spot's label stands); the tracker passes `--scout-color` /
-`SCOUT_COLOR` in. Replayed on the saved dumps: 4 of 13 routes (2 before), Y's dig on play 34 now reads dig; confident-wrong reads remain. Next: per-man truth from the pictures, then the stage they point at.
+`SCOUT_COLOR` in. Replayed on the saved dumps: 4 of 13 routes (2 before), Y's dig on play 34 now reads dig; confident-wrong reads remain. Next: per-man truth from the pictures, then the stage they point at. **Fifteenth pass (per-man truth by jersey):** the coach gave each man's jersey number; matched to the tracks on the film (`truth/plays_8_34_43/README.md`),
+play 34's men are followed as themselves, so its misses were the reader's, and play 8's are the tracker's (the zapped F has no track after the motion; a bunch man's track slides onto a
+lineman). Reader fixes from the coach's own words: **a dig or shallow crosses flat** (a route that keeps climbing across is a slant or post: `FLAT_CROSS_SLOPE`, `CLIMB_COST`), and **a back's
+routes are drawn and read from his own depth**, his speed out angled out to the flat two yards past the line (`BACKFIELD_YARDS`; `routeTemplateYards(kind, outside, behind)`,
+`readRoute(track, outside, behind)`). Score: 6 of 15 routes right (4 before), play 34 4 of 5; still not proven, film routes stay behind the coach's tap.
 
 ## Game film upload (the hosted pipeline: `/film`, `src/lib/film/`, `video-service/eval/worker*.py`)
 

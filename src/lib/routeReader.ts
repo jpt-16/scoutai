@@ -14,7 +14,7 @@
  * (the observed route, not the run after it), with a little tolerance on depth and width.
  */
 
-import { routeTemplateYards, type RouteKind } from "./formations";
+import { BACKFIELD_YARDS, routeTemplateYards, type RouteKind } from "./formations";
 
 export interface RoutePoint {
   x: number;
@@ -97,15 +97,44 @@ function resample(pts: RoutePoint[], n: number, upTo: number): RoutePoint[] {
   return out;
 }
 
+/**
+ * A dig and a shallow cross the field flat (a 90° break); a route that keeps climbing as it comes across is a slant or a
+ * post (play 34's Z: up 4, then in to 10 deep, the staff's slant / skinny post, read as a dig before this). Past this many
+ * yards of depth per yard across, each extra unit costs `CLIMB_COST` yards against a dig or a shallow.
+ */
+const FLAT_CROSS_SLOPE = 0.35;
+const CLIMB_COST = 4;
+
+/**
+ * Depth gained per yard across the field after the break inside: the break is where the path first goes more inside than
+ * up over the next two yards (the path is mirrored, so inside is -x). 0 for a path that never comes inside 3 yards.
+ */
+function crossingClimb(path: RoutePoint[]): number {
+  for (let i = 0; i < path.length - 1; i++) {
+    let j = i + 1;
+    while (j < path.length - 1 && Math.hypot(path[j].x - path[i].x, path[j].y - path[i].y) < 2) j++;
+    const inward = path[i].x - path[j].x;
+    if (inward > 0 && inward > path[j].y - path[i].y) {
+      const end = path[path.length - 1];
+      const across = path[i].x - end.x;
+      return across >= 3 ? Math.max(0, end.y - path[i].y) / across : 0;
+    }
+  }
+  return 0;
+}
+
 /** How far a route's last leg is carried on, for the run after the catch. */
 const CARRY_ON_YARDS = 14;
 
-const templates = new Map<RouteKind, RoutePoint[]>();
-function template(kind: RouteKind): RoutePoint[] {
-  let t = templates.get(kind);
+const templates = new Map<string, RoutePoint[]>();
+/** The shape as the card draws it: from a receiver's spot, or (`behind` the line BACKFIELD_YARDS or more) from a back's, to the yard. */
+function template(kind: RouteKind, behind = 0): RoutePoint[] {
+  const depth = behind >= BACKFIELD_YARDS ? Math.round(behind * 2) / 2 : 0;
+  const key = `${kind}@${depth}`;
+  let t = templates.get(key);
   if (!t) {
-    t = routeTemplateYards(kind, 1).map(([x, y]) => ({ x, y }));
-    templates.set(kind, t);
+    t = routeTemplateYards(kind, 1, depth).map(([x, y]) => ({ x, y }));
+    templates.set(key, t);
   }
   return t;
 }
@@ -149,8 +178,9 @@ function smooth(pts: RoutePoint[]): RoutePoint[] {
 /**
  * @param track  The player's path in yards: x toward the offense's right, y upfield, any origin.
  * @param outside  Which way his sideline is: +1 if he lines up right of the ball, -1 if left.
+ * @param behind  How far behind the line he lined up, in yards: a back's routes are drawn (and read) from his own depth.
  */
-export function readRoute(track: RoutePoint[], outside: 1 | -1 = 1): RouteRead {
+export function readRoute(track: RoutePoint[], outside: 1 | -1 = 1, behind = 0): RouteRead {
   const none: RouteRead = { kind: "unknown", distance: Infinity, confidence: 0, ranked: [] };
   if (track.length < 3) return none;
   // From his own spot, mirrored so his sideline is +x like the shapes.
@@ -162,6 +192,7 @@ export function readRoute(track: RoutePoint[], outside: 1 | -1 = 1): RouteRead {
     return { kind: "block", distance: 0, confidence: 1, ranked: [] };
   }
 
+  const climb = Math.max(0, crossingClimb(path) - FLAT_CROSS_SLOPE);
   // Both vertical shapes are tried (a straight go and a drifting fade) and the better one is reported as fade.
   const merged = new Map<RouteKind, number>();
   const ranked0 = [...READABLE_ROUTES, "go" as RouteKind].map((kind) => {
@@ -169,7 +200,7 @@ export function readRoute(track: RoutePoint[], outside: 1 | -1 = 1): RouteRead {
     const depthScales = kind === "dig" ? DIG_DEPTH_SCALES : kind === "shallow" ? SHALLOW_DEPTH_SCALES : SCALES;
     for (const sx of SCALES) {
       for (const sy of depthScales) {
-        const shape = template(kind).map((p) => ({ x: p.x * sx, y: p.y * sy }));
+        const shape = template(kind, behind).map((p) => ({ x: p.x * sx, y: p.y * sy }));
         const want = lengthOf(shape);
         // The whole path seen, against the shape carried on past its end (the run after the
         // catch), so a short route can't pass for a long one just because they start alike.
@@ -203,7 +234,8 @@ export function readRoute(track: RoutePoint[], outside: 1 | -1 = 1): RouteRead {
           shortfall * 0.5 +
           breaks * SIMPLICITY +
           releaseGap * RELEASE_COST +
-          (Math.abs(Math.log(sx)) + Math.abs(Math.log(sy)) * (kind === "dig" ? DIG_DEPTH_STRETCH : 1)) * STRETCH_COST;
+          (Math.abs(Math.log(sx)) + Math.abs(Math.log(sy)) * (kind === "dig" ? DIG_DEPTH_STRETCH : 1)) * STRETCH_COST +
+          (kind === "dig" || kind === "shallow" ? climb * CLIMB_COST : 0);
         if (dist < best) best = dist;
       }
     }

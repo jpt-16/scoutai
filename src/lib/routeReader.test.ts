@@ -208,3 +208,44 @@ describe("a dig's depth varies", () => {
     expect(r.kind === "dig" || (r.ranked[1].kind === "dig" && r.confidence < 0.25)).toBe(true);
   });
 });
+
+describe("this staff's routes from real play 34", () => {
+  const line = (pts: [number, number][], step = 0.5) => {
+    const out: RoutePoint[] = [];
+    for (let i = 0; i < pts.length - 1; i++) {
+      const [a, b] = [pts[i], pts[i + 1]];
+      const n = Math.max(1, Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / step));
+      for (let k = 0; k < n; k++) out.push({ x: a[0] + ((b[0] - a[0]) * k) / n, y: a[1] + ((b[1] - a[1]) * k) / n });
+    }
+    const last = pts[pts.length - 1];
+    out.push({ x: last[0], y: last[1] });
+    return out;
+  };
+
+  it("reads a back's speed out (from 5 deep, angled out to the flat two yards past the line) as a speed out", () => {
+    const back = line([[0, -5], [-10, 2], [-14, 2.5]]);
+    expect(readRoute(back, -1, 5).kind).toBe("speed-out");
+  });
+
+  it("draws a back's speed out the same way: out at an angle to two yards past the line, not a straight stem", () => {
+    const shape = routeTemplateYards("speed-out", 1, 5);
+    expect(shape[1][0]).toBeGreaterThan(8); // the first leg already goes 10 yards out
+    expect(shape[1][1]).toBeCloseTo(7, 0); // from 5 deep to 2 past the line
+    const receiver = routeTemplateYards("speed-out", 1);
+    expect(receiver[1][0]).toBeCloseTo(0, 1); // a receiver's still stems straight up
+  });
+
+  it("never calls a route that keeps climbing across a dig (Z: up 4, then in to 10 deep is a slant / skinny post)", () => {
+    // Play 34's Z (#15), as tracked on the film (yards from the ball, the 3 s after the snap); he lines up right of the ball.
+    const z = ([[11.6, 1.0], [12.0, 0.7], [12.3, 0.6], [12.6, 0.4], [12.6, 0.4], [12.5, 0.6], [12.5, 0.8], [12.7, 0.8], [12.9, 0.8], [12.9, 0.8], [12.9, 1.0], [12.5, 1.4], [12.5, 1.5], [12.9, 1.2], [12.6, 1.6], [12.6, 1.7], [12.6, 1.8], [12.6, 1.9], [12.4, 2.2], [11.9, 2.8], [12.2, 2.6], [12.2, 2.7], [12.3, 2.6], [12.1, 3.0], [11.9, 3.3], [11.2, 4.2], [11.7, 3.9], [11.9, 3.7], [12.0, 3.8], [12.1, 3.8], [12.2, 3.6], [12.2, 3.7], [12.3, 3.6], [12.0, 3.9], [11.6, 4.5], [11.5, 4.7], [11.5, 4.8], [11.5, 4.8], [11.6, 4.8], [11.4, 5.1], [11.1, 5.4], [10.9, 5.5], [10.5, 6.0], [10.6, 5.8], [10.9, 5.5], [10.6, 5.6], [10.1, 6.2], [9.5, 6.7], [9.6, 6.6], [9.8, 6.4], [9.8, 6.4], [9.8, 6.3], [9.5, 6.6], [9.1, 6.9], [8.7, 7.2], [8.0, 7.9], [8.1, 7.7], [7.4, 8.2], [7.2, 8.3], [5.6, 9.0], [4.9, 9.5], [4.5, 9.8], [4.1, 10.1], [4.1, 9.9], [3.7, 10.1], [3.8, 9.7], [3.6, 9.5], [3.5, 9.5]] as [number, number][]).map(([x, y]) => ({ x, y }));
+    const r = readRoute(z, 1);
+    expect(["slant", "post"]).toContain(r.kind);
+  });
+
+  it("still reads a flat 7 yard dig, and a shallow, the way it did", () => {
+    const dig = line([[0, 0], [-0.5, 5], [-1.5, 6.2], [-9.5, 6.9]]);
+    expect(readRoute(dig, 1).ranked.slice(0, 2).map((x) => x.kind)).toContain("dig");
+    const shallow = line([[0, 0], [0, 5], [-14, 5.5]]);
+    expect(readRoute(shallow, 1).kind).toBe("shallow");
+  });
+});

@@ -9,7 +9,7 @@ The clips are not in the repo (minors). Make them from the three screen recordin
 
     cd video-service
     SCOUT_COLOR=red TRACKER=tracklets python -m eval.game clips/ --sheet eval/truth/plays_8_34_43/hudl.csv --key eval/truth/plays_8_34_43/corrected.csv --seconds 12 --out game.json --detections
-    cd .. && npx jiti scripts/score-truth.ts video-service/game-work/tracks --sheet video-service/eval/truth/plays_8_34_43/hudl.csv --truth video-service/eval/truth/plays_8_34_43/truth.json
+    cd .. && npx jiti scripts/score-truth.ts video-service/game-work/tracks --sheet video-service/eval/truth/plays_8_34_43/corrected.csv --truth video-service/eval/truth/plays_8_34_43/truth.json
 
 Known: play 34's calibration skews about 4 yd across the field (see CLAUDE.md, "What counts as the playing field").
 
@@ -32,3 +32,12 @@ Matching a jersey to a tracker id is read off the film (`eval/label.py` pictures
 **Play 8:** X #15 (track 1), QB #11 (track 16) and the back (track 13) are followed as themselves. The F (#4) zaps from the right bunch to the left slot and has **no track at all after the zap**, and one bunch man's track (3) slides onto a lineman in the pile by 3.5 s. Those are tracker misses (identity), not reader misses.
 
 **Play 43:** jerseys not readable at the compressed clips' size; waiting on the coach's / Jake's matching of numbers on the full-resolution sheet.
+
+**The reader, fixed on what the coach said (Stage 2, reader side):** the coach called play 34's Z a slant / skinny post (truth `slant|post`)
+and the back's angled run to the flat a **speed out**. Two changes, each with a test that failed before: a dig or shallow crosses flat, so a
+route that keeps climbing across costs a dig / shallow (`FLAT_CROSS_SLOPE`, `CLIMB_COST` in `routeReader.ts`); and a back's routes are drawn
+and read from his own depth, with a back's speed out angled out to the flat two yards past the line (`BACKFIELD_YARDS`, `routePath`).
+Scored on the replayed tracks against `corrected.csv` (43 corrected to DUCES, the formation it is snapped from): **6 of 15 routes right (4 before),
+8 of 15 counting the runner-up (7)**; play 34 is **4 of 5** (the miss is X, lost by the tracker at his break). Nothing that read right before
+reads wrong now. Plays 8 and 43 (the mesh crossers, the zap) are the tracker's to fix next. Confident-wrong reads remain (play 8's X slant 0.39,
+F hitch 0.48), so film routes stay behind the coach's tap.

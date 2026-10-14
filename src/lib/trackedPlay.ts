@@ -386,7 +386,7 @@ export function detectionFromTracks(
     if (isLineman(t, cutoff)) continue;
     const route = t.points.filter(([s]) => s <= t.points[0][0] + ROUTE_SECONDS);
     const path = route.map(([, x, y]) => ({ x, y }));
-    const raw = readRoute(path, t.start[0] < 0 ? -1 : 1);
+    const raw = readRoute(path, t.start[0] < 0 ? -1 : 1, -t.start[1]);
     // A path cut short (lost, or handed to another man) hasn't shown which route it was.
     // A track that ends before the route can show itself says nothing, not even "he blocked": real play 43 read two receivers as
     // blocking at full confidence because their tracks were lost a second after the snap.

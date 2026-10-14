@@ -5,9 +5,9 @@ import { cardFromTracks, detectionFromTracks, fromTheSnap, snapTime, trimAtJump,
 
 const CSV = "PLAY #,DN,DIST,OFF FORM,OFF PLAY,PLAY TYPE,OFF STR,PLAY DIR\n1,1,10,Spread,QUICK SLANT,Pass,R,R\n";
 
-/** Walks a route's diagram in yards, from his spot, on his own side of the ball. */
+/** Walks a route's diagram in yards, from his spot, on his own side of the ball (a back's as the card draws it from his depth). */
 function walk(kind: RouteKind, start: [number, number], outside: 1 | -1): [number, number, number][] {
-  const shape = routeTemplateYards(kind, 1);
+  const shape = routeTemplateYards(kind, 1, -start[1]);
   const pts: [number, number, number][] = [];
   let t = 0;
   let prev: [number, number] | null = null;

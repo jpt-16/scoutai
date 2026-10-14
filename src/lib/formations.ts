@@ -867,6 +867,8 @@ function fieldMarkings(yardLine: number | null): {
 export const YARD_X = FIELD.width / (160 / 3);
 /** A break of `yards` at 45° on the field (x and y scales differ on the card). */
 const diag = (yards: number) => [yards * YARD_X, yards * YARD_PX] as const;
+/** A man this many yards or more behind the line at the snap is a back: his speed out is the angled release to the flat. */
+export const BACKFIELD_YARDS = 3;
 /** Just inside the sideline on this receiver's side. */
 const sideline = (o: number) => (o > 0 ? FIELD.width - 18 : 18);
 
@@ -881,6 +883,11 @@ function routePath(kind: RouteKind, p: Pt, o: number, d: number): Pt[] {
     case "slide": // 0: release toward the sideline, build up to 5 and settle
       return [p, [x + o * 20, yd(3)], [x + o * 64, yd(5)]];
     case "speed-out": // 1: cut out at 5
+      // A back's speed out (this staff's): from the backfield, straight out at an angle to the flat, two yards past the line.
+      if (y - FIELD.los >= BACKFIELD_YARDS * YARD_PX) {
+        const far = x + o * 14 * YARD_X;
+        return [p, [x + o * 10 * YARD_X, yd(2)], [o > 0 ? Math.min(far, sideline(o)) : Math.max(far, sideline(o)), yd(2)]];
+      }
       return [p, [x, yd(4)], [x + o * 10, yd(5)], [x + o * 50, yd(5)]];
     case "slant": {
       // 2: three hard steps and plant — quick 3-yard stem, sharp break inside
@@ -1052,9 +1059,11 @@ function summarizeRoutes(
  * positive when `outside` is +1), y upfield. The reference shape the route reader
  * (`routeReader.ts`) compares a path from film against.
  */
-export function routeTemplateYards(kind: RouteKind, outside: 1 | -1 = 1): [number, number][] {
-  // A receiver off the line, a little outside the numbers, so sideline-bound breaks have room.
-  const start: Pt = [FIELD.center.x + outside * 130, FIELD.los + 10];
+export function routeTemplateYards(kind: RouteKind, outside: 1 | -1 = 1, behind = 0): [number, number][] {
+  // A receiver off the line, a little outside the numbers, so sideline-bound breaks have room; a back
+  // (`behind` the line by BACKFIELD_YARDS or more) beside the quarterback at his own depth, as the card draws him.
+  const back = behind >= BACKFIELD_YARDS;
+  const start: Pt = back ? [FIELD.center.x + outside * 25, FIELD.los + behind * YARD_PX] : [FIELD.center.x + outside * 130, FIELD.los + 10];
   return routePath(kind, start, outside, outside).map(
     ([x, y]) => [((x - start[0]) / YARD_X) * outside, (start[1] - y) / YARD_PX] as [number, number],
   );

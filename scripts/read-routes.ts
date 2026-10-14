@@ -32,7 +32,7 @@ const reads = data.tracks
     const path = t.points.map(([, x, y]) => ({ x, y }));
     // His sideline: the side of the ball he lined up on (the middle goes to his right).
     const outside = t.start[0] < 0 ? -1 : 1;
-    const read = readRoute(path, outside);
+    const read = readRoute(path, outside, -t.start[1]);
     return {
       id: t.id,
       start: t.start,
