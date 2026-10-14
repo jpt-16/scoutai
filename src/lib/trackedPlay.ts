@@ -83,6 +83,13 @@ export const SURE_CONFIDENCE = 0.25;
  * every route is unchecked. Turn it on per run (`--trust-film-routes`) once `scripts/score-truth.ts` shows it right on a real set of plays.
  */
 export const FILM_ROUTES_PROVEN = false;
+/**
+ * Whether a film card names its routes at all. **Off: each man's route is drawn as the film tracked it** (his real path from the snap,
+ * `ROUTE_SECONDS` long, simplified to its breaks, draggable like any route), and nothing claims what it is called. The staff's call:
+ * get the tracking right and draw what happened; naming (the reader, or a model asked to name a drawn path) comes later. On (`names`, or
+ * `--name-routes`), the older behaviour: named routes drawn only when trusted (`FILM_ROUTES_PROVEN`), else listed in the notes.
+ */
+export const FILM_ROUTE_NAMES = false;
 /** The snap is when this many offensive men have all started to move: a man or two in motion before it do not count. */
 const SNAP_MOVERS = 4;
 const MOVED_YARDS = 1.5;
@@ -222,6 +229,8 @@ export interface TrackedRead {
   kind: ReadKind;
   confidence: number;
   runnerUp?: RouteKind;
+  /** Seconds of his track after the snap (up to `ROUTE_SECONDS`): under `MIN_TRACK_SECONDS` the film lost him early. */
+  seen: number;
 }
 
 interface RawRead {
@@ -229,6 +238,8 @@ interface RawRead {
   kind: ReadKind;
   confidence: number;
   runnerUp?: RouteKind;
+  /** Seconds of his track after the snap that the read had (up to `ROUTE_SECONDS`). */
+  seen: number;
 }
 
 /**
@@ -416,7 +427,7 @@ export function detectionFromTracks(
       ...(read.kind === "unknown" ? {} : { routeType: routeName(read.kind) }),
     };
     players.push(player);
-    reads.push({ player, kind: read.kind, confidence: read.confidence, runnerUp: read.ranked[1]?.kind });
+    reads.push({ player, kind: read.kind, confidence: read.confidence, runnerUp: read.ranked[1]?.kind, seen });
   }
 
   return {
@@ -495,9 +506,14 @@ export function motionFormationNote(file: TrackedPlayFile): string {
 export function cardFromTracks(
   file: TrackedPlayFile,
   row: HudlPlayCard | null,
-  opts: { formation?: string; playName?: string; source?: string; playNumber?: number; trustFilmRoutes?: boolean } = {},
+  opts: { formation?: string; playName?: string; source?: string; playNumber?: number; trustFilmRoutes?: boolean; names?: boolean } = {},
 ): TrackedCard {
-  const { detection, reads: raw } = detectionFromTracks(file, { ...opts, formation: opts.formation || filmFormationText(file) });
+  const { detection: read, reads: raw0 } = detectionFromTracks(file, { ...opts, formation: opts.formation || filmFormationText(file) });
+  const names = opts.names ?? FILM_ROUTE_NAMES;
+  // Unnamed: every man keeps his own tracked path (a man who stayed put is still a blocker), so the card draws what happened.
+  const unnamed = new Map(read.players.map((p) => [p, names || p.label === "Q" || p.routeType === "BLOCK" || !p.routeType ? p : { ...p, routeType: undefined }]));
+  const detection: DetectedPlay = { ...read, players: read.players.map((p) => unnamed.get(p)!) };
+  const raw = raw0.map((r) => ({ ...r, player: unnamed.get(r.player)! }));
   const motion = [motionFormationNote(file), row?.formation?.trim() || opts.formation ? "" : formationCheckNote(file)].filter(Boolean).join(" ");
   const built0 = row
     ? applyDetectionToCard(row, detection)
@@ -508,11 +524,21 @@ export function cardFromTracks(
   const letters = matchDetectedLetters(detection, built);
   const reads: TrackedRead[] = raw.flatMap((r) => {
     const letter = letters.get(r.player);
-    return letter ? [{ letter, kind: r.kind, confidence: r.confidence, runnerUp: r.runnerUp }] : [];
+    return letter ? [{ letter, kind: r.kind, confidence: r.confidence, runnerUp: r.runnerUp, seen: r.seen }] : [];
   });
   const unsure = reads.filter((r) => r.kind === "unknown" || (r.kind !== "block" && r.confidence < SURE_CONFIDENCE));
   const trust = opts.trustFilmRoutes ?? FILM_ROUTES_PROVEN;
   const notesOf = (card: HudlPlayCard, ...more: string[]) => [card.notes.trim(), ...more].filter(Boolean).join(" ");
+  if (!names) {
+    // The routes are the film's own paths: say so, and who the film lost before his route had shown itself.
+    const lost = reads.filter((r) => r.seen < MIN_TRACK_SECONDS);
+    const note = [
+      "Routes drawn as tracked on film.",
+      lost.length ? `Lost early on film, check: ${lost.map((r) => `${r.letter} (${r.seen.toFixed(1)} s)`).join(", ")}.` : "",
+    ].filter(Boolean).join(" ");
+    // What to check is who the film lost, not a name it wasn't sure of.
+    return { card: deriveCard({ ...built, notes: notesOf(built, note) }), reads, unsure: lost };
+  }
   if (trust) {
     if (unsure.length === 0) return { card: built, reads, unsure };
     return { card: deriveCard({ ...built, notes: notesOf(built, checkNote(unsure)) }), reads, unsure };

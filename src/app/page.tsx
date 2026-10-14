@@ -128,7 +128,7 @@ const FAQS: { q: string; a: string }[] = [
   },
   {
     q: "How accurate is it?",
-    a: "The bar is 90%+ of routes right, scored play by play against the coaches' own calls, not judged by eye. We're measuring it on real game film during the pilot and will show the number. Until a read clears the bar, the card says so: anything the analyzer isn't sure of is marked \"Check routes\", and every route can be dragged or changed.",
+    a: "The bar is 90%+ of routes right, scored play by play against the coaches' own calls, not judged by eye. We're measuring it on real game film during the pilot and will show the number. Until then, each route on a film card is drawn the way the player ran it, tracked from the film, not given a name it might get wrong; a player the film loses track of is marked for a check, and every route can be dragged or changed.",
   },
   {
     q: "What film does it need?",

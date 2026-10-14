@@ -78,3 +78,19 @@ def test_smoothing_takes_out_the_box_edge_jitter_and_keeps_the_path():
     err = lambda pts: float(np.mean([abs(x - 0.3 * f) for f, x, _ in pts[5:-5]]))  # noqa: E731
     assert err(smooth) < err(raw) / 2
     assert boxtrack.SMOOTH_MEDIAN >= 3 and boxtrack.SMOOTH_MEAN >= 3
+
+
+def test_feet_from_the_box_middle_and_a_steady_height_are_steadier_than_its_bottom_edge():
+    """A man walking straight across the picture whose box bottom jitters 6 px (legs, blur) while its top and middle hold."""
+    rng = np.random.default_rng(1)
+    boxes, spots = [], []
+    for f in range(60):
+        top = 200.0 + rng.normal(0, 1)
+        bottom = 300.0 + rng.normal(0, 6)
+        boxes.append([(100 + 2 * f - 15, top, 100 + 2 * f + 15, bottom)])
+        spots.append([(0.1 * f, bottom / 10)])  # what the old feet (the box's bottom) would give, in "yards"
+    locate = lambda x, y: (x / 20, y / 10)  # noqa: E731
+    steady = follow_boxes(boxes, spots, None, locate)[0].points
+    rough = lambda pts: float(np.mean(np.abs(np.diff([y for _, _, y in pts], 2))))  # noqa: E731
+    assert rough(steady) < rough(follow_boxes(boxes, spots)[0].points) * 0.7  # both are smoothed after; still a third steadier
+    assert all(abs(y - 30.0) < 1.0 for _, _, y in steady[5:-5])  # his feet, at the height the box really has

@@ -27,7 +27,7 @@ describe("the key: the coach's call drawn into a route per receiver", () => {
 });
 
 describe("scoring the reads", () => {
-  const read = (letter: string, kind: TrackedRead["kind"], confidence = 0.5): TrackedRead => ({ letter, kind, confidence });
+  const read = (letter: string, kind: TrackedRead["kind"], confidence = 0.5): TrackedRead => ({ letter, kind, confidence, seen: 3 });
 
   it("counts right, committed and missing reads, and GO for FADE only when lenient", () => {
     const verdicts = scorePlay(keyRoutes(deuces), [

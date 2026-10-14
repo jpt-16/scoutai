@@ -49,6 +49,11 @@ MAX_AHEAD = 10
 # saw jagged paths: 2 of the 15 routes the coach named on plays 8, 34 and 43 read right; smoothed, 8 to 9 (a median of 5-9 and a mean of 5-9 alike).
 SMOOTH_MEDIAN = 7
 SMOOTH_MEAN = 5
+# Where his feet are: a box's bottom edge jitters (legs, blur, the grass under him), its middle much less, and a man's height changes
+# slowly. So, with the field known (`locate`), his feet are put at the middle of his box plus half his height as it has run over the
+# `STEADY_HEIGHT_FRAMES` either side (a median, so a box cut short behind another man for a few frames doesn't pull it). On plays 8, 34 and
+# 43 that took the frame-to-frame roughness of the receivers' and backs' paths down 35-40% (0.60-0.84 to 0.40-0.55 yd a frame squared).
+STEADY_HEIGHT_FRAMES = 15
 # The share of a torso in the scouted team's color that says he wears it, and the share under which he doesn't.
 WEARS = 0.04
 NOT_WEARS = 0.01
@@ -115,9 +120,12 @@ def follow_boxes(
     boxes: list[list[Box4]],
     per_frame: list[list[tuple[float, float]]],
     shares: list[list[float]] | None = None,
+    locate=None,
 ) -> list[BoxTrack]:
     """`boxes[f][j]` is person j of frame f warped onto the snap frame (`warp_boxes`), `per_frame[f][j]` his spot in yards (what the
-    track records), `shares[f][j]` the share of his torso in the scouted team's color (or None). Everyone in frame 0 is followed."""
+    track records), `shares[f][j]` the share of his torso in the scouted team's color (or None). Everyone in frame 0 is followed.
+    `locate(x, y)`: a pixel of the snap frame to yards (offense's view); given, each spot is redone from his box's middle and his
+    steady height (`steady_feet`)."""
     tracks = [
         BoxTrack(j, per_frame[0][j], [(0, *per_frame[0][j])], [(0, j)], [(0, boxes[0][j])], [shares[0][j]] if shares else [])
         for j in range(len(per_frame[0]))
@@ -162,8 +170,21 @@ def follow_boxes(
             if ti not in taken:
                 t.missed += 1
     for t in tracks:
+        if locate is not None:
+            t.points = steady_feet(t, locate)
         t.points = smoothed(t.points)
     return tracks
+
+
+def steady_feet(track: BoxTrack, locate) -> list[tuple[int, float, float]]:
+    """His spots from the middle of each box and his height as it has run (see `STEADY_HEIGHT_FRAMES`), not the box's bottom edge."""
+    heights = [b[3] - b[1] for _, b in track.boxes]
+    out = []
+    for i, (f, b) in enumerate(track.boxes):
+        h = float(np.median(heights[max(0, i - STEADY_HEIGHT_FRAMES) : i + STEADY_HEIGHT_FRAMES + 1]))
+        x, y = locate((b[0] + b[2]) / 2, (b[1] + b[3]) / 2 + h / 2)
+        out.append((f, float(x), float(y)))
+    return out
 
 
 def _running(values: list[float], width: int, fn) -> list[float]:

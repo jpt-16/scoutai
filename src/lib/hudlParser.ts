@@ -138,7 +138,8 @@ export interface HudlPlayCard {
   routeOverrides?: Record<string, RouteOverride>;
   /**
    * What the film read for a letter, kept apart from the routes drawn: the sheet's call stays the play until a coach taps "Use film's route"
-   * in Edit play (which copies it into `routeOverrides`). Film routes are not proven (`FILM_ROUTES_PROVEN`), so none reaches the card unseen.
+   * in Edit play (which copies it into `routeOverrides`). Written only when film cards name their routes (`FILM_ROUTE_NAMES`, off: by default a
+   * film card draws each man's tracked path, unnamed, in `routeOverrides`).
    */
   filmRoutes?: Record<string, FilmRoute>;
   /** Pencil drawings on the card, per scout unit, in card (SVG) coordinates. */

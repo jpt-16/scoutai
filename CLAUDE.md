@@ -1017,7 +1017,17 @@ center of the line (`QB_SAME_DEPTH_YARDS`; 43's ball spot was 2.5 yd off and the
 sides and the closer fit kept (`readFromHisSide`: 43's back lined up left and ran his rail right). Routes against the coach's calls: **9 of 15**
 (11 counting the runner-up), against 6 for the first tracker and 1 for tracklets; run or pass 3 of 3. Still three plays, all from one camera; not
 proven, film routes stay behind the coach's tap. Play 8's and 43's X (the coach: a stick at 10) reads slant on both: the tracked path angles in
-to 10 yd deep, so what this staff's stick looks like is the coach's call.
+to 10 yd deep, so what this staff's stick looks like is the coach's call. **Seventeenth pass (cards draw the routes as tracked, unnamed; the staff's call):** naming is set aside (it can come later, from the reader or a
+model asked to name a drawn path), so `cardFromTracks` now draws **each receiver's and back's own tracked path** from the snap (`ROUTE_SECONDS`), simplified to
+its breaks, as a `source: "video"` route with no name (`FILM_ROUTE_NAMES = false`; `names: true` / `--name-routes` brings back the named behaviour and
+`FILM_ROUTES_PROVEN`), over the sheet's call, which stays in the title and tags; a man who stayed put is still a blocker; the notes say "Routes drawn as tracked on
+film." and name anyone the film lost early ("Lost early on film, check: Y (1.6 s)", the `unsure` list in that mode). The reader still runs for scoring
+(`reads`, with each read's `seen`). To make the drawn paths clean, `boxtrack` puts each man's feet at **the middle of his box plus half his steady height**
+(`steady_feet`, the median height over `STEADY_HEIGHT_FRAMES` either side, with the field's `locate` from `tracks.snap_pixel_to_yards`) instead of the
+jittering bottom edge: 35-40% less roughness on the three plays. Drawn on plays 8, 34 and 43 the cards show the routes the coach described, except 43's F, lost in the
+pile right after the snap with his track probably moved to a teammate, which the card can't yet tell from a real path. PlayIQ's own product tour (a screen
+recording the user sent) shows the same shape of product: plays cut from a game video, a top-down tracked view, and cards drawing raw tracked paths that a coach
+hides or cuts with an end-time slider ("Adjust Routes & Timing"), no route names; its demo is college broadcast film.
 
 ## Game film upload (the hosted pipeline: `/film`, `src/lib/film/`, `video-service/eval/worker*.py`)
 

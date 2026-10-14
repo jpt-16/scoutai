@@ -285,6 +285,16 @@ def follow(
     return tracks
 
 
+def snap_pixel_to_yards(calib: np.ndarray, ball: tuple[float, float], direction: int):
+    """A pixel of the snap frame to yards from the ball in the offense's view (what `to_yards` does after the camera's own motion)."""
+
+    def locate(x: float, y: float) -> tuple[float, float]:
+        fx, fy = transform_point(calib, float(x), float(y))
+        return (fx - ball[0]) * direction, (fy - ball[1]) * direction
+
+    return locate
+
+
 def to_yards(
     box: Box, to_snap: np.ndarray, calib: np.ndarray, ball: tuple[float, float], direction: int
 ) -> tuple[float, float]:
@@ -579,7 +589,7 @@ def _shift(tracks, by: int) -> None:
         t.matched = [(f + by, j) for f, j in t.matched]
 
 
-def follow_two_pass(per_frame, colors, tracker: str, fps: float, signatures=None, labels_for=None, boxes=None, shares=None):
+def follow_two_pass(per_frame, colors, tracker: str, fps: float, signatures=None, labels_for=None, boxes=None, shares=None, locate=None):
     """(tracks, labels): the play followed from the set, then again from just before the snap (see above). `labels_for(frame, spots)`
     names each person at that frame "offense" / "defense" for the frame-to-frame trackers (the tracklet tracker names its own).
     The "boxes" tracker needs `boxes[f][j]`, each person's box warped onto the snap frame (`boxtrack.warp_boxes`), and takes
@@ -595,7 +605,7 @@ def follow_two_pass(per_frame, colors, tracker: str, fps: float, signatures=None
         elif tracker == "boxes":
             from .boxtrack import follow_boxes
 
-            tracks = follow_boxes(boxes[start:], spots, shares[start:] if shares else None)  # type: ignore[index]
+            tracks = follow_boxes(boxes[start:], spots, shares[start:] if shares else None, locate)  # type: ignore[index]
             labels = labels_for(start, spots[0]) if labels_for else ["offense"] * len(tracks)
         else:
             tracks = follow(spots[0], spots, colors[start:])
@@ -711,7 +721,8 @@ def track_play(
         if color in COLORS:
             shares = [[color_share(frames_bgr[snap + f], b, color) for b in kept] for f, kept in enumerate(kept_boxes)]
     tracks, labels = follow_two_pass(
-        per_frame, colors, kind, fps, signatures, lambda k, spots: team_of(frames_bgr[snap + k], kept_boxes[k], spots), warped, shares
+        per_frame, colors, kind, fps, signatures, lambda k, spots: team_of(frames_bgr[snap + k], kept_boxes[k], spots), warped, shares,
+        snap_pixel_to_yards(calib, ball, direction),
     )
     trim_at_sideline(tracks, ball[0], direction)
     if debug is not None:  # what a picture of the tracking needs
