@@ -1044,7 +1044,16 @@ his spot, the first 0.4 s in which he covers under 1.5 yd/s; play 34's X is a sl
 (`simplifyToAtMost`, `FILM_PATH_TOLERANCE` / `FILM_PATH_MAX_POINTS` in `videoImport.ts`), each corner a handle a coach drags on `/script` with no button (film routes
 always have handles; a drag saves as the coach's own shape). In the tracker, a box's predicted place is its **middle at its usual size** (`BoxTrack.heading`,
 `SIZE_FRAMES`): a box cut short for a frame had read as a leap and dropped play 43's #81 mid-route. Hand marks: **82 of 82 right** (one of the old marks, 43's F at
-frame 143, was a defender, corrected). Play 43's F and Y now draw as the two shallow crossers the coach describes. Still from these three plays and one camera.
+frame 143, was a defender, corrected). Play 43's F and Y now draw as the two shallow crossers the coach describes. Still from these three plays and one camera. **Nineteenth pass (a second game: CM vs Andover, plays 66, 67, 96, 97; `eval/truth/cm_andover/`).** A night game, the scouted team in
+**white**. (1) `eval.prep` drops the desktop a screen recording starts or ends on (`player_frames`: the longest run of frames whose top strip is
+the player's black, less `EDGE_FRAMES`) and names clips by play (`--plays 66,67,96,97`). (2) **Night turf is dull** (saturation median 50
+against ~90): the paint finder's grass test now starts at `GRASS_MIN_SAT` 20 (brightness capped at `GRASS_MAX_VALUE` 200), which took the yard
+lines found from 2 to 8-10. The automatic fit still fails (rows that fit shifted by one, yard numbering that slips), so all four were calibrated
+by hand from the painted numbers and the far sideline (the fits agree with Hudl's yard line on all four; Hudl's hash on none). (3) **The jersey
+check is per color** (`scoutteam.wear_gate` / `side_shares`, `GATES` / `SIDES`): white reads 0.20-0.42 on the offense and up to 0.13 (a few
+to 0.30) on Andover's navy, where red was 0.00 on the defense, so white uses 0.18 / 0.10 and red keeps its old levels. (4) The Colab notebook
+reads `settings.json` from the clips zip (`scoutColor`, `fieldLevel`) and copies plays 8/34/43's answer key only when those clips are there.
+Not run through the detector yet (Colab); the coach's routes for these four are still to come.
 
 ## Game film upload (the hosted pipeline: `/film`, `src/lib/film/`, `video-service/eval/worker*.py`)
 

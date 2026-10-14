@@ -94,3 +94,18 @@ def test_feet_from_the_box_middle_and_a_steady_height_are_steadier_than_its_bott
     rough = lambda pts: float(np.mean(np.abs(np.diff([y for _, _, y in pts], 2))))  # noqa: E731
     assert rough(steady) < rough(follow_boxes(boxes, spots)[0].points) * 0.7  # both are smoothed after; still a third steadier
     assert all(abs(y - 30.0) < 1.0 for _, _, y in steady[5:-5])  # his feet, at the height the box really has
+
+
+def test_the_gate_follows_the_scouted_teams_color():
+    """White: the offense reads 0.20-0.42 white, the navy defense up to 0.13 (numbers, towels). With red's gate (0.04 / 0.01) a white
+    receiver's track would take a defender reading 0.08; with white's own gate it refuses him."""
+    from eval.scoutteam import wear_gate
+
+    boxes, spots, shares = [], [], []
+    for f in range(30):
+        boxes.append([box(300 + 2 * f, 300)])
+        shares.append([0.3 if f < 10 else 0.08])  # the receiver, then only the defender where he was going
+        spots.append([(float(f), 0.0)])
+    assert max(f for f, _ in follow_boxes(boxes, spots, shares)[0].matched) == 29  # red's gate: taken
+    assert max(f for f, _ in follow_boxes(boxes, spots, shares, gate=wear_gate("white"))[0].matched) == 9
+    assert wear_gate("Red") == wear_gate("gold") == (boxtrack.WEARS, boxtrack.NOT_WEARS)

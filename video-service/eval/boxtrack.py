@@ -91,12 +91,12 @@ class BoxTrack:
     worn: list[float] = field(default_factory=list)
     missed: int = 0
 
-    def wears(self) -> int:
+    def wears(self, gate: tuple[float, float] = (WEARS, NOT_WEARS)) -> int:
         """+1 if he wears the scouted team's color, -1 if he doesn't, 0 if it can't be told (or no color was given)."""
         if not self.worn:
             return 0
         m = float(np.median(self.worn))
-        return 1 if m >= WEARS else -1 if m < NOT_WEARS else 0
+        return 1 if m >= gate[0] else -1 if m < gate[1] else 0
 
     def heading(self, f: int) -> Box4:
         """Where his box would be at frame `f` if it kept moving the way it was (held still until it has moved for a few frames): its
@@ -118,11 +118,11 @@ class BoxTrack:
         return (cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2)
 
 
-def _refused(track: BoxTrack, share: float | None) -> bool:
+def _refused(track: BoxTrack, share: float | None, gate: tuple[float, float] = (WEARS, NOT_WEARS)) -> bool:
     if share is None:
         return False
-    side = track.wears()
-    return (side > 0 and share < NOT_WEARS) or (side < 0 and share >= WEARS)
+    side = track.wears(gate)
+    return (side > 0 and share < gate[1]) or (side < 0 and share >= gate[0])
 
 
 def follow_boxes(
@@ -130,11 +130,12 @@ def follow_boxes(
     per_frame: list[list[tuple[float, float]]],
     shares: list[list[float]] | None = None,
     locate=None,
+    gate: tuple[float, float] = (WEARS, NOT_WEARS),
 ) -> list[BoxTrack]:
     """`boxes[f][j]` is person j of frame f warped onto the snap frame (`warp_boxes`), `per_frame[f][j]` his spot in yards (what the
     track records), `shares[f][j]` the share of his torso in the scouted team's color (or None). Everyone in frame 0 is followed.
     `locate(x, y)`: a pixel of the snap frame to yards (offense's view); given, each spot is redone from his box's middle and his
-    steady height (`steady_feet`)."""
+    steady height (`steady_feet`). `gate`: (wears, doesn't) for the scouted team's color (`scoutteam.wear_gate`)."""
     tracks = [
         BoxTrack(j, per_frame[0][j], [(0, *per_frame[0][j])], [(0, j)], [(0, boxes[0][j])], [shares[0][j]] if shares else [])
         for j in range(len(per_frame[0]))
@@ -148,7 +149,7 @@ def follow_boxes(
             head = t.heading(f)
             height = max(head[3] - head[1], 1.0)
             for j in free:
-                if _refused(t, shares[f][j] if shares else None):
+                if _refused(t, shares[f][j] if shares else None, gate):
                     continue
                 b = boxes[f][j]
                 overlap = iou(head, b)

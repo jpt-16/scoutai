@@ -589,7 +589,7 @@ def _shift(tracks, by: int) -> None:
         t.matched = [(f + by, j) for f, j in t.matched]
 
 
-def follow_two_pass(per_frame, colors, tracker: str, fps: float, signatures=None, labels_for=None, boxes=None, shares=None, locate=None):
+def follow_two_pass(per_frame, colors, tracker: str, fps: float, signatures=None, labels_for=None, boxes=None, shares=None, locate=None, gate=None):
     """(tracks, labels): the play followed from the set, then again from just before the snap (see above). `labels_for(frame, spots)`
     names each person at that frame "offense" / "defense" for the frame-to-frame trackers (the tracklet tracker names its own).
     The "boxes" tracker needs `boxes[f][j]`, each person's box warped onto the snap frame (`boxtrack.warp_boxes`), and takes
@@ -605,7 +605,7 @@ def follow_two_pass(per_frame, colors, tracker: str, fps: float, signatures=None
         elif tracker == "boxes":
             from .boxtrack import follow_boxes
 
-            tracks = follow_boxes(boxes[start:], spots, shares[start:] if shares else None, locate)  # type: ignore[index]
+            tracks = follow_boxes(boxes[start:], spots, shares[start:] if shares else None, locate, **({"gate": gate} if gate else {}))  # type: ignore[index]
             labels = labels_for(start, spots[0]) if labels_for else ["offense"] * len(tracks)
         else:
             tracks = follow(spots[0], spots, colors[start:])
@@ -708,21 +708,22 @@ def track_play(
     kind = tracker or TRACKER
     color = (scout_color if scout_color is not None else SCOUT_COLOR).strip().lower()
     signatures = None
-    warped = shares = None
+    warped = shares = gate = None
     if kind == "tracklets":
         from .tracklets import jersey_signature
 
         signatures = [[jersey_signature(frames_bgr[snap + f], b) for b in kept] for f, kept in enumerate(kept_boxes)]
     if kind == "boxes":
         from .boxtrack import warp_boxes
-        from .scoutteam import COLORS, color_share
+        from .scoutteam import COLORS, color_share, wear_gate
 
         warped = [warp_boxes(kept, to_snap[f]) for f, kept in enumerate(kept_boxes)]
+        gate = wear_gate(color)
         if color in COLORS:
             shares = [[color_share(frames_bgr[snap + f], b, color) for b in kept] for f, kept in enumerate(kept_boxes)]
     tracks, labels = follow_two_pass(
         per_frame, colors, kind, fps, signatures, lambda k, spots: team_of(frames_bgr[snap + k], kept_boxes[k], spots), warped, shares,
-        snap_pixel_to_yards(calib, ball, direction),
+        snap_pixel_to_yards(calib, ball, direction), gate if kind == "boxes" else None,
     )
     trim_at_sideline(tracks, ball[0], direction)
     if debug is not None:  # what a picture of the tracking needs
@@ -755,9 +756,8 @@ def track_play(
 
 
 # With the scouted team's color known, a man wearing it is on its side whatever his spot says: the share of his torso in that color
-# (real film: the red offense 0.19-0.53, the gold defense 0.0). Between the two he keeps the label his spot gave him.
-COLOR_SURE_SHARE = 0.15
-COLOR_NOT_SHARE = 0.06
+# (real film: the red offense 0.19-0.53, the gold defense 0.0) at least the color's "sure" level, and a man under its "not" level is on the
+# other side (`scoutteam.side_shares`: 0.15 / 0.06 for red, 0.18 / 0.10 for white). Between the two he keeps the label his spot gave him.
 
 
 def team_by_jersey(frame: np.ndarray, boxes: list[Box], spots: list[tuple[float, float]], scout_color: str = "") -> list[str]:
@@ -779,7 +779,7 @@ def team_by_jersey(frame: np.ndarray, boxes: list[Box], spots: list[tuple[float,
             out[i] = "offense" if label == offense else "defense"
         color = scout_color.strip().lower()
         if color:
-            from .scoutteam import COLORS, MIN_GAP, color_share
+            from .scoutteam import COLORS, MIN_GAP, color_share, side_shares
 
             if color in COLORS:
                 share = {i: color_share(frame, boxes[i], color) for i in players}
@@ -788,10 +788,11 @@ def team_by_jersey(frame: np.ndarray, boxes: list[Box], spots: list[tuple[float,
                 if mine and theirs and abs(float(np.median(mine)) - float(np.median(theirs))) >= MIN_GAP:
                     scout_side = "offense" if float(np.median(mine)) > float(np.median(theirs)) else "defense"
                     other = "defense" if scout_side == "offense" else "offense"
+                    sure, not_ = side_shares(color)
                     for i in players:
-                        if share[i] >= COLOR_SURE_SHARE:
+                        if share[i] >= sure:
                             out[i] = scout_side
-                        elif share[i] < COLOR_NOT_SHARE:
+                        elif share[i] < not_:
                             out[i] = other
     return out
 

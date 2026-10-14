@@ -44,6 +44,12 @@ HASH_IN = HASH_IN_BY_LEVEL[FIELD_LEVEL]
 ROW_X = (0.0, HASH_IN, FIELD_WIDTH - HASH_IN, FIELD_WIDTH)  # sideline, hash, hash, sideline
 LINE_YARDS = 5.0
 
+# Grass: green hue, at least this saturated, and no brighter than this (paint is). Turf under lights at night is a dull green:
+# on the CM vs Andover film its saturation runs 25-65 (median 50; last game's field ~90), so a cutoff of 40-45 threw out a quarter
+# of the field, the "grass all around it" test then failed along every yard line, and the field finder saw two lines of a dozen.
+GRASS_MIN_SAT = 20
+GRASS_MAX_VALUE = 200
+
 # A line this far (pixels) from another one is the same painted line seen twice.
 MERGE_PIXELS = 12.0
 # How much brighter than its surroundings paint has to be (levels of 255).
@@ -87,7 +93,7 @@ class FieldFailure:
 def _field_region(frame: np.ndarray) -> np.ndarray:
     """Where the grass is, filled in and grown a little so the sideline paint is inside it."""
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-    green = cv2.inRange(hsv, (30, 45, 30), (95, 255, 255))
+    green = cv2.inRange(hsv, (30, GRASS_MIN_SAT, 30), (95, 255, GRASS_MAX_VALUE))
     k = max(5, frame.shape[1] // 80) | 1
     green = cv2.morphologyEx(green, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k, k)))
     n, labels, stats, _ = cv2.connectedComponentsWithStats(green)
@@ -111,7 +117,7 @@ def paint_mask(frame: np.ndarray) -> np.ndarray:
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
     around = cv2.GaussianBlur(gray, (0, 0), max(4, frame.shape[1] / 160))
     bright = (gray.astype(np.int16) - around.astype(np.int16) > PAINT_CONTRAST) & (hsv[..., 1] < 110) & (gray > 90)
-    grass = cv2.inRange(hsv, (30, 40, 25), (95, 255, 255)) > 0
+    grass = cv2.inRange(hsv, (30, GRASS_MIN_SAT, 25), (95, 255, GRASS_MAX_VALUE)) > 0
     k = max(15, (frame.shape[1] // 50) | 1)
     near_grass = cv2.blur(grass.astype(np.float32), (k, k)) > 0.55
     mask = (bright & near_grass).astype(np.uint8) * 255

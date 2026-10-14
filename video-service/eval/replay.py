@@ -68,8 +68,11 @@ def replay(dump: dict, tracker: str = TRACKER, signatures_from=None, labels_for=
             shares = [[shares_from(f, b) for b in kept] for f, kept in enumerate(kept_boxes)]
     from .tracks import snap_pixel_to_yards
 
+    from .scoutteam import wear_gate
+
     tracks, labels = follow_two_pass(
-        per_frame, colors, tracker, dump.get("fps", 30.0), signatures, labels_for, warped, shares, snap_pixel_to_yards(calib, ball, direction)
+        per_frame, colors, tracker, dump.get("fps", 30.0), signatures, labels_for, warped, shares, snap_pixel_to_yards(calib, ball, direction),
+        wear_gate(str(dump.get("scout_color") or "")) if shares else None,
     )
     trim_at_sideline(tracks, ball[0], direction)
     return {"per_frame": per_frame, "colors": colors, "tracks": tracks, "labels": labels, "boxes": kept_boxes}

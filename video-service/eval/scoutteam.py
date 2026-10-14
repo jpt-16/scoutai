@@ -28,6 +28,25 @@ COLORS: dict[str, list[tuple[tuple[int, int, int], tuple[int, int, int]]]] = {
 # The scouted team has to out-wear the other by this share of the torso to be called.
 MIN_GAP = 0.06
 
+# How much of a torso in the scouted team's color says a man wears it, and under how much he doesn't, by color: (wears, doesn't).
+# Red was measured with a gold defense that wears none of it (offense 0.07-0.68, defense 0.00), so the tracker's gate can be fine.
+# White is not like that: on the CM vs Andover film the white offense reads 0.20-0.42, while Andover's navy jerseys read 0.00-0.13 (white
+# numbers, towels, sleeves; a few to 0.30) and referees 0.03-0.17. A color not listed here uses `DEFAULT_GATE` / `DEFAULT_SIDE`.
+GATES = {"white": (0.18, 0.10)}
+DEFAULT_GATE = (0.04, 0.01)  # the box tracker's gate (`boxtrack.follow_boxes`)
+SIDES = {"white": (0.18, 0.10)}
+DEFAULT_SIDE = (0.15, 0.06)  # correcting a man's side at the snap (`tracks.team_by_jersey`)
+
+
+def wear_gate(color: str) -> tuple[float, float]:
+    """(wears, doesn't) for the box tracker's jersey gate."""
+    return GATES.get(color.strip().lower(), DEFAULT_GATE)
+
+
+def side_shares(color: str) -> tuple[float, float]:
+    """(sure, not) for telling a man's side at the snap by the scouted team's color."""
+    return SIDES.get(color.strip().lower(), DEFAULT_SIDE)
+
 
 def color_share(frame_bgr: np.ndarray, box, color: str) -> float:
     """The share of a man's torso (the jersey, not helmet or legs) that is `color`."""
