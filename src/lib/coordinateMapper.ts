@@ -81,6 +81,20 @@ export function simplifyPath(points: CardPoint[], tolerance: number): CardPoint[
   return [...left.slice(0, -1), ...right];
 }
 
+/**
+ * `simplifyPath`, loosened until the path has at most `maxPoints` points after its start: a route is a stem, a break or two and a
+ * finish, so a tracked path drawn on a card reads like one (and has a few handles to drag), not like every wobble of the film.
+ */
+export function simplifyToAtMost(points: CardPoint[], tolerance: number, maxPoints: number): CardPoint[] {
+  let t = tolerance;
+  let out = simplifyPath(points, t);
+  while (out.length - 1 > maxPoints && t < 400) {
+    t *= 1.3;
+    out = simplifyPath(points, t);
+  }
+  return out;
+}
+
 /** One player's detected route, in the shape the vision model returns it. */
 export interface DetectedPlayerRoute {
   start: PercentPoint;
@@ -140,9 +154,10 @@ export function yardRouteToPathDeltas(
   route: DetectedPlayerRoute,
   scale: YardScale,
   tolerance: number = DEFAULT_SIMPLIFY_TOLERANCE,
+  maxPoints?: number,
 ): [number, number][] {
   const absolute = [route.start, ...route.waypoints, route.endpoint].map((p) => yardsToCard(p, scale));
-  const simplified = simplifyPath(absolute, tolerance);
+  const simplified = maxPoints ? simplifyToAtMost(absolute, tolerance, maxPoints) : simplifyPath(absolute, tolerance);
   const start = simplified[0];
   const rest = simplified.slice(1);
   if (rest.every((p) => Math.hypot(p.x - start.x, p.y - start.y) < 1)) return [];

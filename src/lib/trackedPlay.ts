@@ -406,13 +406,15 @@ export function detectionFromTracks(
       continue;
     }
     if (isLineman(t, cutoff)) continue;
-    const route = t.points.filter(([s]) => s <= t.points[0][0] + ROUTE_SECONDS);
+    const window = t.points.filter(([s]) => s <= t.points[0][0] + ROUTE_SECONDS);
+    const route = untilHeSits(window);
     const path = route.map(([, x, y]) => ({ x, y }));
     const raw = readFromHisSide(t, path);
     // A path cut short (lost, or handed to another man) hasn't shown which route it was.
     // A track that ends before the route can show itself says nothing, not even "he blocked": real play 43 read two receivers as
     // blocking at full confidence because their tracks were lost a second after the snap.
-    const seen = route.length ? route[route.length - 1][0] - route[0][0] : 0;
+    // How long the film followed him (not how long his route ran: a hitch is over by 1.5 s).
+    const seen = window.length ? window[window.length - 1][0] - window[0][0] : 0;
     const read =
       seen < MIN_TRACK_SECONDS || (raw.kind !== "block" && pathLength(route) < MIN_ROUTE_YARDS)
         ? { ...raw, kind: "unknown" as const, confidence: 0 }
@@ -449,6 +451,29 @@ function readFromHisSide(t: TrackedPlayer, path: { x: number; y: number }[]) {
   if (-t.start[1] < BACKFIELD_YARDS || Math.abs(t.start[0]) > BACK_BOX_YARDS) return own;
   const other = readRoute(path, lined > 0 ? -1 : 1, -t.start[1]);
   return other.distance < own.distance ? other : own;
+}
+
+/**
+ * A route ends where he settles: once he has got `SIT_AFTER_YARDS` from his spot, the first stretch of `SIT_SECONDS` in which he covers
+ * under `SIT_SPEED` yards a second is the end of it (a hitch, a stick, a slant that sits down in a window: real play 34's X ran a
+ * slant, sat, then drifted 3 yd sideways as the play went on, and the drift drew a loop on his card). A man who never settles keeps
+ * his whole path up to `ROUTE_SECONDS`.
+ */
+const SIT_AFTER_YARDS = 3;
+const SIT_SECONDS = 0.4;
+const SIT_SPEED = 1.5;
+export function untilHeSits(points: [number, number, number][]): [number, number, number][] {
+  if (points.length < 3) return points;
+  const [, x0, y0] = points[0];
+  for (let i = 0; i < points.length; i++) {
+    const [s, x, y] = points[i];
+    if (Math.hypot(x - x0, y - y0) < SIT_AFTER_YARDS) continue;
+    const later = points.filter(([t]) => t > s && t <= s + SIT_SECONDS);
+    if (!later.length || later[later.length - 1][0] - s < SIT_SECONDS * 0.8) continue;
+    const moved = later.reduce((far, [, lx, ly]) => Math.max(far, Math.hypot(lx - x, ly - y)), 0);
+    if (moved < SIT_SPEED * SIT_SECONDS) return points.slice(0, i + 1);
+  }
+  return points;
 }
 
 /** "Check routes: H (curl or hitch)" for the plays the reader wasn't sure of. */

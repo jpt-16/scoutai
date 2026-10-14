@@ -106,3 +106,14 @@ describe("detectedRouteToPathDeltas", () => {
     expect(deltas).toEqual([]);
   });
 });
+
+describe("a tracked path drawn as a route", () => {
+  it("is cut to a stem, a break or two and a finish, however much it wobbled", async () => {
+    const { simplifyToAtMost } = await import("./coordinateMapper");
+    const wobbly = Array.from({ length: 60 }, (_, i) => ({ x: i < 30 ? Math.sin(i) * 4 : (i - 30) * 3 + Math.sin(i) * 4, y: i < 30 ? -i * 2 : -60 }));
+    const out = simplifyToAtMost(wobbly, 6, 3);
+    expect(out.length - 1).toBeLessThanOrEqual(3);
+    expect(out[0]).toEqual(wobbly[0]);
+    expect(out[out.length - 1]).toEqual(wobbly[wobbly.length - 1]);
+  });
+});

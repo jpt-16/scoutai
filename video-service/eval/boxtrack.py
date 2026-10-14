@@ -43,6 +43,8 @@ MAX_MISSED = 45
 VELOCITY_FRAMES = 6
 VELOCITY_MIN_POINTS = 4
 MAX_AHEAD = 10
+# His box's usual width and height: the median over his last this many boxes.
+SIZE_FRAMES = 8
 # A man's spot in yards still jumps with his box's bottom edge (1.5-2.5 yd a frame on the far side), so once the boxes have said who
 # is who, each track's spots are smoothed: a running median over `SMOOTH_MEDIAN` of his points, then a running mean over `SMOOTH_MEAN`.
 # Unsmoothed, the card builder's jump check (`trackedPlay.trimAtJump`) cut the far receivers' tracks at the first spike and the reader
@@ -97,16 +99,23 @@ class BoxTrack:
         return 1 if m >= WEARS else -1 if m < NOT_WEARS else 0
 
     def heading(self, f: int) -> Box4:
-        """Where his box would be at frame `f` if it kept moving the way it was (held still until it has moved for a few frames)."""
+        """Where his box would be at frame `f` if it kept moving the way it was (held still until it has moved for a few frames): its
+        middle carried on at its speed, at the size his boxes have usually been. Read from the middle and the usual size, not the last
+        box's edges, because a box cut short for a frame (legs hidden behind another man) moves its bottom edge half a man's height: on
+        real play 43 that read as a leap upward, the prediction drifted off the slot (#81) and his track was dropped while the detector
+        kept finding him."""
         fl, bl = self.boxes[-1]
-        if len(self.boxes) < VELOCITY_MIN_POINTS:
-            return bl
-        f0, b0 = self.boxes[-1 - min(VELOCITY_FRAMES, len(self.boxes) - 1)]
-        dt = max(1, fl - f0)
-        vx = ((bl[0] + bl[2]) - (b0[0] + b0[2])) / 2 / dt
-        vy = (bl[3] - b0[3]) / dt
-        ahead = min(f - fl, MAX_AHEAD)
-        return (bl[0] + vx * ahead, bl[1] + vy * ahead, bl[2] + vx * ahead, bl[3] + vy * ahead)
+        recent = [b for _, b in self.boxes[-SIZE_FRAMES:]]
+        w = float(np.median([b[2] - b[0] for b in recent]))
+        h = float(np.median([b[3] - b[1] for b in recent]))
+        cx, cy = (bl[0] + bl[2]) / 2, (bl[1] + bl[3]) / 2
+        if len(self.boxes) >= VELOCITY_MIN_POINTS:
+            f0, b0 = self.boxes[-1 - min(VELOCITY_FRAMES, len(self.boxes) - 1)]
+            dt = max(1, fl - f0)
+            ahead = min(f - fl, MAX_AHEAD)
+            cx += ((bl[0] + bl[2]) - (b0[0] + b0[2])) / 2 / dt * ahead
+            cy += ((bl[1] + bl[3]) - (b0[1] + b0[3])) / 2 / dt * ahead
+        return (cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2)
 
 
 def _refused(track: BoxTrack, share: float | None) -> bool:

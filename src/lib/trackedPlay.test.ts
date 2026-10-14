@@ -294,3 +294,23 @@ describe("who is who in the backfield (real play 43)", () => {
     expect(back?.kind).toBe("wheel");
   });
 });
+
+describe("where a drawn route ends", () => {
+  it("ends a route where he settles (a slant that sits), not with what he did after", async () => {
+    const { untilHeSits } = await import("./trackedPlay");
+    const pts: [number, number, number][] = [];
+    for (let i = 0; i <= 90; i++) {
+      const t = i / 30;
+      // 3 yd up and 2 in by 1 s, sits 1 s, then drifts 3 yd sideways (the play went elsewhere)
+      const k = Math.min(t, 1);
+      const drift = t > 2 ? (t - 2) * 3 : 0;
+      pts.push([t, -15 + 2 * k + drift, -0.7 + 3.5 * k]);
+    }
+    const cut = untilHeSits(pts);
+    expect(cut[cut.length - 1][0]).toBeLessThan(1.3);
+    expect(cut[cut.length - 1][1]).toBeLessThan(-12.5); // the sideways drift isn't in it
+    // A man who never settles keeps his whole path.
+    const go: [number, number, number][] = Array.from({ length: 60 }, (_, i) => [i / 30, 10, (i / 30) * 7]);
+    expect(untilHeSits(go)).toHaveLength(60);
+  });
+});

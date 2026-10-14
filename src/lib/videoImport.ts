@@ -226,6 +226,13 @@ export function detectionSpots(
 }
 
 /**
+ * A route tracked on film (in yards) is drawn with its wobbles taken out: within about a yard (`FILM_PATH_TOLERANCE` card units) and in
+ * at most `FILM_PATH_MAX_POINTS` legs (a release, a stem, a break and a finish), each corner a handle a coach can drag.
+ */
+const FILM_PATH_TOLERANCE = 9;
+const FILM_PATH_MAX_POINTS = 3;
+
+/**
  * Turns one detection's players into `routeOverrides` entries, each with
  * `source: "video"` and a raw `path` — the mechanism both
  * `buildCardFromDetection` (a fresh card, no CSV row) and
@@ -389,7 +396,7 @@ function detectionToRouteOverrides(
     const path =
       snapped ??
       (yards
-        ? yardRouteToPathDeltas(player, { across: YARD_X, downfield: YARD_PX })
+        ? yardRouteToPathDeltas(player, { across: YARD_X, downfield: YARD_PX }, FILM_PATH_TOLERANCE, FILM_PATH_MAX_POINTS)
         : detectedRouteToPathDeltas(player, { width: FIELD.width, height: FIELD.height }));
     if (path.length === 0) continue;
     // The ball carrier's arrow says so; an unsnapped route keeps the model's name as its tag.

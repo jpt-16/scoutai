@@ -1,6 +1,6 @@
 {
  "play": "Hudl play 43: Bunch right, F zapped across into Deuces (the same play as 8), MESH RAIL. X #15, F #4, Y #81, Z #8, H #30, QB #11.",
- "about": "Where each man really was (frames of the tracked clip, 30 fps, frame 0 = the calibrated frame 180 of play_43.mp4; the snap is frame 131), in yards from the ball in the offense's view, from detections whose zoomed crops show that man (Y's #81 is readable from frame 173 on). F (#4) is not found by the detector after about frame 150 (his shallow runs behind the mesh and the pile), so he has no later marks.",
+ "about": "Where each man really was (frames of the tracked clip, 30 fps, frame 0 = the calibrated frame 180 of play_43.mp4; the snap is frame 131), in yards from the ball in the offense's view, from detections whose zoomed crops show that man (Y's #81 is readable from frame 173 on). F (#4) is not found by the detector after about frame 150 (his shallow runs behind the mesh and the pile), so he has no later marks. Correction: F's earlier mark at frame 143 was a gold defender (the detector didn't find F in that frame); F is the lone red runner on the left (frames 137-152), then crossing right at about 5 yd, the shallow the coach describes.",
  "snap": 131,
  "men": {
   "X": {
@@ -42,9 +42,13 @@
     -10.7,
     -1.5
    ],
-   "143": [
-    -7.8,
-    0.8
+   "149": [
+    -12.6,
+    -0.4
+   ],
+   "152": [
+    -11.9,
+    0.6
    ]
   },
   "Y": {

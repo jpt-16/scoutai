@@ -1027,7 +1027,12 @@ film." and name anyone the film lost early ("Lost early on film, check: Y (1.6 s
 jittering bottom edge: 35-40% less roughness on the three plays. Drawn on plays 8, 34 and 43 the cards show the routes the coach described, except 43's F, lost in the
 pile right after the snap with his track probably moved to a teammate, which the card can't yet tell from a real path. PlayIQ's own product tour (a screen
 recording the user sent) shows the same shape of product: plays cut from a game video, a top-down tracked view, and cards drawing raw tracked paths that a coach
-hides or cuts with an end-time slider ("Adjust Routes & Timing"), no route names; its demo is college broadcast film.
+hides or cuts with an end-time slider ("Adjust Routes & Timing"), no route names; its demo is college broadcast film. **Eighteenth pass (the coach's corrections, the cards' look):** a film route **ends where he settles** (`untilHeSits`: once 3+ yd from
+his spot, the first 0.4 s in which he covers under 1.5 yd/s; play 34's X is a slant that sits, and his later drift drew a loop), and is drawn in **at most three legs**
+(`simplifyToAtMost`, `FILM_PATH_TOLERANCE` / `FILM_PATH_MAX_POINTS` in `videoImport.ts`), each corner a handle a coach drags on `/script` with no button (film routes
+always have handles; a drag saves as the coach's own shape). In the tracker, a box's predicted place is its **middle at its usual size** (`BoxTrack.heading`,
+`SIZE_FRAMES`): a box cut short for a frame had read as a leap and dropped play 43's #81 mid-route. Hand marks: **82 of 82 right** (one of the old marks, 43's F at
+frame 143, was a defender, corrected). Play 43's F and Y now draw as the two shallow crossers the coach describes. Still from these three plays and one camera.
 
 ## Game film upload (the hosted pipeline: `/film`, `src/lib/film/`, `video-service/eval/worker*.py`)
 
