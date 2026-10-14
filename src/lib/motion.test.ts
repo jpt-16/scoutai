@@ -131,6 +131,26 @@ describe("the film's formation before and at the snap", () => {
     const { card } = cardFromTracks(file("bunch gun right", "deuces gun"), row());
     expect(card.formation).toBe("DUCES");
   });
+
+  it("with a sheet, the note names the sheet's formation at the snap, not the film's", () => {
+    // Real play 8: the film read the snap as "empty gun left" (9 men, line assumed); the sheet says DUCES.
+    const { card } = cardFromTracks(file("bunch gun right", "empty gun left"), row());
+    expect(card.notes).toContain("Motion: set in Bunch Gun Right, snapped from Duces.");
+    expect(card.notes).not.toMatch(/empty/i);
+  });
+
+  it("with a sheet that names the set's own formation, no motion note", () => {
+    const sheet = { ...row(), formation: "BUNCH RT" };
+    expect(cardFromTracks(file("bunch gun right", "empty gun left"), sheet).card.notes).not.toContain("Motion:");
+  });
+
+  it("from the film alone, an incomplete read at the snap is not named", () => {
+    const f2 = file("bunch gun right", "empty gun left");
+    f2.formations.snap = { ...f2.formations.snap, men: 9, notes: "the line wasn't seen (hidden in the pile), assumed on the ball" };
+    const { card } = cardFromTracks(f2, null);
+    expect(card.notes).toContain("Motion: set in Bunch Gun Right, then a man went in motion.");
+    expect(card.notes).toContain("Check formation: film read Empty Gun Left from 9 of 11");
+  });
 });
 
 describe("an incomplete film formation is shown as a guess", () => {

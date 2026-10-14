@@ -10,13 +10,17 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { snapshotTags, type HudlPlayCard } from "@/lib/hudlParser";
+import { snapshotTags, type HudlPlayCard, type RouteCheck } from "@/lib/hudlParser";
 import {
+  ROUTE_CHECKS,
   TAG_FIELDS,
   changedFields,
   correctedCsv,
+  filmRouteLetters,
   reviewStatus,
+  routeChecksCsv,
   summarize,
+  summarizeRoutes,
   taggedCsv,
   type TagField,
 } from "@/lib/review";
@@ -49,6 +53,8 @@ export function ReviewBar({
   onUndo,
   onFix,
   onSummary,
+  routesShown,
+  onRouteCheck,
 }: {
   card: HudlPlayCard;
   /** Every play in the script, for the progress count. */
@@ -61,8 +67,13 @@ export function ReviewBar({
   onUndo: () => void;
   onFix: () => void;
   onSummary: () => void;
+  /** The routes are on screen (Scout O or Both), so they can be rated. */
+  routesShown: boolean;
+  onRouteCheck: (letter: string, check: RouteCheck | null) => void;
 }) {
   const summary = useMemo(() => summarize(cards), [cards]);
+  const routeSummary = useMemo(() => summarizeRoutes(cards), [cards]);
+  const filmLetters = filmRouteLetters(card);
   const status = reviewStatus(card);
   const changed = changedFields(card);
   const was = card.tagged;
@@ -82,6 +93,11 @@ export function ReviewBar({
             style={{ width: `${summary.total ? (summary.checked / summary.total) * 100 : 0}%` }}
           />
         </span>
+        {routeSummary.total > 0 && (
+          <span className="mt-1 text-xs font-semibold tabular-nums text-muted-foreground">
+            Routes {routeSummary.rated} of {routeSummary.total} rated
+          </span>
+        )}
       </div>
 
       <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5" aria-label="Tags from the file">
@@ -95,7 +111,7 @@ export function ReviewBar({
               <span
                 key={field}
                 className={cn(
-                  "flex h-9 items-baseline gap-1.5 rounded-lg border px-2.5 text-sm",
+                  "flex h-9 items-baseline gap-1.5 whitespace-nowrap rounded-lg border px-2.5 text-sm",
                   isChanged ? "border-amber-500/60 bg-amber-500/10" : "border-border",
                 )}
               >
@@ -159,6 +175,51 @@ export function ReviewBar({
           Scorecard
         </Button>
       </div>
+      {filmLetters.length > 0 && (
+        <div className="flex basis-full flex-wrap items-center gap-x-4 gap-y-2" aria-label="Rate the film's routes">
+          <span className="flex flex-col leading-tight">
+            <span className="text-xs font-bold tracking-[0.12em] text-muted-foreground">FILM ROUTES</span>
+            <span className="text-xs text-muted-foreground">Tap again to clear</span>
+          </span>
+          {routesShown ? (
+            filmLetters.map((letter) => {
+              const now = card.routeChecks?.[letter];
+              return (
+                <div key={letter} role="group" aria-label={`${letter}'s route`} className="flex items-center gap-1">
+                  <span className="flex size-9 items-center justify-center rounded-full border-2 border-foreground/70 text-sm font-bold">
+                    {letter}
+                  </span>
+                  {ROUTE_CHECKS.map(({ check, label }) => {
+                    const on = now === check;
+                    return (
+                      <button
+                        key={check}
+                        type="button"
+                        aria-pressed={on}
+                        aria-label={`${letter} ${label.toLowerCase()}`}
+                        onClick={() => onRouteCheck(letter, on ? null : check)}
+                        className={cn(
+                          "h-11 min-w-11 rounded-[10px] border px-2.5 text-sm font-bold transition-colors",
+                          !on && "border-border text-muted-foreground hover:text-foreground",
+                          on && check === "right" && "border-primary bg-primary text-primary-foreground",
+                          on && check === "close" && "border-amber-500 bg-amber-500 text-black",
+                          on && check === "wrong" && "border-red-500 bg-red-500 text-white",
+                        )}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+              );
+            })
+          ) : (
+            <span className="text-sm text-muted-foreground">
+              {filmLetters.length} drawn from film. Switch to Scout O to see and rate them.
+            </span>
+          )}
+        </div>
+      )}
       <span className="sr-only">
         Play {position + 1} of {shown}
       </span>
@@ -188,6 +249,7 @@ export function ReviewSummaryDialog({
   film: string;
 }) {
   const s = useMemo(() => summarize(cards), [cards]);
+  const r = useMemo(() => summarizeRoutes(cards), [cards]);
   const pct = (n: number, of: number) => (of ? `${Math.round((n / of) * 100)}%` : "—");
   const base = film.replace(/\.(csv|xlsx)$/i, "").replace(/[^\w-]+/g, "-") || "script";
 
@@ -271,6 +333,61 @@ export function ReviewSummaryDialog({
               </div>
             </div>
           </>
+        )}
+
+        {r.total > 0 && (
+          <div className="flex flex-col gap-3 border-t pt-4">
+            <span className="text-[11px] font-bold tracking-[0.1em] text-muted-foreground">FILM ROUTES</span>
+            {r.rated === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                {r.total} routes drawn from film, none rated yet. Rate each one in the review strip: Right, Close (the right
+                route, the shape a bit off) or Wrong.
+              </p>
+            ) : (
+              <>
+                <div className="grid grid-cols-4 gap-3 text-center">
+                  {[
+                    { label: "RATED", value: `${r.rated}/${r.total}` },
+                    { label: "RIGHT", value: pct(r.right, r.rated) },
+                    { label: "CLOSE", value: pct(r.close, r.rated) },
+                    { label: "WRONG", value: pct(r.wrong, r.rated) },
+                  ].map((x) => (
+                    <div key={x.label} className="rounded-xl border bg-card px-2 py-3">
+                      <div className="font-display text-2xl font-extrabold tabular-nums">{x.value}</div>
+                      <div className="text-[11px] font-bold tracking-[0.1em] text-muted-foreground">{x.label}</div>
+                    </div>
+                  ))}
+                </div>
+                <table className="w-full text-left text-sm">
+                  <thead>
+                    <tr className="text-[11px] font-bold tracking-[0.1em] text-muted-foreground">
+                      <th className="py-1.5">LETTER</th>
+                      <th className="py-1.5 text-right">RIGHT</th>
+                      <th className="py-1.5 text-right">CLOSE</th>
+                      <th className="py-1.5 text-right">WRONG</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {r.letters.map((l) => (
+                      <tr key={l.letter} className="border-t">
+                        <td className="py-1.5 font-semibold">{l.letter}</td>
+                        <td className="py-1.5 text-right tabular-nums">{l.right}</td>
+                        <td className="py-1.5 text-right tabular-nums">{l.close}</td>
+                        <td className={cn("py-1.5 text-right tabular-nums", l.wrong > 0 && "font-bold text-amber-400")}>{l.wrong}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button variant="outline" size="lg" onClick={() => download(`${base}-routes.csv`, routeChecksCsv(cards))}>
+                    <Download aria-hidden="true" />
+                    Route ratings (routes.csv)
+                  </Button>
+                  <span className="text-sm text-muted-foreground">Send this to us: it is how the film&apos;s routes get measured.</span>
+                </div>
+              </>
+            )}
+          </div>
         )}
       </DialogContent>
     </Dialog>

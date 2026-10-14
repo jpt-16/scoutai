@@ -172,6 +172,11 @@ export interface HudlPlayCard {
   tagged?: TagSnapshot;
   /** When a coach checked this play in Review mode (ISO time); the play counts as "fixed" if its tags differ from `tagged`. */
   reviewedAt?: string;
+  /**
+   * Review mode's route check: per letter, how a coach rated the route the film drew for him ("right", "close": the right route
+   * but the shape is off, "wrong"). Only letters with a film route are offered (src/lib/review.ts's `filmRouteLetters`).
+   */
+  routeChecks?: Record<string, RouteCheck>;
 
   /** Every column of the original row, keyed by the normalized header. */
   raw: Record<string, string>;
@@ -226,6 +231,9 @@ export interface FilmRoute extends RouteOverride {
 }
 
 /** A coach's route assignment for one letter (see `routeOverrides`). */
+/** A coach's rating of one route the film drew. */
+export type RouteCheck = "right" | "close" | "wrong";
+
 export interface RouteOverride {
   /** Route kind from the tree or off it ("slant", "wheel"), or "stalk" / "protect" / "none". */
   route?: string;

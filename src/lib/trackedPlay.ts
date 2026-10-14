@@ -15,7 +15,8 @@
  */
 
 import { BACKFIELD_YARDS, type RouteKind } from "./formations";
-import { deriveCard, type FilmRoute, type HudlPlayCard } from "./hudlParser";
+import { deriveCard, type FilmRoute, type FormationKey, type HudlPlayCard } from "./hudlParser";
+import { formationFamily } from "./formationFamily";
 import { readRoute } from "./routeReader";
 import {
   applyDetectionToCard,
@@ -514,13 +515,26 @@ export function formationCheckNote(file: TrackedPlayFile): string {
   return `Check formation: film read ${cap(snap.text)} from ${men} of 11 offensive players${assumed ? " (line assumed)" : ""}.`;
 }
 
-/** "Motion: set in Bunch Gun Right, snapped from Deuces Gun." when the formation changed between the set and the snap, else "". */
-export function motionFormationNote(file: TrackedPlayFile): string {
+/**
+ * "Motion: set in Bunch Gun Right, snapped from Deuces Gun." when the formation changed between the set and the snap, else "".
+ * What it was snapped from is the sheet's formation when there is one (`sheetFormation`: the coach's tag is the formation at the
+ * snap), else the film's own read, but only a whole one (11 men, the line seen). Real play 8 (Bunch right, a man zapped across into
+ * Deuces) read "empty gun left" at the snap from 9 men with the line assumed and the back missed in the pile: a guess, so the note
+ * says what is sure (the set and that he moved) and leaves the snap to the sheet or to `formationCheckNote`.
+ */
+export function motionFormationNote(file: TrackedPlayFile, sheetFormation = ""): string {
   const set = file.formations?.set;
   const snap = file.formations?.snap;
   if (!set || !snap || set.key === "unknown" || snap.key === "unknown" || !set.text || !snap.text || set.text === snap.text) return "";
   const cap = (t: string) => t.replace(/\b\w/g, (c) => c.toUpperCase());
-  return `Motion: set in ${cap(set.text)}, snapped from ${cap(snap.text)}.`;
+  const sheet = sheetFormation.trim();
+  if (sheet) {
+    // The sheet already names a formation the set is in: nothing moved that changed it.
+    if (formationFamily(sheet) === formationFamily(set.text, set.key as FormationKey)) return "";
+    return `Motion: set in ${cap(set.text)}, snapped from ${cap(sheet.toLowerCase())}.`;
+  }
+  const whole = (snap.men ?? 0) >= 11 && !/assumed/i.test(snap.notes ?? "");
+  return whole ? `Motion: set in ${cap(set.text)}, snapped from ${cap(snap.text)}.` : `Motion: set in ${cap(set.text)}, then a man went in motion.`;
 }
 
 /**
@@ -539,7 +553,7 @@ export function cardFromTracks(
   const unnamed = new Map(read.players.map((p) => [p, names || p.label === "Q" || p.routeType === "BLOCK" || !p.routeType ? p : { ...p, routeType: undefined }]));
   const detection: DetectedPlay = { ...read, players: read.players.map((p) => unnamed.get(p)!) };
   const raw = raw0.map((r) => ({ ...r, player: unnamed.get(r.player)! }));
-  const motion = [motionFormationNote(file), row?.formation?.trim() || opts.formation ? "" : formationCheckNote(file)].filter(Boolean).join(" ");
+  const motion = [motionFormationNote(file, row?.formation?.trim() || opts.formation || ""), row?.formation?.trim() || opts.formation ? "" : formationCheckNote(file)].filter(Boolean).join(" ");
   const built0 = row
     ? applyDetectionToCard(row, detection)
     : buildCardFromDetection(detection, opts.source ?? "tracked film", opts.playNumber ?? 1);

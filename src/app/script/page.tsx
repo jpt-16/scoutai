@@ -63,7 +63,7 @@ import { applyReview, reviewRows, type ReviewResult } from "@/lib/importReview";
 import { SyncBadge } from "@/components/CloudSync";
 import { ReviewBar, ReviewSummaryDialog } from "@/components/ReviewBar";
 import { loadScript, saveScript, storeScript, type ScriptSlot, type StoredScript } from "@/lib/scriptStore";
-import { nextUnchecked, reviewStatus } from "@/lib/review";
+import { nextUnchecked, reviewStatus, withRouteCheck } from "@/lib/review";
 import { useRemoteApplied } from "@/lib/useRemoteApplied";
 import { cn } from "@/lib/utils";
 
@@ -1034,6 +1034,10 @@ function ScriptApp({ demoMode = false }: { demoMode?: boolean }) {
           onUndo={() => markChecked(current.id, false)}
           onFix={() => setEditing(true)}
           onSummary={() => setSummaryOpen(true)}
+          routesShown={unit === "offense" || pair}
+          onRouteCheck={(letter, check) =>
+            saveCards(cards.map((c) => (c.id === current.id ? withRouteCheck(c, letter, check) : c)))
+          }
         />
       )}
       <ReviewSummaryDialog open={summaryOpen} onOpenChange={setSummaryOpen} cards={cards} film={script.fileName} />

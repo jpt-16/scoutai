@@ -615,6 +615,12 @@ checking it), **Undo** un-checks, **Unchecked only** filters the list, and **Sco
   (corrected.csv)** download the checked plays in Hudl's own column names (`taggedCsv`, `correctedCsv`), the
   same pair `video-service/eval/score.py` reads, so a coach's Sunday pass produces the evaluation data with no
   separate export from Hudl.
+- **Route check** (`filmRouteLetters`, `withRouteCheck`, `summarizeRoutes`, `routeChecksCsv`): on a film card, a second row in the
+  strip lists every letter whose route the film drew (`source: "video"`, X F Y Z then H) with **Right / Close / Wrong** (close: the
+  right route, the shape a bit off; tap again to clear), saved per letter in `card.routeChecks` (a rated letter stays listed after a
+  coach picks a route by hand). Only on Scout O or Both, where the routes are drawn. The Scorecard adds a FILM ROUTES section
+  (rated, right / close / wrong %, per letter) and **Route ratings (routes.csv)**: play, letter, rating and the drawn path, which is
+  how the film's routes get measured from every Sunday review with no separate sheet.
 
 ## Sideline screens: sunlight mode and CoachPad export
 
@@ -944,7 +950,8 @@ man zapped across (pre-snap motion) into Deuces gun**, which is what the Hudl ta
 clip has to start *before* the motion (a second or two into the set; the earlier runs started 0.4 s before the snap, where the motion was already over).
 Now: `eval.tracks.formation_reads` (written into the tracks file as `formations: {set, snap, snapSeconds}`) names the offense's formation twice from its tracks, as the clip first
 shows it and at the snap; `trackedPlay.ts`'s `cardFromTracks` uses the snap formation when the film is the only source, and adds "Motion: set in Bunch Gun,
-snapped from Deuces Gun." to the notes when they differ (the sheet's formation still wins). **Real result:** the set reads **Bunch gun** on both plays ✓; the
+snapped from Deuces Gun." to the notes when they differ (the sheet's formation still wins, and is what the note names at the snap: play 8's
+film read "empty gun left" from 9 men with the line assumed; with no sheet an incomplete snap read is not named, "then a man went in motion"). **Real result:** the set reads **Bunch gun** on both plays ✓; the
 snap formation does not read Deuces yet (8 reads Double Eagle, 43 Trips with 8 men): the linemen locked in the pile are mostly missing and a defender or two is
 labeled offense, so a wide-vs-attached count is wrong (`formation._classify` assumes a standard line when fewer than three linemen are found and six skill men are,
 else says unknown). **Snap time:** the old rule (the fourth man to move 1.5 yd) fired 0.85 s early on play 8 because the formation was still shifting; `snapTime` now also

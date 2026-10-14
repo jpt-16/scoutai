@@ -21,6 +21,7 @@ import {
   parseSideTag,
   snapshotTags,
   type HudlPlayCard,
+  type RouteCheck,
   type TagSnapshot,
 } from "./hudlParser";
 
@@ -153,4 +154,99 @@ export function nextUnchecked(cards: HudlPlayCard[], from: number): number | nul
     if (!cards[i].reviewedAt) return i;
   }
   return null;
+}
+
+/* ------------------------------ Route check ------------------------------ */
+
+/*
+ * The film draws each receiver's and back's route as he ran it (unnamed), and the coach rates each one while flipping through:
+ * right, close (the right route, the shape a bit off) or wrong. Every Sunday review then adds to the measure of how well the film
+ * reads routes, with no separate sheet to fill in, and `routeChecksCsv` hands the ratings to the scoring scripts.
+ */
+
+export const ROUTE_CHECKS: { check: RouteCheck; label: string }[] = [
+  { check: "right", label: "Right" },
+  { check: "close", label: "Close" },
+  { check: "wrong", label: "Wrong" },
+];
+
+/** The staff's letters, left to right across the offense, then the back. */
+const LETTER_ORDER = ["X", "F", "Y", "Z", "H"];
+const byLetter = (a: string, b: string) => {
+  const ia = LETTER_ORDER.indexOf(a);
+  const ib = LETTER_ORDER.indexOf(b);
+  return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.localeCompare(b);
+};
+
+/**
+ * The letters whose route on this card the film drew (a `source: "video"` route, dragged by a coach or not), plus any already
+ * rated, so a rating isn't hidden when a coach later picks a route by hand in Edit play.
+ */
+export function filmRouteLetters(card: HudlPlayCard): string[] {
+  const letters = new Set<string>();
+  for (const [letter, o] of Object.entries(card.routeOverrides ?? {})) if (o.source === "video" && o.path?.length) letters.add(letter);
+  for (const letter of Object.keys(card.routeChecks ?? {})) letters.add(letter);
+  return [...letters].sort(byLetter);
+}
+
+/** The card with one letter's route rated (or the rating taken off, with `null`). */
+export function withRouteCheck(card: HudlPlayCard, letter: string, check: RouteCheck | null): HudlPlayCard {
+  const checks = { ...card.routeChecks };
+  if (check) checks[letter] = check;
+  else delete checks[letter];
+  const next: HudlPlayCard = { ...card, routeChecks: checks };
+  if (Object.keys(checks).length === 0) delete next.routeChecks;
+  return next;
+}
+
+export interface RouteCheckSummary {
+  /** Film routes across the script. */
+  total: number;
+  rated: number;
+  right: number;
+  close: number;
+  wrong: number;
+  /** Per letter, the same counts (letters in the staff's order). */
+  letters: { letter: string; rated: number; right: number; close: number; wrong: number }[];
+}
+
+export function summarizeRoutes(cards: HudlPlayCard[]): RouteCheckSummary {
+  const out: RouteCheckSummary = { total: 0, rated: 0, right: 0, close: 0, wrong: 0, letters: [] };
+  const per = new Map<string, RouteCheckSummary["letters"][number]>();
+  for (const card of cards) {
+    for (const letter of filmRouteLetters(card)) {
+      out.total += 1;
+      const check = card.routeChecks?.[letter];
+      if (!check) continue;
+      out.rated += 1;
+      out[check] += 1;
+      const row = per.get(letter) ?? { letter, rated: 0, right: 0, close: 0, wrong: 0 };
+      row.rated += 1;
+      row[check] += 1;
+      per.set(letter, row);
+    }
+  }
+  out.letters = [...per.values()].sort((a, b) => byLetter(a.letter, b.letter));
+  return out;
+}
+
+/** One row per rated route: the play, the letter, the coach's rating and the drawn shape (card units, from his spot). */
+export function routeChecksCsv(cards: HudlPlayCard[]): string {
+  const data = cards.flatMap((card) =>
+    filmRouteLetters(card)
+      .filter((letter) => card.routeChecks?.[letter])
+      .map((letter) => {
+        const o = card.routeOverrides?.[letter];
+        return {
+          "PLAY #": card.playNumber,
+          FILM: card.source,
+          "OFF FORM": card.formation,
+          "OFF PLAY": card.playCall,
+          LETTER: letter,
+          CHECK: card.routeChecks![letter],
+          DRAWN: o?.source === "video" && o.path ? JSON.stringify(o.path) : "",
+        };
+      }),
+  );
+  return Papa.unparse({ fields: ["PLAY #", "FILM", "OFF FORM", "OFF PLAY", "LETTER", "CHECK", "DRAWN"], data });
 }
