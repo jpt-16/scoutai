@@ -7,6 +7,10 @@ offense's men, each in his track's color with a big number, at four moments: the
 1.5 s of trail behind each, in one contact sheet (`label/<clip>_men.jpg`). Reading it, someone who saw the play says which number
 is which receiver and whether the number stays on the same man from picture to picture; a swap shows as a trail that jumps
 from one man to another. Writes `label/<clip>_men.txt` too: each offense track's id, where it started, and how long it lasts.
+
+`--calibration clip.json` replays with a better calibration than the run had (the camera and the detections don't depend on it), and
+`--tracks tracks/` writes the replayed play as a normal tracks file (`tracks/<clip>.json`) for `scripts/tracks-to-cards.ts`: a
+calibration fixed after the GPU run reaches the cards with no new detector run.
 """
 
 from __future__ import annotations
@@ -19,7 +23,9 @@ import cv2
 import numpy as np
 
 from .replay import replay
-from .tracks import TRACKER, snap_seconds, team_by_jersey
+from geometry import CalibrationPoints, build_homography, transform_point
+
+from .tracks import TRACKER, snap_seconds, team_by_jersey, tracks_result
 from .trackdebug import TRAIL_SECONDS, _foot, _in_frame, track_color
 
 MOMENTS = (None, 0.0, 1.5, 3.0)  # None = the first frame; the rest are seconds after the snap
@@ -39,6 +45,14 @@ def play_tracks(dump: dict, frames: list[np.ndarray], scout_color: str = "red", 
         return color_share(frames[k], box, scout_color)
 
     return replay(dump, tracker, None, labels_for, shares_from if scout_color in COLORS else None)
+
+
+def with_calibration(dump: dict, cal: dict) -> dict:
+    """The dump with another calibration of the same frame (a clip's .json): the field, the ball and the direction."""
+    calib = build_homography(CalibrationPoints(source=cal["source"], destination=cal["destination"]))
+    ball = transform_point(calib, *cal["ball"])
+    calibration = {**cal, "frame": dump["calibration"].get("frame", 0)}
+    return {**dump, "calibration": calibration, "ball": [float(ball[0]), float(ball[1])], "direction": int(cal["direction"])}
 
 
 def picture(frame, boxes, tracks, labels, k: int, fps: float, to_snap, title: str):
@@ -81,8 +95,12 @@ def main() -> None:
     ap.add_argument("--start", type=int, required=True, help="the clip's calibrated frame")
     ap.add_argument("--out", type=Path, default=Path("label"))
     ap.add_argument("--scout-color", default="red", help="the jersey color of the team being scouted")
+    ap.add_argument("--calibration", type=Path, help="a better calibration of the same frame (the clip's .json): replaces the dump's")
+    ap.add_argument("--tracks", type=Path, help="also write the replayed play here as a tracks file (<clip>.json)")
     args = ap.parse_args()
     dump = json.loads(args.dump.read_text())
+    if args.calibration:
+        dump = with_calibration(dump, json.loads(args.calibration.read_text()))
     cap = cv2.VideoCapture(str(args.clip))
     cap.set(cv2.CAP_PROP_POS_FRAMES, args.start)
     frames = [cap.read()[1] for _ in range(len(dump["raw"]))]
@@ -110,6 +128,17 @@ def main() -> None:
             continue
         lines.append(f"track {t.id}: starts ({t.points[0][1]:+.1f}, {t.points[0][2]:+.1f}) yd at {t.points[0][0] / fps:.1f}s, lasts to {t.points[-1][0] / fps:.1f}s")
     (args.out / f"{args.clip.stem}_men.txt").write_text("\n".join(lines))
+    if args.tracks:
+        from .scoutteam import COLORS, scout_side
+
+        color = args.scout_color.strip().lower()
+        scout = None
+        if color in COLORS:
+            first = {j: t.id for t in tracks for f, j in t.matched if f == 0}
+            side = {lab: [b for j, b in enumerate(boxes[0]) if j in first and labels[first[j]] == lab] for lab in ("offense", "defense")}
+            scout = {"color": color, "side": scout_side(frames[0], side["offense"], side["defense"], color)}
+        args.tracks.mkdir(parents=True, exist_ok=True)
+        (args.tracks / f"{args.clip.stem}.json").write_text(json.dumps(tracks_result(tracks, labels, out["colors"], fps, scout)))
     print("\n".join(lines))
 
 

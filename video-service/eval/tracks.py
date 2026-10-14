@@ -735,6 +735,15 @@ def track_play(
         offense_boxes = [b for b, lab in zip(kept_boxes[0], labels) if lab == "offense"]
         defense_boxes = [b for b, lab in zip(kept_boxes[0], labels) if lab == "defense"]
         scout = {"color": color, "side": scout_side(frames_bgr[snap], offense_boxes, defense_boxes, color)}
+    return {
+        **tracks_result(tracks, labels, colors, fps, scout),
+        "timing": {**timing, "track_seconds": round(time.perf_counter() - began, 2)},
+    }
+
+
+def tracks_result(tracks, labels, colors, fps: float, scout: dict | None) -> dict:
+    """What a tracks file holds (`track_play`, and `eval.label --tracks` after a replay): every track in seconds and yards, its team
+    and jersey color at each point, the formation as set and at the snap, and the scouted team's side."""
     out_tracks = [
         {
             "id": t.id,
@@ -746,13 +755,7 @@ def track_play(
         }
         for t in tracks
     ]
-    return {
-        "fps": fps,
-        "formations": formation_reads(out_tracks),
-        **({"scout": scout} if scout else {}),
-        "timing": {**timing, "track_seconds": round(time.perf_counter() - began, 2)},
-        "tracks": out_tracks,
-    }
+    return {"fps": fps, "formations": formation_reads(out_tracks), **({"scout": scout} if scout else {}), "tracks": out_tracks}
 
 
 # With the scouted team's color known, a man wearing it is on its side whatever his spot says: the share of his torso in that color

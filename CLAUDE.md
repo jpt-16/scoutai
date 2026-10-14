@@ -1053,7 +1053,10 @@ by hand from the painted numbers and the far sideline (the fits agree with Hudl'
 check is per color** (`scoutteam.wear_gate` / `side_shares`, `GATES` / `SIDES`): white reads 0.20-0.42 on the offense and up to 0.13 (a few
 to 0.30) on Andover's navy, where red was 0.00 on the defense, so white uses 0.18 / 0.10 and red keeps its old levels. (4) The Colab notebook
 reads `settings.json` from the clips zip (`scoutColor`, `fieldLevel`) and copies plays 8/34/43's answer key only when those clips are there.
-Not run through the detector yet (Colab); the coach's routes for these four are still to come.
+First Colab run: all four read, but the near-side receivers were dropped as off the field (the near sideline is hidden by the bench, so the fit
+ran 3 yd wide there); the calibrations now also use the painted numbers as two rows (tops 44.33, bottoms 46.33), and `eval.label --calibration
+clip.json --tracks tracks/` replays a run's saved detections with a new calibration into a tracks file (`tracks.tracks_result`), so the fix
+reached the cards with no new GPU run: 6-9 of the offense followed a play. Some drawn paths still look wrong; the coach's routes are still to come.
 
 ## Game film upload (the hosted pipeline: `/film`, `src/lib/film/`, `video-service/eval/worker*.py`)
 

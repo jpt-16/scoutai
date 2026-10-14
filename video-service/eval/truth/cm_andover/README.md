@@ -31,5 +31,14 @@ What this film showed:
   white numbers, towels, sleeves); referees that the stripe test misses 0.03-0.17. The tracker's jersey thresholds are now per color
   (`scoutteam.GATES` / `SIDES`: white 0.18 / 0.10; red keeps 0.04 / 0.01 and 0.15 / 0.06).
 
+**First GPU run (Colab, 10/14):** every play read (60-90 s each), but only 5-8 of CM's men followed: the near-side receiver on plays 66, 96
+and 97 was thrown out as "off the field". The near sideline is hidden behind Andover's bench, so nothing held that side of the fit and it
+read 3 yd too wide there (the "40" numbers mapped to 47-50 yd from the far sideline, where they are 44-46). The calibrations here now also
+use the **painted numbers** as two rows (tops 9 yd and bottoms 7 yd in from the near sideline: 44.33 and 46.33), which brings that side in
+(play 96's near receiver: 53 yd, off the field, to 48.8). Replayed from the run's saved detections with `python -m eval.label <dump> <clip>
+--start <frame> --scout-color white --calibration play_NN.json --tracks tracks/`: 6-9 of the offense followed per play (most of the rest
+are linemen in the pile). Cards built from those tracks still show paths that look wrong (play 66's H running backward, 67's F and Z along
+the line), so the coach's routes decide what's a tracking slip.
+
 **Needed from the coach** (per play): what X, F, Y, Z and H ran (left to right from the offense's view, H the back), and jersey numbers if
 two are easy to mix up. Then `truth.json` here gets them and `scripts/score-truth.ts` scores the Colab run.
