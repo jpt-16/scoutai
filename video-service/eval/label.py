@@ -22,6 +22,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from .field import upright
 from .replay import replay
 from geometry import CalibrationPoints, build_homography, transform_point
 
@@ -49,6 +50,7 @@ def play_tracks(dump: dict, frames: list[np.ndarray], scout_color: str = "red", 
 
 def with_calibration(dump: dict, cal: dict) -> dict:
     """The dump with another calibration of the same frame (a clip's .json): the field, the ball and the direction."""
+    cal = upright(cal)
     calib = build_homography(CalibrationPoints(source=cal["source"], destination=cal["destination"]))
     ball = transform_point(calib, *cal["ball"])
     calibration = {**cal, "frame": dump["calibration"].get("frame", 0)}

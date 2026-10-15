@@ -1056,7 +1056,7 @@ reads `settings.json` from the clips zip (`scoutColor`, `fieldLevel`) and copies
 First Colab run: all four read, but the near-side receivers were dropped as off the field (the near sideline is hidden by the bench, so the fit
 ran 3 yd wide there); the calibrations now also use the painted numbers as two rows (tops 44.33, bottoms 46.33), and `eval.label --calibration
 clip.json --tracks tracks/` replays a run's saved detections with a new calibration into a tracks file (`tracks.tracks_result`), so the fix
-reached the cards with no new GPU run: 6-9 of the offense followed a play. Some drawn paths still look wrong; the coach's routes are still to come.
+reached the cards with no new GPU run: 6-9 of the offense followed a play. Some drawn paths still look wrong. **Twentieth pass (the coach's routes for 66/67/96/97, `truth.json`):** 0 of 19 at first, because the hand calibrations for 67 and 97 were a **mirror image of the field** (yard lines named from the painted numbers the other way from midfield: every man on the wrong side of the ball). `field.upright` now turns a mirrored calibration back wherever one is read (`tracks`, `presnap.read_clip`, `eval.label`), tested in `test_field.py`. After it: 1 of 19 right, 7 counting the runner-up; per man (`cm_andover/README.md`): 6 far-side men never followed, 4 tracker swaps or losses (the bunch), 2 letters on the wrong man, 6 clean paths named wrong (this staff's speed out was 2 yd deep, a slant flattened at 7, a vertical drifted 6 yd out), 1 right. Film routes stay behind the coach's tap.
 
 ## Game film upload (the hosted pipeline: `/film`, `src/lib/film/`, `video-service/eval/worker*.py`)
 

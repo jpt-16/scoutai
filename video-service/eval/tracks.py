@@ -679,6 +679,7 @@ def track_play(
 ) -> dict:
     """The tracks for one play. `boxes[i]` are the people found in frame `i`; frame `calibration['frame']` is the snap.
     `tracker`: "greedy" or "tracklets" (default `TRACKER`)."""
+    calibration = fieldmod.upright(calibration)
     snap = calibration["frame"]
     direction = calibration["direction"]
     calib = build_homography(CalibrationPoints(source=calibration["source"], destination=calibration["destination"]))
@@ -857,7 +858,7 @@ def track_clip(
     the same size to the model all play (`regiondetect`). Without it, the whole frame is tiled (`tiles`)."""
     timing: dict[str, float] = {}
     began = time.perf_counter()
-    calibration = json.loads(clip.with_suffix(".json").read_text())
+    calibration = fieldmod.upright(json.loads(clip.with_suffix(".json").read_text()))
     cap = cv2.VideoCapture(str(clip))
     fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
     cap.set(cv2.CAP_PROP_POS_FRAMES, calibration["frame"])

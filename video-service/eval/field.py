@@ -326,6 +326,21 @@ def _orientation_ok(to_field: np.ndarray, around: np.ndarray) -> bool:
     return float(jx[0] * jy[1] - jx[1] * jy[0]) < 0
 
 
+def upright(calibration: dict) -> dict:
+    """The clip's calibration with the field the right way round. Hand calibrations name the yard lines by their painted
+    numbers, and those run both ways from midfield, so a hand fit can come out as a mirror image of the field (CM vs Andover's
+    plays 67 and 97 did: every receiver landed on the wrong side of the ball). A mirror is impossible for a camera looking down
+    at grass (`_orientation_ok`), so it is turned back: the yard axis is reversed and the direction with it, which leaves
+    downfield where it was and puts the offense's left and right back. A calibration already the right way round is returned as is."""
+    src = np.float32(calibration["source"])
+    dst = np.float32(calibration["destination"])
+    to_field = cv2.getPerspectiveTransform(src, dst)
+    if _orientation_ok(to_field, np.float32(calibration["ball"])):
+        return calibration
+    flipped = [[float(x), float(-y)] for x, y in calibration["destination"]]
+    return {**calibration, "destination": flipped, "direction": -int(calibration["direction"])}
+
+
 def number_lines_robust(lines: list[_Line]) -> tuple[list[tuple[_Line, int]], float] | None:
     """`number_lines`, throwing out the line that fits worst until the rest are a clean ruler.
     Real film is full of lines that are not yard lines (a bench, a banner, a long shadow)."""

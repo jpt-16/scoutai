@@ -40,5 +40,38 @@ use the **painted numbers** as two rows (tops 9 yd and bottoms 7 yd in from the 
 are linemen in the pile). Cards built from those tracks still show paths that look wrong (play 66's H running backward, 67's F and Z along
 the line), so the coach's routes decide what's a tracking slip.
 
+**The coach's routes (10/15, left to right from the offense's view)**, in `truth.json`: 66 post, comeback, seam, comeback; 67 go,
+slant (skinny), speed out, slant, slant; 96 curl / stick, speed out, slant, slant, H a 5-yd hitch / in; 97 all four vertical to clear for
+the back's screen.
+
+**Scored (`npx jiti scripts/score-truth.ts tracks/ --sheet hudl.csv --truth truth.json`): 0 of 19 at first.** The pictures showed why:
+**the hand calibrations for 67 and 97 were a mirror image of the field** (their yard lines were named from the painted numbers running
+the other way from midfield), so every receiver came out on the wrong side of the ball and took the other side's letter. A mirror can't
+come from a camera looking down at grass, so `field.upright` now turns one back wherever a calibration is read (tracks, the formation read,
+`eval.label`), and the two files here are fixed. **After the fix: 1 of 19 right, 7 of 19 counting the reader's runner-up.** Per man:
+
+| Play | Letter (coach's route) | What happened | Stage |
+| ---- | ---------------------- | ------------- | ----- |
+| 66 | X post, F comeback | far side, never followed | detector / far side |
+| 66 | Y seam | followed to 1.4 s, then the track jumps to the man beside him | tracker swap |
+| 66 | Z comeback | clean: 13-yd stem, breaking back outside at 2.5-3 s; read out (then corner) | reader (break at the 3 s cutoff) |
+| 67 | X go, H slant | far side, not followed (X's letter went to a lineman) | far side |
+| 67 | F speed out | clean: out at **2 yd** deep; read flat (then speed out) | reader / vocabulary |
+| 67 | Y slant | clean; read slant | right |
+| 67 | Z slant | clean: 6-yd stem, then flat inside at 7; read dig (then slant) | reader / vocabulary |
+| 96 | X curl / stick | far side, stem to 10 and sat, lost 2.0-2.75 s; unknown (then curl) | far side + reader |
+| 96 | F speed out | the path that ran it belongs to a lineman's track that jumped at 1.1 s | tracker swap |
+| 96 | Y slant (middle of the bunch) | lost at 1.25 s after a 5-yd stem | tracker (bunch) |
+| 96 | Z slant (outside) | clean slant, but given no letter (the bunch has a fourth man on that side in the tracks) | lettering |
+| 96 | H hitch / in | H went to the QB's track (dropping back) | lettering |
+| 97 | Y vertical | clean: vertical with a 6-yd outside drift; read corner (then out) | reader |
+| 97 | Z vertical | lost at 1.5 s | tracker |
+| 97 | X, F vertical | far side, not followed (their letters went to men by the line) | far side |
+| 97 | H screen | read hitch | reader |
+
+So of 19: 6 far-side men never followed, 4 tracker swaps or losses, 2 letters on the wrong man, 6 clean paths named wrong, 1 right. On the
+**clean paths the shape is the coach's route** in most cases (the speed out, both slants, the curl), and the reader's runner-up is right on
+three of them; what loses is depth: this staff's speed out here is 2 yd deep (the tree's is 5) and a slant flattened at 7.
+
 **Needed from the coach** (per play): what X, F, Y, Z and H ran (left to right from the offense's view, H the back), and jersey numbers if
 two are easy to mix up. Then `truth.json` here gets them and `scripts/score-truth.ts` scores the Colab run.

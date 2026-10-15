@@ -29,6 +29,7 @@ import numpy as np
 from devices import pick_device
 from geometry import CalibrationPoints, build_homography, transform_point
 
+from .field import upright
 from .formation import Spot, classify
 from .officials import looks_like_official
 from .people import GROUND_MIN_GREEN, GROUND_ZONE_YARDS, FIELD_WIDTH as _FIELD_WIDTH, feet_locator, ground_green_fraction, on_the_field, sideline_crowd
@@ -174,7 +175,7 @@ def drop_duplicates(players: list) -> list:
 
 
 def read_clip(path: Path, detector: Detector, tiles: int, debug_dir: Path | None) -> dict:
-    calib = json.loads(path.with_suffix(".json").read_text())
+    calib = upright(json.loads(path.with_suffix(".json").read_text()))
     direction = calib["direction"]
     cap = cv2.VideoCapture(str(path))
     cap.set(cv2.CAP_PROP_POS_FRAMES, calib["frame"])

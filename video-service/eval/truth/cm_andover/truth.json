@@ -1,0 +1,6 @@
+{
+  "66": { "X": "post", "F": "comeback|curl", "Y": "fade", "Z": "comeback|curl" },
+  "67": { "X": "fade", "H": "slant|post", "F": "speed-out", "Y": "slant", "Z": "slant" },
+  "96": { "X": "curl|hitch", "F": "speed-out", "Y": "slant", "Z": "slant", "H": "hitch|dig|shallow" },
+  "97": { "X": "fade", "F": "fade", "Y": "fade", "Z": "fade", "H": "swing|flat|bubble" }
+}

@@ -68,3 +68,34 @@ def test_refuses_to_guess_with_too_few_rows():
     frame, _ = sf.render(sf.QUAD_A, sf.top_down(ticks=False, sidelines=False))
     out = calibrate_field(frame)
     assert isinstance(out, FieldFailure) and out.reason == "rows", out
+
+
+def test_upright_turns_a_mirrored_hand_calibration_back():
+    """A hand fit that names the yard lines from the painted numbers the other way (CM vs Andover's plays 67 and 97) is a
+    mirror image of the field: every man lands on the wrong side of the ball. `upright` turns it back, so the same person
+    comes out on the same side, at the same depth, as with the fit made the right way round."""
+    from eval.field import upright
+    from eval.tracks import to_yards
+    from geometry import CalibrationPoints, build_homography, transform_point
+
+    good = {
+        "frame": 0,
+        "source": [[662.3, 273.1], [50.9, 371.0], [1335.0, 303.6], [964.6, 433.7]],
+        "destination": [[5.41, 17.75], [33.41, 17.75], [5.41, 37.75], [33.41, 37.75]],
+        "ball": [775.0, 333.0],
+        "direction": 1,
+    }
+    mirrored = {**good, "destination": [[x, 120 - y] for x, y in good["destination"]], "direction": -1}
+    assert upright(good) is good
+
+    def spot(cal, box):
+        m = build_homography(CalibrationPoints(source=cal["source"], destination=cal["destination"]))
+        ball = transform_point(m, *cal["ball"])
+        return to_yards(box, np.eye(3), m, ball, cal["direction"])
+
+    near_receiver = (300.0, 380.0, 330.0, 460.0)  # below and left of the ball: the near side
+    want = spot(good, near_receiver)
+    wrong = spot(mirrored, near_receiver)
+    assert np.sign(wrong[0]) == -np.sign(want[0])  # the mirror puts him on the other side
+    fixed = spot(upright(mirrored), near_receiver)
+    assert fixed == pytest.approx(want, abs=1e-3)
