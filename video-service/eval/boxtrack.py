@@ -34,15 +34,22 @@ import numpy as np
 # A box overlapping where his box was heading by at least this much (intersection over union) is him.
 MIN_IOU = 0.25
 # After missed frames: a box whose bottom centre is within this many box heights of where his was heading may be him, growing by
-# `GAP_GROWTH` of that for each frame missed.
+# `GAP_GROWTH` of that for each frame missed. A far receiver at night is missed for 4-24 frames at a time (CM vs Andover) and runs
+# 2-4 yards in that time; with 0.1 a frame his track was dropped before he was found again. Scored on all seven hand-marked plays
+# (8, 34, 43, 66, 67, 96, 97): 140 of 156 marks at 0.1, 144-147 from 0.45 to 0.75 (with `MAX_AHEAD` 20), 136-138 at 1.0 (a lost
+# track reaches the man beside him); 0.6 sits in the middle of that plateau, and plays 8/34/43 lose nothing.
 GAP_SLACK = 0.2
-GAP_GROWTH = 0.1
+GAP_GROWTH = 0.6
+# ...but never more than this many box heights: unbounded, a track missing for a second reached half the picture on a near-side box and
+# leapt 30-40 yards (play 97's sideline coach onto a back, play 66 across the field). At 3 the seven plays keep 150 of 156 marks and
+# offense tracks with a leap faster than 24 yd/s go from 6 to 3 (1 to 2 heights: 147-148 marks, 2 leaps).
+GAP_MAX_HEIGHTS = 3.0
 # A track missing for this many frames is dropped (as `tracks.MAX_MISSED`).
 MAX_MISSED = 45
 # His box's speed is read over this many of his last matches, once he has `VELOCITY_MIN_POINTS`, and projected at most `MAX_AHEAD` frames.
 VELOCITY_FRAMES = 6
 VELOCITY_MIN_POINTS = 4
-MAX_AHEAD = 10
+MAX_AHEAD = 20
 # His box's usual width and height: the median over his last this many boxes.
 SIZE_FRAMES = 8
 # A man's spot in yards still jumps with his box's bottom edge (1.5-2.5 yd a frame on the far side), so once the boxes have said who
@@ -182,7 +189,7 @@ def follow_boxes(
                         continue
                     # Missed for a while: near where his feet were heading, weaker than any real overlap.
                     off = float(np.hypot((head[0] + head[2] - b[0] - b[2]) / 2, head[3] - b[3])) / height
-                    if off > GAP_SLACK * (1 + GAP_GROWTH * t.missed):
+                    if off > min(GAP_SLACK * (1 + GAP_GROWTH * t.missed), GAP_MAX_HEIGHTS):
                         continue
                     overlap = MIN_IOU * (1 - off)
                 pairs.append((-overlap, ti, j))
