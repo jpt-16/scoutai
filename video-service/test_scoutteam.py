@@ -43,3 +43,18 @@ def test_white_pants_and_a_helmet_do_not_make_a_gold_team_red():
     img = frame_with(gold)
     assert color_share(img, (100, 100, 124, 160), "red") < 0.05
     assert color_share(img, (100, 100, 124, 160), "gold") > 0.9
+
+
+def test_a_dark_jersey_with_white_numbers_does_not_count_as_white():
+    """On CM vs Andover a navy jersey read up to 0.39 white (numbers, pants, a teammate in the box), more than some white receivers.
+    A white jersey has no near-black on it, so a torso that has some is not wearing white."""
+    from eval.scoutteam import color_share, dark_share, worn_share
+
+    navy = np.full((100, 40, 3), (45, 18, 10), np.uint8)  # BGR: navy as it reads at night, near-black
+    navy[25:45, 12:28] = 245  # big white numbers on the chest
+    white = np.full((100, 40, 3), 235, np.uint8)
+    white[25:40, 15:25] = (40, 40, 160)  # red numbers
+    assert dark_share(navy, (0, 0, 40, 100)) > 0.3
+    assert color_share(navy, (0, 0, 40, 100), "white") == 0.0
+    assert color_share(white, (0, 0, 40, 100), "white") > 0.5
+    assert worn_share("red", 0.4, 0.5) == 0.4  # only light colors have the dark test

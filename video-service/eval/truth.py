@@ -4,7 +4,7 @@
 
 Route names say whether the whole chain worked; this says whether the tracker did. A truth file marks where each
 receiver really was at a few frames (yards from the ball, offense's view; see `truth/play_05.json`). His track is
-the one that started nearest his first mark; a later mark counts as right when that track is within `HIT_YARDS` of it
+the one nearest his first mark at that frame; a later mark counts as right when that track is within `HIT_YARDS` of it
 (within two frames), wrong when the track is somewhere else, and missing when the track has ended or skipped it.
 """
 
@@ -28,7 +28,15 @@ def score(tracks: dict, truth: dict) -> tuple[int, int, list[str]]:
     for name, marks in truth["men"].items():
         frames = sorted((int(k), v) for k, v in marks.items())
         (_, (x0, y0)), later = frames[0], frames[1:]
-        own = min(offense, key=lambda t: np.hypot(t["points"][0][1] - x0, t["points"][0][2] - y0))
+        f0 = frames[0][0]
+
+        def gap_at_first(t) -> float:
+            # Where the track was at his first mark (a track may start after frame 0: `boxtrack.SEED_FRAMES`); a track not there
+            # then is scored by where it started, behind every track that was.
+            near = [np.hypot(x - x0, y - y0) for s, x, y in t["points"] if abs(round(s * fps) - f0) <= NEAR_FRAMES]
+            return min(near) if near else 1000 + float(np.hypot(t["points"][0][1] - x0, t["points"][0][2] - y0))
+
+        own = min(offense, key=gap_at_first)
         row = []
         for f, (gx, gy) in later:
             total += 1

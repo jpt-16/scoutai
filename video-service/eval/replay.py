@@ -61,7 +61,16 @@ def replay(dump: dict, tracker: str = TRACKER, signatures_from=None, labels_for=
         from .boxtrack import warp_boxes
 
         warped = [warp_boxes(kept, to_snap[f]) for f, kept in enumerate(kept_boxes)]
-        saved = [{tuple(r["box"]): r.get("share") for r in raw} for raw in dump["raw"]]
+        from .scoutteam import worn_share
+
+        scouted = str(dump.get("scout_color") or "")
+        saved = [
+            {
+                tuple(r["box"]): None if r.get("share") is None else worn_share(scouted, r["share"], r["jersey"][0] if r.get("jersey") else None)
+                for r in raw
+            }
+            for raw in dump["raw"]
+        ]
         if all(v is not None for frame in saved for v in frame.values()) and any(saved):
             shares = [[saved[f][tuple(b[:4])] for b in kept] for f, kept in enumerate(kept_boxes)]
         elif shares_from is not None:

@@ -32,10 +32,37 @@ MIN_GAP = 0.06
 # Red was measured with a gold defense that wears none of it (offense 0.07-0.68, defense 0.00), so the tracker's gate can be fine.
 # White is not like that: on the CM vs Andover film the white offense reads 0.20-0.42, while Andover's navy jerseys read 0.00-0.13 (white
 # numbers, towels, sleeves; a few to 0.30) and referees 0.03-0.17. A color not listed here uses `DEFAULT_GATE` / `DEFAULT_SIDE`.
-GATES = {"white": (0.18, 0.10)}
+# Telling a white jersey from a dark one is `DARK_NOT`'s job (below): a far white receiver, blurred, can read under 0.10 white with no
+# near-black on him at all (play 66's far X, 0.04), so with the dark test in front the white floor is as low as red's.
+GATES = {"white": (0.18, 0.01)}
 DEFAULT_GATE = (0.04, 0.01)  # the box tracker's gate (`boxtrack.follow_boxes`)
-SIDES = {"white": (0.18, 0.10)}
+SIDES = {"white": (0.18, 0.01)}
 DEFAULT_SIDE = (0.15, 0.06)  # correcting a man's side at the snap (`tracks.team_by_jersey`)
+
+
+# A light jersey has no near-black on it. Measured box by box on CM vs Andover (white against navy, at night): the white receivers'
+# torsos were more than 6% near-black (`dark_share`) in at most 3% of their boxes, Andover's navy defenders in 83-100%, while the white
+# share itself overlapped (a navy defender read 0.39 on play 67, a white receiver 0.31 on play 66: white numbers, white pants, a box that
+# takes in a teammate). So for these colors a torso darker than this is not wearing it, whatever its white share says (`worn_share`).
+DARK_NOT = {"white": 0.06}
+
+
+def worn_share(color: str, share: float, dark: float | None) -> float:
+    """The share of the scouted color that counts: 0 when `color` is a light one (`DARK_NOT`) and the torso is too dark for it."""
+    limit = DARK_NOT.get(color.strip().lower())
+    return 0.0 if limit is not None and dark is not None and dark > limit else share
+
+
+def dark_share(frame_bgr: np.ndarray, box) -> float:
+    """The share of a man's torso that is near-black (the first bin of `tracklets.jersey_signature`)."""
+    x0, y0, x1, y1 = (int(v) for v in box[:4])
+    h, w = y1 - y0, x1 - x0
+    torso = frame_bgr[max(0, y0 + int(0.18 * h)) : max(0, y0 + int(0.5 * h)), max(0, x0 + int(0.22 * w)) : max(0, x0 + int(0.78 * w))]
+    if torso.size == 0:
+        return 0.0
+    hsv = cv2.cvtColor(torso, cv2.COLOR_BGR2HSV).reshape(-1, 3)
+    sat, val = hsv[:, 1], hsv[:, 2]
+    return float((((sat < 60) | (val < 60)) & (val < 70)).mean())
 
 
 def wear_gate(color: str) -> tuple[float, float]:
@@ -59,7 +86,8 @@ def color_share(frame_bgr: np.ndarray, box, color: str) -> float:
     mask = np.zeros(hsv.shape[:2], np.uint8)
     for lo, hi in COLORS[color]:
         mask |= cv2.inRange(hsv, np.array(lo, np.uint8), np.array(hi, np.uint8))
-    return float((mask > 0).mean())
+    share = float((mask > 0).mean())
+    return worn_share(color, share, dark_share(frame_bgr, box) if color in DARK_NOT else None)
 
 
 def scout_side(frame_bgr: np.ndarray, offense, defense, color: str) -> str | None:

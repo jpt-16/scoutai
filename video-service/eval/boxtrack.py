@@ -56,6 +56,22 @@ SMOOTH_MEAN = 5
 # `STEADY_HEIGHT_FRAMES` either side (a median, so a box cut short behind another man for a few frames doesn't pull it). On plays 8, 34 and
 # 43 that took the frame-to-frame roughness of the receivers' and backs' paths down 35-40% (0.60-0.84 to 0.40-0.55 yd a frame squared).
 STEADY_HEIGHT_FRAMES = 15
+# Seeding after the first frame. Everyone in frame 0 is followed, but a far receiver the detector misses on that one frame (CM vs
+# Andover, a night game: the far side's men were found in about half the frames) was never followed at all: play 66's far receivers ran
+# a post and a comeback in the raw detections and no track held either. So, until `SEED_FRAMES` (the set and the snap: the clip starts a
+# second or so before it), a man in the scouted team's color whom no track continues and no track of his own team stands near
+# (`SEED_CLEAR_YARDS`; a pressed corner a yard off him doesn't count) starts
+# his own track. Only that color: seeding everyone late was tried before and added the crowd, the bench and the referees. A late track
+# that holds under `SEED_MIN_POINTS` matches was a flicker and is dropped.
+SEED_FRAMES = 45
+SEED_CLEAR_YARDS = 2.0
+SEED_MIN_POINTS = 15
+# ...and only on his team's side of the ball (the side most of frame 0's wearers stand on), within this much past the line: on play 43 a
+# red figure 9 yards downfield before the snap started a track that took the slot's boxes when he ran by.
+SEED_PAST_LINE_YARDS = 2.0
+# ...and only outside the box: a late track among the linemen (packed a yard apart) only competes with the men already followed there,
+# and took play 43's slot when he crossed the formation. The late seeds that matter are split receivers.
+SEED_MIN_SPLIT_YARDS = 4.5
 # The share of a torso in the scouted team's color that says he wears it, and the share under which he doesn't.
 WEARS = 0.04
 NOT_WEARS = 0.01
@@ -90,6 +106,8 @@ class BoxTrack:
     boxes: list[tuple[int, Box4]] = field(default_factory=list)
     worn: list[float] = field(default_factory=list)
     missed: int = 0
+    # (frame, person) he was first seen as, when that was after frame 0 (`SEED_FRAMES`); None for the people of frame 0.
+    seeded: tuple[int, int] | None = None
 
     def wears(self, gate: tuple[float, float] = (WEARS, NOT_WEARS)) -> int:
         """+1 if he wears the scouted team's color, -1 if he doesn't, 0 if it can't be told (or no color was given)."""
@@ -131,15 +149,21 @@ def follow_boxes(
     shares: list[list[float]] | None = None,
     locate=None,
     gate: tuple[float, float] = (WEARS, NOT_WEARS),
+    seed_frames: int | None = None,
 ) -> list[BoxTrack]:
     """`boxes[f][j]` is person j of frame f warped onto the snap frame (`warp_boxes`), `per_frame[f][j]` his spot in yards (what the
-    track records), `shares[f][j]` the share of his torso in the scouted team's color (or None). Everyone in frame 0 is followed.
+    track records), `shares[f][j]` the share of his torso in the scouted team's color (or None). Everyone in frame 0 is followed, and anyone in the scouted team's
+    color who turns up unfollowed by `seed_frames` (`SEED_FRAMES`; a track's `seeded` says where).
     `locate(x, y)`: a pixel of the snap frame to yards (offense's view); given, each spot is redone from his box's middle and his
     steady height (`steady_feet`). `gate`: (wears, doesn't) for the scouted team's color (`scoutteam.wear_gate`)."""
+    seed_until = SEED_FRAMES if seed_frames is None else seed_frames
     tracks = [
         BoxTrack(j, per_frame[0][j], [(0, *per_frame[0][j])], [(0, j)], [(0, boxes[0][j])], [shares[0][j]] if shares else [])
         for j in range(len(per_frame[0]))
     ]
+    # Which side of the ball the scouted team is on: +1 behind it (offense), -1 past it, 0 can't tell (then nobody is seeded late).
+    wearers = [y for (_, y), share in zip(per_frame[0], shares[0] if shares else []) if share is not None and share >= gate[0]]
+    their_side = 0 if len(wearers) < 3 else (1 if float(np.median(wearers)) < 0 else -1)
     for f in range(1, len(per_frame)):
         free = set(range(len(per_frame[f])))
         pairs = []
@@ -179,6 +203,23 @@ def follow_boxes(
         for ti, t in enumerate(tracks):
             if ti not in taken:
                 t.missed += 1
+        if shares and their_side and f <= seed_until:
+            for j in sorted(free):
+                if shares[f][j] is None or shares[f][j] < gate[0]:
+                    continue
+                x, y = per_frame[f][j]
+                if y * their_side > SEED_PAST_LINE_YARDS or abs(x) < SEED_MIN_SPLIT_YARDS:
+                    continue
+                # Already followed only by a track that could be him: a corner pressed on a receiver stands within a yard of him.
+                if any(
+                    t.missed <= MAX_MISSED
+                    and not _refused(t, shares[f][j], gate)
+                    and np.hypot(t.points[-1][1] - x, t.points[-1][2] - y) <= SEED_CLEAR_YARDS
+                    for t in tracks
+                ):
+                    continue
+                tracks.append(BoxTrack(len(tracks), (x, y), [(f, x, y)], [(f, j)], [(f, boxes[f][j])], [shares[f][j]], seeded=(f, j)))
+    tracks = [t for t in tracks if t.seeded is None or len(t.matched) >= SEED_MIN_POINTS]
     for t in tracks:
         if locate is not None:
             t.points = steady_feet(t, locate)

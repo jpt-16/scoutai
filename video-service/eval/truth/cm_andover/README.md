@@ -73,5 +73,15 @@ So of 19: 6 far-side men never followed, 4 tracker swaps or losses, 2 letters on
 **clean paths the shape is the coach's route** in most cases (the speed out, both slants, the curl), and the reader's runner-up is right on
 three of them; what loses is depth: this staff's speed out here is 2 yd deep (the tree's is 5) and a slant flattened at 7.
 
-**Needed from the coach** (per play): what X, F, Y, Z and H ran (left to right from the offense's view, H the back), and jersey numbers if
-two are easy to mix up. Then `truth.json` here gets them and `scripts/score-truth.ts` scores the Colab run.
+**Tracking, man by man (after the calibration fix; judged from crops of each track's boxes, not yet hand marks):**
+
+| Play | Followed as himself snap to +3 s | Not followed / wrong |
+| ---- | -------------------------------- | -------------------- |
+| 66 | Y (seam), Z (comeback, to about +2.5 s) | far X and F: boxes flicker out 4-8 frames at a time and the two swap at the snap |
+| 67 | F, Y, Z (the near trips) | far X and H (H's track used to slide onto a navy defender; now it ends instead) |
+| 96 | X (curl), the outside and middle slants | the bunch's inside man (speed out) starts from a back's track; H unclear |
+| 97 | Y, one far receiver's vertical (new) | near Z after 1.9 s, the other far receiver; a sideline coach in white has a short track |
+
+What changed (see CLAUDE.md, twentieth pass): late tracks for split receivers missed on the first frame, and the near-black test that
+keeps navy defenders out of white tracks. **Needed from the coach for real marks:** the jersey number of each receiver and back on these four
+plays (X, F, Y, Z, H), as on plays 8/34/43; then `play_NN_men.json` here and `python -m eval.truth` score every change.

@@ -606,7 +606,13 @@ def follow_two_pass(per_frame, colors, tracker: str, fps: float, signatures=None
             from .boxtrack import follow_boxes
 
             tracks = follow_boxes(boxes[start:], spots, shares[start:] if shares else None, locate, **({"gate": gate} if gate else {}))  # type: ignore[index]
-            labels = labels_for(start, spots[0]) if labels_for else ["offense"] * len(tracks)
+            labels = list(labels_for(start, spots[0])) if labels_for else ["offense"] * len(spots[0])
+            # A track started after the first frame (`boxtrack.SEED_FRAMES`) is named from the frame he was first seen in.
+            labels += ["defense"] * (max((t.id for t in tracks), default=-1) + 1 - len(labels))
+            for t in tracks:
+                if t.seeded is not None:
+                    f, j = t.seeded
+                    labels[t.id] = labels_for(start + f, spots[f])[j] if labels_for else "offense"
         else:
             tracks = follow(spots[0], spots, colors[start:])
             labels = labels_for(start, spots[0]) if labels_for else ["offense"] * len(tracks)

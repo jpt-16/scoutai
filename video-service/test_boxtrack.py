@@ -97,15 +97,57 @@ def test_feet_from_the_box_middle_and_a_steady_height_are_steadier_than_its_bott
 
 
 def test_the_gate_follows_the_scouted_teams_color():
-    """White: the offense reads 0.20-0.42 white, the navy defense up to 0.13 (numbers, towels). With red's gate (0.04 / 0.01) a white
-    receiver's track would take a defender reading 0.08; with white's own gate it refuses him."""
+    """White: a navy defender can read as much white as a receiver (numbers, pants), so `scoutteam.color_share` gives a torso with
+    near-black on it 0 white (`DARK_NOT`), and the gate only has to refuse that; a far, blurred white receiver reading 0.04 white
+    with no near-black (play 66's X) is still him."""
     from eval.scoutteam import wear_gate
 
-    boxes, spots, shares = [], [], []
-    for f in range(30):
-        boxes.append([box(300 + 2 * f, 300)])
-        shares.append([0.3 if f < 10 else 0.08])  # the receiver, then only the defender where he was going
-        spots.append([(float(f), 0.0)])
-    assert max(f for f, _ in follow_boxes(boxes, spots, shares)[0].matched) == 29  # red's gate: taken
-    assert max(f for f, _ in follow_boxes(boxes, spots, shares, gate=wear_gate("white"))[0].matched) == 9
+    def run(later: float) -> int:
+        boxes, spots, shares = [], [], []
+        for f in range(30):
+            boxes.append([box(300 + 2 * f, 300)])
+            shares.append([0.3 if f < 10 else later])
+            spots.append([(float(f), 0.0)])
+        return max(f for f, _ in follow_boxes(boxes, spots, shares, gate=wear_gate("white"))[0].matched)
+
+    assert run(0.0) == 9  # the defender (0 white once his near-black is seen): refused
+    assert run(0.04) == 29  # the receiver, far and blurred: kept
     assert wear_gate("Red") == wear_gate("gold") == (boxtrack.WEARS, boxtrack.NOT_WEARS)
+
+
+def _frame0_with_offense(f):
+    """Three red linemen behind the ball (so the scouted team's side is known) and a gold defender past it."""
+    return (
+        [box(500, 300), box(540, 300), box(580, 300), box(540, 250)],
+        [(-1.0, -1.0), (0.0, -1.0), (1.0, -1.0), (0.0, 4.0)],
+        [0.4, 0.4, 0.4, 0.0],
+    )
+
+
+def test_a_split_receiver_the_detector_missed_on_frame_0_is_followed_from_when_he_turns_up():
+    """Play 66's far X was missed on the first frame and so never followed. A receiver in the scouted color, split wide on the
+    offense's side of the ball, who turns up at frame 5 gets his own track from there; one standing 9 yards past the line, or one
+    among the linemen, does not."""
+    boxes, spots, shares = [], [], []
+    for f in range(40):
+        b, s, sh = _frame0_with_offense(f)
+        if f >= 5:
+            b, s, sh = b + [box(150 + 2 * f, 280)], s + [(-12.0, 0.1 * f)], sh + [0.3]  # the receiver
+            b, s, sh = b + [box(900, 200)], s + [(8.0, 9.0)], sh + [0.3]  # red, but past the line
+        boxes.append(b), spots.append(s), shares.append(sh)
+    tracks = follow_boxes(boxes, spots, shares)
+    late = [t for t in tracks if t.seeded is not None]
+    assert len(late) == 1
+    assert late[0].seeded == (5, 4) and len(late[0].matched) == 35
+    # Seeding stops after `SEED_FRAMES`.
+    assert not [t for t in follow_boxes(boxes, spots, shares, seed_frames=3) if t.seeded is not None]
+
+
+def test_a_late_flicker_is_not_kept():
+    boxes, spots, shares = [], [], []
+    for f in range(40):
+        b, s, sh = _frame0_with_offense(f)
+        if 5 <= f < 9:
+            b, s, sh = b + [box(150, 280)], s + [(-12.0, 0.0)], sh + [0.3]
+        boxes.append(b), spots.append(s), shares.append(sh)
+    assert not [t for t in follow_boxes(boxes, spots, shares) if t.seeded is not None]
