@@ -44,6 +44,11 @@ GAP_GROWTH = 0.6
 # leapt 30-40 yards (play 97's sideline coach onto a back, play 66 across the field). At 3 the seven plays keep 150 of 156 marks and
 # offense tracks with a leap faster than 24 yd/s go from 6 to 3 (1 to 2 heights: 147-148 marks, 2 leaps).
 GAP_MAX_HEIGHTS = 3.0
+# ...and on the field, no further from where he was last seen than a man can run in the time (a box height is about 2 yards along the
+# field but many more across it, up and down the picture: play 66's near receiver's track jumped 19 yards across within the height cap):
+# `GAP_YARDS` for a far box's jitter, plus `GAP_YARDS_PER_FRAME` (0.35: 10.5 yd/s) for every frame since.
+GAP_YARDS = 2.5
+GAP_YARDS_PER_FRAME = 0.35
 # A track missing for this many frames is dropped (as `tracks.MAX_MISSED`).
 MAX_MISSED = 45
 # His box's speed is read over this many of his last matches, once he has `VELOCITY_MIN_POINTS`, and projected at most `MAX_AHEAD` frames.
@@ -76,6 +81,7 @@ SEED_MIN_POINTS = 15
 # ...and only on his team's side of the ball (the side most of frame 0's wearers stand on), within this much past the line: on play 43 a
 # red figure 9 yards downfield before the snap started a track that took the slot's boxes when he ran by.
 SEED_PAST_LINE_YARDS = 2.0
+SIDE_MIN_GAP = 0.05  # how much more of the color one side has to wear to be called the scouted team's
 # ...and only outside the box: a late track among the linemen (packed a yard apart) only competes with the men already followed there,
 # and took play 43's slot when he crossed the formation. The late seeds that matter are split receivers.
 SEED_MIN_SPLIT_YARDS = 4.5
@@ -168,9 +174,16 @@ def follow_boxes(
         BoxTrack(j, per_frame[0][j], [(0, *per_frame[0][j])], [(0, j)], [(0, boxes[0][j])], [shares[0][j]] if shares else [])
         for j in range(len(per_frame[0]))
     ]
-    # Which side of the ball the scouted team is on: +1 behind it (offense), -1 past it, 0 can't tell (then nobody is seeded late).
-    wearers = [y for (_, y), share in zip(per_frame[0], shares[0] if shares else []) if share is not None and share >= gate[0]]
-    their_side = 0 if len(wearers) < 3 else (1 if float(np.median(wearers)) < 0 else -1)
+    # Which side of the ball the scouted team is on: +1 behind it (offense), -1 past it, 0 can't tell (then nobody is seeded late). The
+    # group that wears more of the color, the men behind the ball or the men past it (counting only those who stand where the two
+    # teams line up); the middle of the wearers alone came out backwards on play 66, where the sideline past the line wore white too.
+    near = [(y, share) for (x, y), share in zip(per_frame[0], shares[0] if shares else []) if share is not None and abs(y) <= 12 and abs(x) <= 25]
+    behind = [share for y, share in near if y < -0.5]
+    past = [share for y, share in near if y > 0.5]
+    their_side = 0
+    if len(behind) >= 3 and len(past) >= 3:
+        gap = float(np.mean(behind)) - float(np.mean(past))
+        their_side = 1 if gap > SIDE_MIN_GAP else -1 if gap < -SIDE_MIN_GAP else 0
     for f in range(1, len(per_frame)):
         free = set(range(len(per_frame[f])))
         pairs = []
@@ -192,6 +205,11 @@ def follow_boxes(
                     if off > min(GAP_SLACK * (1 + GAP_GROWTH * t.missed), GAP_MAX_HEIGHTS):
                         continue
                     overlap = MIN_IOU * (1 - off)
+                if t.missed:
+                    lf, lx, ly = t.points[-1]
+                    px, py = per_frame[f][j]
+                    if np.hypot(px - lx, py - ly) > GAP_YARDS + GAP_YARDS_PER_FRAME * (f - lf):
+                        continue
                 pairs.append((-overlap, ti, j))
         pairs.sort()
         taken: set[int] = set()

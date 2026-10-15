@@ -53,10 +53,10 @@ def test_after_a_gap_he_is_found_near_where_he_was_heading_but_not_a_box_height_
         elif f >= 13:
             # him, a few pixels on from where he was going, and someone else a box height away
             boxes.append([box(300 + 3 * f + 4, 300), box(300 + 3 * f + 60, 300)])
-            spots.append([(float(f), 0.0), (float(f) + 3, 0.0)])
+            spots.append([(0.25 * f, 0.0), (0.25 * f + 3, 0.0)])  # 7.5 yd/s
         else:
             boxes.append([box(300 + 3 * f, 300)])
-            spots.append([(float(f), 0.0)])
+            spots.append([(0.25 * f, 0.0)])
     track = follow_boxes(boxes, spots)[0]
     later = [j for f, j in track.matched if f >= 13]
     assert later and set(later) == {0}
@@ -116,11 +116,11 @@ def test_the_gate_follows_the_scouted_teams_color():
 
 
 def _frame0_with_offense(f):
-    """Three red linemen behind the ball (so the scouted team's side is known) and a gold defender past it."""
+    """Three red linemen behind the ball and three gold defenders past it (so the scouted team's side is known)."""
     return (
-        [box(500, 300), box(540, 300), box(580, 300), box(540, 250)],
-        [(-1.0, -1.0), (0.0, -1.0), (1.0, -1.0), (0.0, 4.0)],
-        [0.4, 0.4, 0.4, 0.0],
+        [box(500, 300), box(540, 300), box(580, 300), box(500, 230), box(540, 230), box(580, 230)],
+        [(-1.0, -1.0), (0.0, -1.0), (1.0, -1.0), (-1.0, 4.0), (0.0, 4.0), (1.0, 4.0)],
+        [0.4, 0.4, 0.4, 0.0, 0.0, 0.0],
     )
 
 
@@ -138,7 +138,7 @@ def test_a_split_receiver_the_detector_missed_on_frame_0_is_followed_from_when_h
     tracks = follow_boxes(boxes, spots, shares)
     late = [t for t in tracks if t.seeded is not None]
     assert len(late) == 1
-    assert late[0].seeded == (5, 4) and len(late[0].matched) == 35
+    assert late[0].seeded == (5, 6) and len(late[0].matched) == 35
     # Seeding stops after `SEED_FRAMES`.
     assert not [t for t in follow_boxes(boxes, spots, shares, seed_frames=3) if t.seeded is not None]
 
@@ -151,3 +151,30 @@ def test_a_late_flicker_is_not_kept():
             b, s, sh = b + [box(150, 280)], s + [(-12.0, 0.0)], sh + [0.3]
         boxes.append(b), spots.append(s), shares.append(sh)
     assert not [t for t in follow_boxes(boxes, spots, shares) if t.seeded is not None]
+
+
+def test_seeding_waits_until_it_knows_which_side_of_the_ball_the_scouted_team_is_on():
+    """Both sides wearing the color about the same (or too few on either side): nobody is seeded late."""
+    boxes, spots, shares = [], [], []
+    for f in range(40):
+        b, s, sh = _frame0_with_offense(f)
+        sh = [0.4] * len(sh)  # everyone in the color: can't tell
+        if f >= 5:
+            b, s, sh = b + [box(150 + 2 * f, 280)], s + [(-12.0, 0.1 * f)], sh + [0.3]
+        boxes.append(b), spots.append(s), shares.append(sh)
+    assert not [t for t in follow_boxes(boxes, spots, shares) if t.seeded is not None]
+
+
+def test_a_track_lost_for_a_few_frames_is_not_picked_up_by_a_box_yards_further_than_he_could_run():
+    """The box overlaps where he was heading (a tall near-side box, the window in box heights is wide), but on the field it is 15 yards
+    from where he was last seen 6 frames ago: not him."""
+    boxes, spots = [], []
+    for f in range(20):
+        if f < 10:
+            boxes.append([box(300, 300, 150)]); spots.append([(20.0, float(f) * 0.2)])
+        elif f < 16:
+            boxes.append([]); spots.append([])
+        else:
+            boxes.append([box(320, 300, 150)]); spots.append([(5.0, 2.0)])  # a box nearby in the picture, 15 yd away on the field
+    track = follow_boxes(boxes, spots)[0]
+    assert max(f for f, _ in track.matched) == 9
