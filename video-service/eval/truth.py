@@ -4,7 +4,7 @@
 
 Route names say whether the whole chain worked; this says whether the tracker did. A truth file marks where each
 receiver really was at a few frames (yards from the ball, offense's view; see `truth/play_05.json`). His track is
-the one nearest his first mark at that frame; a later mark counts as right when that track is within `HIT_YARDS` of it
+the one on him at the first of his marks where any track is (earlier marks count as missing); a later mark counts as right when that track is within `HIT_YARDS` of it
 (within two frames), wrong when the track is somewhere else, and missing when the track has ended or skipped it.
 
 With the run's saved detections (`--dump`), each man also gets how often the detector found him at all: a raw box (any team,
@@ -71,25 +71,35 @@ def score(tracks: dict, truth: dict) -> tuple[int, int, list[str]]:
     lines = []
     for name, marks in truth["men"].items():
         frames = sorted((int(k), v) for k, v in marks.items())
-        (_, (x0, y0)), later = frames[0], frames[1:]
-        f0 = frames[0][0]
 
-        def gap_at_first(t) -> float:
-            # Where the track was at his first mark (a track may start after frame 0: `boxtrack.SEED_FRAMES`); a track not there
-            # then is scored by where it started, behind every track that was.
-            near = [np.hypot(x - x0, y - y0) for s, x, y in t["points"] if abs(round(s * fps) - f0) <= NEAR_FRAMES]
-            return min(near) if near else 1000 + float(np.hypot(t["points"][0][1] - x0, t["points"][0][2] - y0))
+        def at(t, f: int):
+            near = [(abs(round(s * fps) - f), x, y) for s, x, y in t["points"] if abs(round(s * fps) - f) <= NEAR_FRAMES]
+            return min(near)[1:] if near else None
 
-        own = min(offense, key=gap_at_first)
-        row = []
-        for f, (gx, gy) in later:
+        # His track: the one on him (within `HIT_YARDS`) at the first of his marks where any track is. A mark in a gap (the
+        # detector missed him that frame) doesn't hand him to whatever track happens to be nearest, yards away.
+        own, start = None, len(frames)
+        for i, (f, (gx, gy)) in enumerate(frames):
+            on = [(float(np.hypot(p[0] - gx, p[1] - gy)), t) for t in offense if (p := at(t, f)) is not None]
+            on = [q for q in on if q[0] <= HIT_YARDS]
+            if on:
+                own, start = min(on, key=lambda q: q[0])[1], i
+                break
+        # Every mark after the first is scored, as before: the ones before he is pinned are missing, the pinning one (when it
+        # isn't the first) is right.
+        row = [f"{f}:missing" for f, _ in frames[1:start]]
+        total += min(start, len(frames)) - 1 if start > 0 else 0
+        if own is not None and start > 0:
+            row.append(f"{frames[start][0]}:right")
+            right += 1
             total += 1
-            near = [(abs(round(s * fps) - f), x, y) for s, x, y in own["points"] if abs(round(s * fps) - f) <= NEAR_FRAMES]
-            if not near:
+        for f, (gx, gy) in frames[max(start, 0) + 1 :] if own is not None else []:
+            total += 1
+            p = at(own, f)
+            if p is None:
                 row.append(f"{f}:missing")
                 continue
-            _, x, y = min(near)
-            hit = np.hypot(x - gx, y - gy) <= HIT_YARDS
+            hit = np.hypot(p[0] - gx, p[1] - gy) <= HIT_YARDS
             right += hit
             row.append(f"{f}:{'right' if hit else 'wrong'}")
         lines.append(f"{name}: " + " ".join(row))
