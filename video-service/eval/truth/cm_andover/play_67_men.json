@@ -1,0 +1,123 @@
+{
+ "play": "CM vs Andover play 67 (white offense); routes per the coach, left to right in truth.json.",
+ "about": "Where each receiver really was (frames of the tracked clip, 30 fps, frame 0 = the calibrated frame in play_67.json), in yards from the ball in the offense's view. No jersey numbers: the far side's are unreadable at this resolution. Each man was followed by eye: either a tracker track whose box crops show his white jersey every half second, or a chain of raw detector boxes checked the same way. Marks stop where two receivers can't be told apart. X (far, the go) unmarked: no white box follows him from the snap; the box at his spot stands still (a sideline figure).",
+ "snap": 16,
+ "men": {
+  "H": {
+   "16": [
+    -12.7,
+    -0.4
+   ],
+   "30": [
+    -10.2,
+    0.7
+   ],
+   "48": [
+    -7.6,
+    1.9
+   ],
+   "76": [
+    -6.5,
+    6.3
+   ],
+   "91": [
+    -3.9,
+    8.4
+   ],
+   "106": [
+    -4.4,
+    10.8
+   ]
+  },
+  "F": {
+   "16": [
+    13.1,
+    -2.0
+   ],
+   "31": [
+    13.1,
+    -0.3
+   ],
+   "46": [
+    14.3,
+    1.2
+   ],
+   "61": [
+    16.5,
+    1.8
+   ],
+   "76": [
+    21.8,
+    2.0
+   ],
+   "91": [
+    24.5,
+    1.8
+   ],
+   "106": [
+    26.8,
+    1.6
+   ]
+  },
+  "Y": {
+   "16": [
+    17.5,
+    -0.5
+   ],
+   "31": [
+    16.9,
+    1.4
+   ],
+   "46": [
+    16.4,
+    4.2
+   ],
+   "61": [
+    14.2,
+    7.0
+   ],
+   "76": [
+    11.9,
+    9.2
+   ],
+   "91": [
+    12.9,
+    10.0
+   ],
+   "106": [
+    12.0,
+    10.0
+   ]
+  },
+  "Z": {
+   "16": [
+    24.7,
+    -1.8
+   ],
+   "31": [
+    24.6,
+    -0.6
+   ],
+   "46": [
+    24.0,
+    1.7
+   ],
+   "61": [
+    24.2,
+    4.2
+   ],
+   "76": [
+    20.5,
+    5.9
+   ],
+   "91": [
+    17.6,
+    6.7
+   ],
+   "106": [
+    15.7,
+    7.0
+   ]
+  }
+ }
+}

@@ -83,5 +83,10 @@ three of them; what loses is depth: this staff's speed out here is 2 yd deep (th
 | 97 | Y, one far receiver's vertical (new) | near Z after 1.9 s, the other far receiver; a sideline coach in white has a short track |
 
 What changed (see CLAUDE.md, twentieth pass): late tracks for split receivers missed on the first frame, and the near-black test that
-keeps navy defenders out of white tracks. **Needed from the coach for real marks:** the jersey number of each receiver and back on these four
-plays (X, F, Y, Z, H), as on plays 8/34/43; then `play_NN_men.json` here and `python -m eval.truth` score every change.
+keeps navy defenders out of white tracks. **Hand marks (`play_NN_men.json`), without jersey numbers:** the far side's numbers can't be read at this resolution (by a coach
+or a computer), so each man was followed by eye: a track whose box crops show his white jersey every half second, or a chain of raw
+detector boxes checked the same way, stopping where two receivers can't be told apart. 15 men, 67 marks: 66 X (to +1.5 s), Y, Z (to
++2.5 s); 67 H, F, Y, Z; 96 X, Y, Z; 97 Y, Z (to +2.5 s), F. Not marked: 66 F, 67 X, 96 F and H, 97 X and H. The near-side marks came
+from tracks checked by eye, so today's tracker scores well on them by construction: they guard against regressions, and the far men
+and the gaps are the test. Scored with `python -m eval.truth tracks.json play_NN_men.json --dump <detections> --calibration play_NN.json`,
+which also says how often the detector had a box on each man (77 of 80 marks here: the misses are the tracker's).
