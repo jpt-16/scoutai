@@ -30,6 +30,10 @@ import {
 export interface TrackedPlayer {
   id: number;
   team: "offense" | "defense";
+  /** The letter a coach tapped him as (`eval/taps.py`): X, F, Y, Z, H or Q. */
+  letter?: string;
+  /** Other letters tapped on this same man (two receivers the detector sees as one box): only the first can be followed. */
+  alsoTapped?: string[];
   /** Yards from the ball at the snap. */
   start: [number, number];
   /** Seconds after the snap, then x, y in yards. */
@@ -386,16 +390,22 @@ export function detectionFromTracks(
 ): { detection: DetectedPlay; reads: RawRead[] } {
   const snap = snapTime(file);
   const followed = fromTheSnap(file).tracks.filter((t) => t.team === "offense" && t.points.length >= 2);
-  const qb = pickQuarterback(followed);
+  // With a coach's taps (`letter` on a track) the skill men are exactly the men he tapped: nobody else (a sideline coach in the team's
+  // color, a stray track) gets a route, and each keeps the letter he was tapped as.
+  const tapped = followed.some((t) => t.letter);
+  const qb = (tapped ? followed.find((t) => t.letter === "Q") : undefined) ?? pickQuarterback(followed);
   const cutoff = lineCutoff(followed);
   // Everyone but the quarterback is read only up to where his track jumped to another man. Linemen stand a
   // yard apart, so the one-man-twice check is made among the skill players only.
   const trimmed = followed
     .map((t) => (qb && t.id === qb.id ? t : { ...t, points: trimAtJump(t.points) }))
     .filter((t) => t.points.length >= 2);
+  const isTappedSkill = (t: TrackedPlayer) => !!t.letter && t.letter !== "Q";
   const offense = [
-    ...trimmed.filter((t) => (qb && t.id === qb.id) || isLineman(t, cutoff)),
-    ...dropSameMan(trimmed.filter((t) => !(qb && t.id === qb.id) && !isLineman(t, cutoff))),
+    ...trimmed.filter((t) => (qb && t.id === qb.id) || (!isTappedSkill(t) && isLineman(t, cutoff))),
+    // Tapped men are each his own man (a coach said so), so the one-man-twice check is for the untapped only.
+    ...trimmed.filter((t) => isTappedSkill(t) && !(qb && t.id === qb.id)),
+    ...(tapped ? [] : dropSameMan(trimmed.filter((t) => !(qb && t.id === qb.id) && !isLineman(t, cutoff)))),
   ];
   const players: DetectedPlayer[] = [];
   const reads: RawRead[] = [];
@@ -406,7 +416,7 @@ export function detectionFromTracks(
       players.push({ label: "Q", start, waypoints: [], endpoint: start, routeType: "NONE" });
       continue;
     }
-    if (isLineman(t, cutoff)) continue;
+    if (!isTappedSkill(t) && isLineman(t, cutoff)) continue;
     const window = t.points.filter(([s]) => s <= t.points[0][0] + ROUTE_SECONDS);
     const route = untilHeSits(window);
     const path = route.map(([, x, y]) => ({ x, y }));
@@ -422,7 +432,8 @@ export function detectionFromTracks(
         : raw;
     const motion = motionFromTrack(file.tracks.find((o) => o.id === t.id) ?? t, snap);
     const player: DetectedPlayer = {
-      label: "?",
+      label: isTappedSkill(t) ? (t.letter as string) : "?",
+      ...(isTappedSkill(t) ? { tapped: true } : {}),
       start,
       ...(motion ? { motionFrom: motion } : {}),
       waypoints: path.slice(1, -1),
@@ -566,6 +577,17 @@ export function cardFromTracks(
     return letter ? [{ letter, kind: r.kind, confidence: r.confidence, runnerUp: r.runnerUp, seen: r.seen }] : [];
   });
   const unsure = reads.filter((r) => r.kind === "unknown" || (r.kind !== "block" && r.confidence < SURE_CONFIDENCE));
+  // A man the coach tapped who has no path (his track was lost before the snap, or nobody was found at his tap) is said, not skipped.
+  const tappedNotes = (() => {
+    const tappedMen = file.tracks.filter((t) => t.letter && t.letter !== "Q");
+    const drawn = new Set(reads.map((r) => r.letter));
+    const missing = [...new Set(tappedMen.map((t) => t.letter as string))].filter((l) => !drawn.has(l));
+    const stacked = tappedMen.flatMap((t) => (t.alsoTapped ?? []).map((l) => `${l} (with ${t.letter})`));
+    return [
+      missing.length ? `Tapped, but the film has no path for: ${missing.join(", ")}.` : "",
+      stacked.length ? `Tapped on one man the film couldn't tell apart: ${stacked.join(", ")}.` : "",
+    ].filter(Boolean);
+  })();
   const trust = opts.trustFilmRoutes ?? FILM_ROUTES_PROVEN;
   const notesOf = (card: HudlPlayCard, ...more: string[]) => [card.notes.trim(), ...more].filter(Boolean).join(" ");
   if (!names) {
@@ -574,6 +596,7 @@ export function cardFromTracks(
     const note = [
       "Routes drawn as tracked on film.",
       lost.length ? `Lost early on film, check: ${lost.map((r) => `${r.letter} (${r.seen.toFixed(1)} s)`).join(", ")}.` : "",
+      ...tappedNotes,
     ].filter(Boolean).join(" ");
     // What to check is who the film lost, not a name it wasn't sure of.
     return { card: deriveCard({ ...built, notes: notesOf(built, note) }), reads, unsure: lost };

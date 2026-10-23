@@ -121,9 +121,15 @@ class BoxTrack:
     missed: int = 0
     # (frame, person) he was first seen as, when that was after frame 0 (`SEED_FRAMES`); None for the people of frame 0.
     seeded: tuple[int, int] | None = None
+    # The letter a coach tapped him as (`taps.py`): X, F, Y, Z, H or Q. `shared`: other letters tapped on the same man (a stack the
+    # detector sees as one box), which this track can only follow once.
+    label: str | None = None
+    shared: list[str] = field(default_factory=list)
 
     def wears(self, gate: tuple[float, float] = (WEARS, NOT_WEARS)) -> int:
         """+1 if he wears the scouted team's color, -1 if he doesn't, 0 if it can't be told (or no color was given)."""
+        if self.label:
+            return 1  # a coach tapped him: he is the scouted team's, whatever a blurred first few boxes read
         if not self.worn:
             return 0
         m = float(np.median(self.worn))
@@ -163,17 +169,25 @@ def follow_boxes(
     locate=None,
     gate: tuple[float, float] = (WEARS, NOT_WEARS),
     seed_frames: int | None = None,
+    forced: list[tuple[int, int, str]] | None = None,
 ) -> list[BoxTrack]:
     """`boxes[f][j]` is person j of frame f warped onto the snap frame (`warp_boxes`), `per_frame[f][j]` his spot in yards (what the
     track records), `shares[f][j]` the share of his torso in the scouted team's color (or None). Everyone in frame 0 is followed, and anyone in the scouted team's
     color who turns up unfollowed by `seed_frames` (`SEED_FRAMES`; a track's `seeded` says where).
+    `forced`: `(frame, person, letter)` a coach tapped (`taps.resolve`): that man gets a track with his letter (the one that already
+    follows him is named, else one is started there, whatever his jersey says), and it stays however short it turns out.
     `locate(x, y)`: a pixel of the snap frame to yards (offense's view); given, each spot is redone from his box's middle and his
     steady height (`steady_feet`). `gate`: (wears, doesn't) for the scouted team's color (`scoutteam.wear_gate`)."""
     seed_until = SEED_FRAMES if seed_frames is None else seed_frames
+    forced_at: dict[int, list[tuple[int, str]]] = {}
+    for ff, jj, letter in forced or []:
+        forced_at.setdefault(ff, []).append((jj, letter))
     tracks = [
         BoxTrack(j, per_frame[0][j], [(0, *per_frame[0][j])], [(0, j)], [(0, boxes[0][j])], [shares[0][j]] if shares else [])
         for j in range(len(per_frame[0]))
     ]
+    for jj, letter in forced_at.get(0, []):
+        _name(tracks[jj], letter)
     # Which side of the ball the scouted team is on: +1 behind it (offense), -1 past it, 0 can't tell (then nobody is seeded late). The
     # group that wears more of the color, the men behind the ball or the men past it (counting only those who stand where the two
     # teams line up); the middle of the wearers alone came out backwards on play 66, where the sideline past the line wore white too.
@@ -213,9 +227,11 @@ def follow_boxes(
                 pairs.append((-overlap, ti, j))
         pairs.sort()
         taken: set[int] = set()
+        taker: dict[int, int] = {}
         for _, ti, j in pairs:
             if ti in taken or j not in free:
                 continue
+            taker[j] = ti
             t = tracks[ti]
             t.points.append((f, *per_frame[f][j]))
             t.matched.append((f, j))
@@ -228,6 +244,27 @@ def follow_boxes(
         for ti, t in enumerate(tracks):
             if ti not in taken:
                 t.missed += 1
+        for jj, letter in forced_at.get(f, []):
+            if jj in taker:
+                _name(tracks[taker[jj]], letter)
+            elif jj in free and (heir := _lost_track_near(tracks, f, per_frame[f][jj], shares[f][jj] if shares else None, gate)) is not None:
+                # He is the man a track lost a moment ago: the tap continues that track (his whole play on one track), not a second one.
+                heir.points.append((f, *per_frame[f][jj]))
+                heir.matched.append((f, jj))
+                heir.boxes.append((f, boxes[f][jj]))
+                if shares and shares[f][jj] is not None:
+                    heir.worn.append(shares[f][jj])
+                heir.missed = 0
+                heir.label = letter
+                free.discard(jj)
+            elif jj in free:
+                tracks.append(
+                    BoxTrack(
+                        len(tracks), per_frame[f][jj], [(f, *per_frame[f][jj])], [(f, jj)], [(f, boxes[f][jj])],
+                        [shares[f][jj]] if shares and shares[f][jj] is not None else [], seeded=(f, jj), label=letter,
+                    )
+                )
+                free.discard(jj)
         if shares and their_side and f <= seed_until:
             for j in sorted(free):
                 if shares[f][j] is None or shares[f][j] < gate[0]:
@@ -244,12 +281,34 @@ def follow_boxes(
                 ):
                     continue
                 tracks.append(BoxTrack(len(tracks), (x, y), [(f, x, y)], [(f, j)], [(f, boxes[f][j])], [shares[f][j]], seeded=(f, j)))
-    tracks = [t for t in tracks if t.seeded is None or len(t.matched) >= SEED_MIN_POINTS]
+    tracks = [t for t in tracks if t.label or t.seeded is None or len(t.matched) >= SEED_MIN_POINTS]
     for t in tracks:
         if locate is not None:
             t.points = steady_feet(t, locate)
         t.points = smoothed(t.points)
     return tracks
+
+
+def _lost_track_near(tracks: list[BoxTrack], f: int, spot: tuple[float, float], share: float | None, gate) -> BoxTrack | None:
+    """The unnamed track that lost its man within the last `MAX_MISSED` frames and could have run to `spot` since (the same yards rule as
+    after any miss), the nearest if several."""
+    best = None
+    for t in tracks:
+        if t.label or not t.missed or t.missed > MAX_MISSED:
+            continue  # (no jersey check: the coach said this man is his, and a far blurred man's first boxes can read as a dark jersey)
+        lf, lx, ly = t.points[-1]
+        d = float(np.hypot(spot[0] - lx, spot[1] - ly))
+        if d <= GAP_YARDS + GAP_YARDS_PER_FRAME * (f - lf) and (best is None or d < best[0]):
+            best = (d, t)
+    return best[1] if best else None
+
+
+def _name(track: BoxTrack, letter: str) -> None:
+    """A coach's tap names this track; a second tap on the same man (a stack seen as one box) is kept in `shared`."""
+    if track.label is None or track.label == letter:
+        track.label = letter
+    elif letter not in track.shared:
+        track.shared.append(letter)
 
 
 def steady_feet(track: BoxTrack, locate) -> list[tuple[int, float, float]]:

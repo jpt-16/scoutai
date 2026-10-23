@@ -33,7 +33,7 @@ MOMENTS = (None, 0.0, 1.5, 3.0)  # None = the first frame; the rest are seconds 
 SHEET_WIDTH = 2400
 
 
-def play_tracks(dump: dict, frames: list[np.ndarray], scout_color: str = "red", tracker: str = TRACKER) -> dict:
+def play_tracks(dump: dict, frames: list[np.ndarray], scout_color: str = "red", tracker: str = TRACKER, taps=None) -> dict:
     """The replayed tracker with offense / defense named from the film's jersey colors."""
     from .scoutteam import COLORS, color_share
 
@@ -45,7 +45,7 @@ def play_tracks(dump: dict, frames: list[np.ndarray], scout_color: str = "red", 
     def shares_from(k: int, box):
         return color_share(frames[k], box, scout_color)
 
-    return replay(dump, tracker, None, labels_for, shares_from if scout_color in COLORS else None)
+    return replay(dump, tracker, None, labels_for, shares_from if scout_color in COLORS else None, taps)
 
 
 def with_calibration(dump: dict, cal: dict) -> dict:
@@ -98,6 +98,7 @@ def main() -> None:
     ap.add_argument("--out", type=Path, default=Path("label"))
     ap.add_argument("--scout-color", default="red", help="the jersey color of the team being scouted")
     ap.add_argument("--calibration", type=Path, help="a better calibration of the same frame (the clip's .json): replaces the dump's")
+    ap.add_argument("--taps", type=Path, help="a coach's taps (eval/taps.py): the men tapped get their letters and tracks")
     ap.add_argument("--tracks", type=Path, help="also write the replayed play here as a tracks file (<clip>.json)")
     args = ap.parse_args()
     dump = json.loads(args.dump.read_text())
@@ -106,7 +107,12 @@ def main() -> None:
     cap = cv2.VideoCapture(str(args.clip))
     cap.set(cv2.CAP_PROP_POS_FRAMES, args.start)
     frames = [cap.read()[1] for _ in range(len(dump["raw"]))]
-    out = play_tracks(dump, frames, args.scout_color)
+    from .taps import load_taps
+
+    taps = load_taps(args.taps, args.start) if args.taps else None
+    out = play_tracks(dump, frames, args.scout_color, taps=taps)
+    for note in out.get("tap_notes", []):
+        print("tap:", note)
     fps = dump.get("fps", 30.0)
     tracks, labels, boxes = out["tracks"], out["labels"], out["boxes"]
     to_snap = [np.array(m) for m in dump["to_snap"]]

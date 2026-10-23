@@ -69,6 +69,8 @@ export interface DetectedPlayer {
   endpoint: PercentPoint;
   /** Free-text route name the model guessed ("SLANT"), shown as a tag on the card. */
   routeType?: string;
+  /** A coach tapped him ("this is X", `eval/taps.py`): `label` is his letter, said by a person, so it is kept (a vision model's is not). */
+  tapped?: boolean;
   /** He was in motion before the snap: where he stood before it (yards, like `start`, which is where he ended up). */
   motionFrom?: PercentPoint;
 }
@@ -252,6 +254,9 @@ const FILM_PATH_MAX_POINTS = 3;
  * the slot took the outside man's letter. Unmatched detections are dropped
  * rather than guessed.
  */
+/** The skill letters a coach can tap a man as (the quarterback's "Q" is handled on its own). */
+export const TAPPED_LETTERS = new Set(["X", "F", "Y", "Z", "H"]);
+
 export function matchDetectedLetters(detection: DetectedPlay, card: HudlPlayCard): Map<DetectedPlayer, string> {
   const players = buildDiagram({ ...card, routeOverrides: undefined }, "team", "offense").players.filter(
     (p) => p.label && p.label !== "Q",
@@ -261,12 +266,20 @@ export function matchDetectedLetters(detection: DetectedPlay, card: HudlPlayCard
   const spots = players.map((p) => ({ label: p.label, x: (p.x - ballX) / YARD_X, y: (FIELD.los - p.y) / YARD_PX }));
   const result = new Map<DetectedPlayer, string>();
   const taken = new Set<string>();
+  // A man a coach tapped ("this is X") already has his letter (`TAPPED_LETTERS`: the tracker's `taps.py` names him): it is kept whatever
+  // the spots say, and nobody else can take it.
+  for (const p of detection.players) {
+    if (p.tapped && TAPPED_LETTERS.has(p.label) && !taken.has(p.label)) {
+      result.set(p, p.label);
+      taken.add(p.label);
+    }
+  }
   // A card that already carries this detection's spots (`detectionSpots`, the first match, made on the card as it was) keeps
   // those letters: matched again against the card as drawn from them, a man moved off a lineman or a hash-spread receiver can
   // land beside another and the two swap (real play 43: Y was drawn out level with Z and took Z's corner).
   if (detection.units === "yards" && card.offenseSpots) {
     for (const p of detection.players) {
-      if (p.label === "Q") continue;
+      if (p.label === "Q" || result.has(p)) continue;
       const same = Object.entries(card.offenseSpots).filter(
         ([, s]) => s && Math.abs(s.x - Math.round(p.start.x * 10) / 10) < 0.01 && Math.abs(s.y - Math.round(p.start.y * 10) / 10) < 0.01,
       );

@@ -589,7 +589,7 @@ def _shift(tracks, by: int) -> None:
         t.matched = [(f + by, j) for f, j in t.matched]
 
 
-def follow_two_pass(per_frame, colors, tracker: str, fps: float, signatures=None, labels_for=None, boxes=None, shares=None, locate=None, gate=None):
+def follow_two_pass(per_frame, colors, tracker: str, fps: float, signatures=None, labels_for=None, boxes=None, shares=None, locate=None, gate=None, forced=None):
     """(tracks, labels): the play followed from the set, then again from just before the snap (see above). `labels_for(frame, spots)`
     names each person at that frame "offense" / "defense" for the frame-to-frame trackers (the tracklet tracker names its own).
     The "boxes" tracker needs `boxes[f][j]`, each person's box warped onto the snap frame (`boxtrack.warp_boxes`), and takes
@@ -605,7 +605,7 @@ def follow_two_pass(per_frame, colors, tracker: str, fps: float, signatures=None
         elif tracker == "boxes":
             from .boxtrack import follow_boxes
 
-            tracks = follow_boxes(boxes[start:], spots, shares[start:] if shares else None, locate, **({"gate": gate} if gate else {}))  # type: ignore[index]
+            tracks = follow_boxes(boxes[start:], spots, shares[start:] if shares else None, locate, **({"gate": gate} if gate else {}), **({"forced": forced} if forced and start == 0 else {}))  # type: ignore[index]
             labels = list(labels_for(start, spots[0])) if labels_for else ["offense"] * len(spots[0])
             # A track started after the first frame (`boxtrack.SEED_FRAMES`) is named from the frame he was first seen in.
             labels += ["defense"] * (max((t.id for t in tracks), default=-1) + 1 - len(labels))
@@ -613,6 +613,8 @@ def follow_two_pass(per_frame, colors, tracker: str, fps: float, signatures=None
                 if t.seeded is not None:
                     f, j = t.seeded
                     labels[t.id] = labels_for(start + f, spots[f])[j] if labels_for else "offense"
+                if t.label:  # a coach tapped him: he is the offense, whatever his jersey or his spot says
+                    labels[t.id] = "offense"
         else:
             tracks = follow(spots[0], spots, colors[start:])
             labels = labels_for(start, spots[0]) if labels_for else ["offense"] * len(tracks)
@@ -756,6 +758,9 @@ def tracks_result(tracks, labels, colors, fps: float, scout: dict | None) -> dic
             "id": t.id,
             "team": labels[t.id],
             "start": [round(t.start[0], 2), round(t.start[1], 2)],
+            # The letter a coach tapped him as (`taps.py`), and any others tapped on the same man.
+            **({"letter": t.label} if getattr(t, "label", None) else {}),
+            **({"alsoTapped": list(t.shared)} if getattr(t, "shared", None) else {}),
             "points": [[round(f / fps, 3), round(x, 2), round(y, 2)] for f, x, y in t.points],
             # The jersey color (Lab L, a, b) at each point, so a swap to the other team can be seen in the numbers.
             "colors": [[round(c, 0) for c in colors[f][j]] for f, j in t.matched] if colors else [],
