@@ -3,7 +3,8 @@
     {"frame": 112, "taps": {"X": [412, 530], "F": [655, 541], "Y": [701, 538], "Z": [1210, 540], "H": [820, 610], "Q": [790, 575]}}
 
 `frame` is the clip's own video frame (the one the coach paused on, about the snap) and each tap a pixel of that frame, anywhere
-on the man. A tap is turned into a person the detector found there (`resolve`): the box the tap is in, or the one it is nearest, in
+on the man; a tap may carry its own frame as a third number (`"H": [820, 610, 118]`) when he was tapped on another one
+(`public/tap.html` writes that, so a coach can step the video between taps). A tap is turned into a person the detector found there (`resolve`): the box the tap is in, or the one it is nearest, in
 the frame it was made on or a few either side (a man the detector misses on exactly that frame is found a frame or two later). The
 tracker then starts that man's track there if nobody follows him yet, or names the track that already does (`boxtrack.follow_boxes`'s
 `forced`), and the card gets his letter from the tap instead of from where he stands (`trackedPlay.ts`). A tap with no one near it is
@@ -38,12 +39,13 @@ class Tap:
 def read_taps(data: dict, start: int = 0) -> list[Tap]:
     """The taps of a taps file (`start`: the clip frame the tracker's frame 0 is, the calibration's `frame`). Unknown letters are
     dropped, and a letter tapped twice keeps the last."""
-    frame = int(data["frame"]) - int(start)
+    default = int(data["frame"]) if data.get("frame") is not None else 0
     out: dict[str, Tap] = {}
     for letter, point in (data.get("taps") or {}).items():
         letter = str(letter).strip().upper()
-        if letter in LETTERS and isinstance(point, (list, tuple)) and len(point) == 2:
-            out[letter] = Tap(letter, max(0, frame), float(point[0]), float(point[1]))
+        if letter in LETTERS and isinstance(point, (list, tuple)) and len(point) in (2, 3):
+            frame = int(point[2]) if len(point) == 3 else default
+            out[letter] = Tap(letter, max(0, frame - int(start)), float(point[0]), float(point[1]))
     return list(out.values())
 
 

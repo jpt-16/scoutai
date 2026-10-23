@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>Tap the receivers · ScoutCard AI</title>
+<style>
+  :root {
+    --bg: #0c100d; --panel: #151b16; --line: #2a342b; --chalk: #f3f1e8; --muted: #9aa69b; --accent: #ff7a1a; --ok: #6fd08c;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--chalk); font: 16px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 1100px; margin: 0 auto; padding: 16px; padding-left: max(16px, env(safe-area-inset-left)); padding-right: max(16px, env(safe-area-inset-right)); }
+  h1 { font-size: 22px; margin: 4px 0 2px; letter-spacing: .02em; }
+  p.lede { margin: 0 0 14px; color: var(--muted); }
+  .bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 10px 0; }
+  button, label.file, select, input[type=number] {
+    min-height: 44px; min-width: 44px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel); color: var(--chalk);
+    font: inherit; font-weight: 600; padding: 0 14px; cursor: pointer;
+  }
+  label.file { display: inline-flex; align-items: center; background: var(--accent); border-color: var(--accent); color: #1a0d00; }
+  label.file input { display: none; }
+  button:disabled { opacity: .45; cursor: default; }
+  button.letter { width: 56px; padding: 0; font-size: 20px; position: relative; }
+  button.letter.active { background: var(--accent); border-color: var(--accent); color: #1a0d00; }
+  button.letter.placed::after { content: "✓"; position: absolute; top: 1px; right: 5px; font-size: 12px; color: var(--ok); }
+  button.letter.active.placed::after { color: #1a0d00; }
+  input[type=number] { width: 84px; }
+  .stagewrap { overflow: auto; border: 1px solid var(--line); border-radius: 12px; background: #000; max-height: 70vh; touch-action: pan-x pan-y pinch-zoom; }
+  .stage { position: relative; width: 100%; cursor: crosshair; }
+  .stage video { display: block; width: 100%; height: 100%; }
+  .stage svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+  .hint { color: var(--muted); font-size: 14px; margin: 6px 0; }
+  .empty { padding: 56px 16px; text-align: center; color: var(--muted); }
+  textarea { width: 100%; min-height: 150px; background: var(--panel); color: var(--chalk); border: 1px solid var(--line); border-radius: 10px; padding: 10px; font: 13px/1.4 ui-monospace, Menlo, Consolas, monospace; }
+  .status { color: var(--ok); min-height: 1.4em; }
+  .range { flex: 1 1 260px; min-width: 200px; accent-color: var(--accent); height: 44px; }
+  .small { font-size: 13px; color: var(--muted); }
+  @media (max-width: 560px) { button.letter { width: 48px; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>Tap the receivers</h1>
+  <p class="lede">Pick the play's video, pause on the snap, then tap each man: X, F, Y, Z and H, and Q for the quarterback. The video stays on this device; nothing is uploaded. Send the text at the bottom back with the clip.</p>
+
+  <div class="bar">
+    <label class="file">Choose video<input id="file" type="file" accept="video/*"></label>
+    <label class="small" for="fps">Frames per second</label>
+    <input id="fps" type="number" min="1" max="120" step="1" value="30" aria-label="Frames per second">
+    <span class="small" id="meta"></span>
+  </div>
+
+  <div class="stagewrap" id="wrap">
+    <div class="empty" id="empty">Choose a video to start.</div>
+    <div class="stage" id="stage" hidden>
+      <video id="video" muted playsinline preload="auto"></video>
+      <svg id="marks" xmlns="http://www.w3.org/2000/svg"></svg>
+    </div>
+  </div>
+
+  <div class="bar" id="controls" hidden>
+    <button id="play" aria-label="Play or pause">Play</button>
+    <button id="back5" aria-label="Back 5 frames">−5</button>
+    <button id="back1" aria-label="Back 1 frame">−1</button>
+    <button id="fwd1" aria-label="Forward 1 frame">+1</button>
+    <button id="fwd5" aria-label="Forward 5 frames">+5</button>
+    <input class="range" id="scrub" type="range" min="0" max="1000" value="0" aria-label="Scrub">
+    <span id="frameInfo" class="small"></span>
+  </div>
+
+  <div class="bar" id="letters" hidden>
+    <button class="letter" data-letter="X">X</button>
+    <button class="letter" data-letter="F">F</button>
+    <button class="letter" data-letter="Y">Y</button>
+    <button class="letter" data-letter="Z">Z</button>
+    <button class="letter" data-letter="H">H</button>
+    <button class="letter" data-letter="Q">Q</button>
+    <button id="undo">Clear selected</button>
+    <button id="clearAll">Clear all</button>
+    <label class="small" for="zoom">Zoom</label>
+    <input class="range" id="zoom" type="range" min="1" max="4" step="0.25" value="1" aria-label="Zoom" style="flex:0 1 160px;min-width:120px">
+  </div>
+  <p class="hint" id="hint" hidden>Pick a letter, then tap that man in the picture (anywhere on him). The next letter is picked for you. Tap a placed letter's button and then the picture again to move it. Zoom in on the far side if the men are small.</p>
+
+  <h2 style="font-size:16px;margin:18px 0 6px">Result</h2>
+  <textarea id="out" readonly aria-label="Taps as text"></textarea>
+  <div class="bar">
+    <button id="copy">Copy</button>
+    <button id="download">Download .json</button>
+    <span class="status" id="status" role="status"></span>
+  </div>
+</main>
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const LETTERS = ["X", "F", "Y", "Z", "H", "Q"];
+  const video = $("video"), stage = $("stage"), marks = $("marks"), out = $("out"), wrap = $("wrap");
+  let taps = {}; // letter -> [x, y, frame]: pixels of the video's own picture, and the frame he was tapped on
+  let current = "X";
+  let fileName = "";
+
+  const fps = () => Math.max(1, Number($("fps").value) || 30);
+  const frameNow = () => Math.round(video.currentTime * fps());
+
+  function setStageAspect() {
+    stage.style.aspectRatio = `${video.videoWidth} / ${video.videoHeight}`;
+    marks.setAttribute("viewBox", `0 0 ${video.videoWidth} ${video.videoHeight}`);
+  }
+
+  function render() {
+    // Markers: a ring and the letter, sized to the picture so they read at any zoom.
+    const w = video.videoWidth || 1000;
+    const r = w / 70;
+    marks.innerHTML = Object.entries(taps).map(([l, [x, y, f]]) =>
+      `<g opacity="${f === frameNow() ? 1 : 0.4}"><circle cx="${x}" cy="${y}" r="${r}" fill="rgba(255,122,26,.25)" stroke="${l === current ? "#fff" : "#ff7a1a"}" stroke-width="${r / 6}"/>` +
+      `<text x="${x}" y="${y - r * 1.25}" text-anchor="middle" font-size="${r * 1.7}" font-weight="700" fill="#fff" stroke="#000" stroke-width="${r / 8}" paint-order="stroke" font-family="system-ui,sans-serif">${l}</text></g>`).join("");
+    document.querySelectorAll("button.letter").forEach((b) => {
+      b.classList.toggle("active", b.dataset.letter === current);
+      b.classList.toggle("placed", !!taps[b.dataset.letter]);
+    });
+    // `frame` is the first tap's; every tap also carries its own (a man tapped on another frame keeps that one).
+    const frames = Object.values(taps).map((t) => t[2]);
+    const payload = { file: fileName, frame: frames.length ? frames[0] : frameNow(), fps: fps(), size: [video.videoWidth, video.videoHeight], taps };
+    out.value = Object.keys(taps).length ? JSON.stringify(payload) : "";
+    $("frameInfo").textContent = `frame ${frameNow()} · ${video.currentTime.toFixed(2)} s`;
+    if (video.duration) $("scrub").value = String(Math.round((video.currentTime / video.duration) * 1000));
+  }
+
+  function nextLetter() {
+    const rest = LETTERS.filter((l) => !taps[l]);
+    current = rest.length ? rest[0] : current;
+  }
+
+  $("file").addEventListener("change", (e) => {
+    const f = e.target.files && e.target.files[0];
+    if (!f) return;
+    fileName = f.name;
+    taps = {}; current = "X";
+    video.src = URL.createObjectURL(f);
+    video.load();
+  });
+  video.addEventListener("loadedmetadata", () => {
+    setStageAspect();
+    $("empty").hidden = true; stage.hidden = false;
+    for (const id of ["controls", "letters", "hint"]) $(id).hidden = false;
+    $("meta").textContent = `${video.videoWidth}×${video.videoHeight}, ${video.duration.toFixed(1)} s`;
+    video.currentTime = 0;
+    render();
+  });
+  video.addEventListener("seeked", render);
+  video.addEventListener("timeupdate", render);
+  $("fps").addEventListener("input", render);
+
+  const step = (frames) => { video.pause(); video.currentTime = Math.min(Math.max(0, video.currentTime + frames / fps()), video.duration || 0); };
+  $("back1").onclick = () => step(-1); $("back5").onclick = () => step(-5);
+  $("fwd1").onclick = () => step(1); $("fwd5").onclick = () => step(5);
+  $("play").onclick = () => { if (video.paused) { video.play(); $("play").textContent = "Pause"; } else { video.pause(); $("play").textContent = "Play"; } };
+  video.addEventListener("pause", () => { $("play").textContent = "Play"; });
+  $("scrub").addEventListener("input", (e) => { video.pause(); video.currentTime = (Number(e.target.value) / 1000) * (video.duration || 0); });
+
+  document.querySelectorAll("button.letter").forEach((b) => b.addEventListener("click", () => { current = b.dataset.letter; render(); }));
+  $("undo").onclick = () => { delete taps[current]; render(); };
+  $("clearAll").onclick = () => { taps = {}; current = "X"; render(); };
+
+  stage.addEventListener("click", (e) => {
+    if (!video.videoWidth) return;
+    video.pause();
+    const rect = stage.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width) * video.videoWidth;
+    const y = ((e.clientY - rect.top) / rect.height) * video.videoHeight;
+    taps[current] = [Math.round(x), Math.round(y), frameNow()];
+    nextLetter();
+    render();
+  });
+
+  // Zoom: the picture gets bigger inside its scrolling box, so a tap still maps through the stage's own rectangle.
+  $("zoom").addEventListener("input", (e) => { stage.style.width = `${Number(e.target.value) * 100}%`; });
+
+  async function copyText(text) {
+    try { await navigator.clipboard.writeText(text); return true; } catch (_) { out.select(); try { return document.execCommand("copy"); } catch (_) { return false; } }
+  }
+  $("copy").onclick = async () => {
+    if (!out.value) { $("status").textContent = "Tap at least one man first."; return; }
+    $("status").textContent = (await copyText(out.value)) ? "Copied." : "Select the text and copy it.";
+  };
+  $("download").onclick = () => {
+    if (!out.value) { $("status").textContent = "Tap at least one man first."; return; }
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([out.value], { type: "application/json" }));
+    a.download = (fileName.replace(/\.[^.]+$/, "") || "play") + ".taps.json";
+    a.click();
+    $("status").textContent = "Saved.";
+  };
+  render();
+})();
+</script>
+</body>
+</html>

@@ -18,6 +18,11 @@ def test_read_taps_makes_frames_relative_and_drops_unknown_letters():
     assert sorted((t.letter, t.frame) for t in taps) == [("Q", 12), ("X", 12), ("Y", 12)]
 
 
+def test_a_tap_can_carry_its_own_frame():
+    taps = read_taps({"frame": 112, "taps": {"X": [10, 20], "H": [30, 40, 118]}}, start=100)
+    assert sorted((t.letter, t.frame) for t in taps) == [("H", 18), ("X", 12)]
+
+
 def test_a_tap_lands_on_the_box_it_is_in_or_nearest_and_says_when_nobody_is_there():
     warped = [[box(300, 300), box(500, 300)] for _ in range(10)]
     forced, notes = resolve([Tap("X", 3, 305, 270), Tap("Y", 3, 500, 250), Tap("Z", 3, 900, 100)], warped, [IDENTITY] * 10)
