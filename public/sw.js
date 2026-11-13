@@ -5,8 +5,10 @@
  * - Page navigations: network first, fall back to the cached page.
  * - Next.js build assets and icons (content-hashed / static): cache first.
  * - Everything else same-origin (RSC payloads, manifest): network first.
+ * - /api/ is never touched: those answers belong to whoever is signed in (the staff's saved script, their games),
+ *   and a cached copy would outlive the sign-out and be handed to the next coach on the same iPad when offline.
  */
-const CACHE_VERSION = "scoutcard-v2";
+const CACHE_VERSION = "scoutcard-v3";
 const PRECACHE = [
   "/",
   "/script",
@@ -62,6 +64,7 @@ self.addEventListener("fetch", (event) => {
   if (request.method !== "GET") return;
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
+  if (url.pathname.startsWith("/api/")) return;
 
   if (request.mode === "navigate") {
     event.respondWith(networkFirst(request, "/"));

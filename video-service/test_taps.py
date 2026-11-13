@@ -23,6 +23,23 @@ def test_a_tap_can_carry_its_own_frame():
     assert sorted((t.letter, t.frame) for t in taps) == [("H", 18), ("X", 12)]
 
 
+def test_taps_are_put_on_the_clips_timeline_by_time_so_a_wrong_frame_rate_on_the_page_does_not_matter():
+    # A 60 fps phone video, the page left at its default 30: the coach paused at 3.0 s, which the page wrote as frame 90.
+    data = {"frame": 90, "fps": 30, "taps": {"X": [10, 20], "H": [30, 40, 93]}}
+    by_letter = {t.letter: t.frame for t in read_taps(data, start=100, clip_fps=60)}
+    assert by_letter == {"X": 80, "H": 86}  # 3.0 s and 3.1 s into a 60 fps clip are frames 180 and 186, less the start
+    # …and the same file read against a clip at the page's own rate is as it always was.
+    assert {t.letter: t.frame for t in read_taps(data, start=50, clip_fps=30)} == {"X": 40, "H": 43}
+
+
+def test_without_a_usable_frame_rate_the_frames_are_taken_as_written():
+    base = {"frame": 112, "taps": {"X": [10, 20]}}
+    assert read_taps(base, start=100, clip_fps=60)[0].frame == 12  # the file says no rate
+    for fps in (0, -5, "fast", None, float("nan")):
+        assert read_taps({**base, "fps": fps}, start=100, clip_fps=60)[0].frame == 12
+    assert read_taps({**base, "fps": 30}, start=100)[0].frame == 12  # the clip's rate isn't known
+
+
 def test_a_tap_lands_on_the_box_it_is_in_or_nearest_and_says_when_nobody_is_there():
     warped = [[box(300, 300), box(500, 300)] for _ in range(10)]
     forced, notes = resolve([Tap("X", 3, 305, 270), Tap("Y", 3, 500, 250), Tap("Z", 3, 900, 100)], warped, [IDENTITY] * 10)

@@ -26,6 +26,8 @@ export interface OrgBillingPatch {
   privateMetadata: {
     stripeCustomerId?: string;
     stripeSubscriptionId?: string;
+    /** `event.created` of the last status event applied (set by the webhook route, see `isStaleBillingEvent`). */
+    stripeEventAt?: number;
   };
 }
 
@@ -88,4 +90,50 @@ export function mapStripeEventToOrgPatch(event: Stripe.Event): OrgBillingPatch |
     default:
       return null;
   }
+}
+
+/**
+ * Stripe doesn't promise to deliver events in the order they happened, and it retries a failed one for days:
+ * an old `customer.subscription.updated` ("active") that lands after `customer.subscription.deleted` would
+ * switch a cancelled staff back on. Each status write records its event's time (`stripeEventAt`, seconds, from
+ * `event.created`), and an event older than the last one written is ignored. Equal times are applied in the
+ * order they arrive.
+ */
+export function isStaleBillingEvent(storedEventAt: unknown, eventCreated: number): boolean {
+  return typeof storedEventAt === "number" && Number.isFinite(storedEventAt) && eventCreated < storedEventAt;
+}
+
+/** Statuses where Stripe still holds a subscription for the staff, so starting a second Checkout would bill twice. */
+const LIVE_SUBSCRIPTION = new Set(["active", "trialing", "past_due", "unpaid", "paused"]);
+
+export function hasLiveSubscription(status: unknown): boolean {
+  return typeof status === "string" && LIVE_SUBSCRIPTION.has(status);
+}
+
+/** The two Clerk organization calls the webhook makes (so a test can stand in for Clerk). */
+export interface BillingOrgStore {
+  getOrganization(params: { organizationId: string }): Promise<{ privateMetadata: object }>;
+  updateOrganizationMetadata(
+    organizationId: string,
+    params: { publicMetadata?: OrgBillingPatch["publicMetadata"]; privateMetadata?: OrgBillingPatch["privateMetadata"] },
+  ): Promise<unknown>;
+}
+
+/**
+ * Writes a Stripe event's billing state onto its organization, unless it is one this app ignores or a status
+ * event older than the last one applied (`isStaleBillingEvent`). Throws what Clerk throws, so the webhook can
+ * answer 500 and Stripe retries.
+ */
+export async function applyBillingEvent(orgs: BillingOrgStore, event: Stripe.Event): Promise<"applied" | "stale" | "ignored"> {
+  const patch = mapStripeEventToOrgPatch(event);
+  if (!patch) return "ignored";
+  const privateMetadata = { ...patch.privateMetadata };
+  if (patch.publicMetadata.subscriptionStatus !== undefined) {
+    const org = await orgs.getOrganization({ organizationId: patch.orgId });
+    if (isStaleBillingEvent((org.privateMetadata as { stripeEventAt?: unknown }).stripeEventAt, event.created)) return "stale";
+    privateMetadata.stripeEventAt = event.created;
+  }
+  // updateOrganizationMetadata deep-merges, so this never clobbers other metadata keys the org might hold.
+  await orgs.updateOrganizationMetadata(patch.orgId, { publicMetadata: patch.publicMetadata, privateMetadata });
+  return "applied";
 }

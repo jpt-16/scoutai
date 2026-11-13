@@ -12,6 +12,7 @@ import {
   getView,
   handleEvent,
   listViews,
+  MAX_SAVED_GAME_BYTES,
   openForWorker,
   openGame,
   openVideoForWorker,
@@ -607,6 +608,19 @@ describe("the staff's games: names and their own copy of the cards", () => {
     await expect(saveGameCards(ctx, "org_other", id, gz(edited))).rejects.toMatchObject({ status: 404 });
     const { id: running } = await startGame(1);
     await expect(saveGameCards(ctx, OWNER, running, gz(edited))).rejects.toMatchObject({ status: 409 });
+  });
+
+  it("refuses a gzip bomb: a few hundred KB of gzip that unpacks to more than any game", async () => {
+    const { id } = await readyGame();
+    // Valid cards, so only the size cap can stop it (garbage would be refused as "not a game" either way).
+    const card = JSON.stringify({ id: "a", pad: "x".repeat(1000) });
+    const huge = `{"cards":[${Array(65_000).fill(card).join(",")}]}`; // ~66 MB of JSON
+    const bomb = gzipSync(Buffer.from(huge));
+    expect(huge.length).toBeGreaterThan(60 * 1024 * 1024);
+    expect(bomb.byteLength).toBeLessThan(MAX_SAVED_GAME_BYTES);
+    await expect(saveGameCards(ctx, OWNER, id, bomb)).rejects.toMatchObject({ status: 400, code: "bad_body" });
+    // …and the game's copy is untouched.
+    expect((await getView(ctx, OWNER, id)).saved).toBeUndefined();
   });
 
   it("keeps the staff's copy when the film is deleted after the retention", async () => {

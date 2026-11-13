@@ -100,6 +100,7 @@
   let taps = {}; // letter -> [x, y, frame]: pixels of the video's own picture, and the frame he was tapped on
   let current = "X";
   let fileName = "";
+  let videoUrl = "";
 
   const fps = () => Math.max(1, Number($("fps").value) || 30);
   const frameNow = () => Math.round(video.currentTime * fps());
@@ -138,7 +139,9 @@
     if (!f) return;
     fileName = f.name;
     taps = {}; current = "X";
-    video.src = URL.createObjectURL(f);
+    if (videoUrl) URL.revokeObjectURL(videoUrl); // let go of the last video's handle before taking the next
+    videoUrl = URL.createObjectURL(f);
+    video.src = videoUrl;
     video.load();
   });
   video.addEventListener("loadedmetadata", () => {
@@ -188,9 +191,11 @@
   $("download").onclick = () => {
     if (!out.value) { $("status").textContent = "Tap at least one man first."; return; }
     const a = document.createElement("a");
-    a.href = URL.createObjectURL(new Blob([out.value], { type: "application/json" }));
+    const saved = URL.createObjectURL(new Blob([out.value], { type: "application/json" }));
+    a.href = saved;
     a.download = (fileName.replace(/\.[^.]+$/, "") || "play") + ".taps.json";
     a.click();
+    setTimeout(() => URL.revokeObjectURL(saved), 10000);
     $("status").textContent = "Saved.";
   };
   render();

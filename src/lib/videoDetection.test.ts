@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type { GoogleGenAI } from "@google/genai";
 import {
   buildDetectionPrompt,
   DETECTION_PROMPT,
@@ -6,9 +7,62 @@ import {
   FILM_FPS,
   FILM_ROUTE_GUIDE,
   FOOTBALL_CONCEPT_RULES,
+  isBlobUrl,
   QB_ANCHOR_RULES,
+  uploadClipToGemini,
+  VideoDetectionError,
 } from "./videoDetection";
 import { FILM_ROUTE_NAMES } from "./videoImport";
+
+// The clip's address comes from the browser and the fetch carries the store's read-write token.
+const HOSTILE_URLS = [
+  "https://attacker.example/clip.mp4",
+  "http://abc123.private.blob.vercel-storage.com/clip.mp4", // not https
+  "https://abc123.private.blob.vercel-storage.com.attacker.example/clip.mp4", // suffix trick
+  "https://abc123.private.blob.vercel-storage.com@attacker.example/clip.mp4", // login trick
+  "https://user:pw@abc123.private.blob.vercel-storage.com/clip.mp4", // credentials in the address
+  "https://abc123.private.blob.vercel-storage.com:8443/clip.mp4", // a port
+  "https://blob.vercel-storage.com/clip.mp4", // no store at all
+  "https://abc123.private.blob.vercel-storage.com./clip.mp4", // trailing dot
+  "https://169.254.169.254/latest/meta-data/", // cloud metadata
+  "https://localhost/clip.mp4",
+  "file:///etc/passwd",
+  "//attacker.example/clip.mp4",
+  "not a url",
+  "",
+];
+
+describe("isBlobUrl", () => {
+  it("takes Vercel Blob's own https addresses", () => {
+    expect(isBlobUrl("https://abc123.private.blob.vercel-storage.com/clip-Xy12.mp4")).toBe(true);
+    expect(isBlobUrl("https://ABC123.public.blob.vercel-storage.com/a/b.mp4?x=1")).toBe(true);
+  });
+
+  it.each(HOSTILE_URLS)("refuses %s", (url) => {
+    expect(isBlobUrl(url)).toBe(false);
+  });
+});
+
+describe("uploadClipToGemini never sends the store's token anywhere else", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it.each(HOSTILE_URLS)("refuses %s before any request is made", async (url) => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+    await expect(uploadClipToGemini({} as GoogleGenAI, "vercel_blob_rw_secret", url)).rejects.toBeInstanceOf(VideoDetectionError);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("still fetches a real blob address, with the token", async () => {
+    const fetchSpy = vi.fn().mockResolvedValue(new Response("x", { status: 404 }));
+    vi.stubGlobal("fetch", fetchSpy);
+    await expect(
+      uploadClipToGemini({} as GoogleGenAI, "vercel_blob_rw_secret", "https://abc123.private.blob.vercel-storage.com/clip.mp4"),
+    ).rejects.toThrow(/Could not fetch/);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(fetchSpy.mock.calls[0][1]).toMatchObject({ headers: { Authorization: "Bearer vercel_blob_rw_secret" } });
+  });
+});
 
 describe("buildDetectionPrompt", () => {
   it("always carries the concept rules after the base prompt", () => {

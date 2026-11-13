@@ -562,7 +562,8 @@ export async function saveGameCards(ctx: FilmContext, owner: string, id: string,
   if (body.byteLength > MAX_SAVED_GAME_BYTES) throw new FilmError(413, "too_big", "This game is too big to save to your staff.");
   let text: string;
   try {
-    text = new TextDecoder().decode(body[0] === 0x1f && body[1] === 0x8b ? gunzipSync(body) : body);
+    // Capped like the worker's uploads: a few KB of gzip can unpack to gigabytes.
+    text = new TextDecoder().decode(body[0] === 0x1f && body[1] === 0x8b ? gunzipSync(body, { maxOutputLength: MAX_UNZIPPED_BYTES }) : body);
   } catch {
     throw new FilmError(400, "bad_body", "That isn't a game's cards.");
   }

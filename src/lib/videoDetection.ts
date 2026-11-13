@@ -257,6 +257,31 @@ export interface DetectClipOptions {
  * schema validation) with the HTTP status that failure maps to, for the
  * caller to relay (single-clip route) or record per-item (batch route).
  */
+const BLOB_HOST_SUFFIX = ".blob.vercel-storage.com";
+
+/**
+ * Whether an address is a Vercel Blob address: https, on Vercel Blob's own domain, with no login or port
+ * in it. The clip's address comes from the browser, and the fetch below carries the store's read-write
+ * token, so anything else (another host, `http`, `https://blob.vercel-storage.com@evil.example/`,
+ * `https://x.blob.vercel-storage.com.evil.example/`) must never get that header.
+ */
+export function isBlobUrl(value: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return false;
+  }
+  return (
+    url.protocol === "https:" &&
+    !url.username &&
+    !url.password &&
+    !url.port &&
+    url.hostname.length > BLOB_HOST_SUFFIX.length &&
+    url.hostname.endsWith(BLOB_HOST_SUFFIX)
+  );
+}
+
 /**
  * Fetches a private blob clip and uploads it to Gemini's file store, for any
  * route that sends film to the model (route detection here, the secondary
@@ -268,6 +293,10 @@ export async function uploadClipToGemini(
   blobToken: string,
   videoUrl: string,
 ): Promise<{ fileUri: string; mimeType: string }> {
+  // The address is the browser's word, and the request below carries the store's token: only Vercel Blob's own.
+  if (!isBlobUrl(videoUrl)) {
+    throw new VideoDetectionError("That isn't a clip you uploaded here", 400);
+  }
   let videoResponse: Response;
   try {
     videoResponse = await fetch(videoUrl, { headers: { Authorization: `Bearer ${blobToken}` } });

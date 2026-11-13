@@ -12,6 +12,7 @@
 import { auth, clerkClient, currentUser } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { getStripe } from "@/lib/stripe";
+import { hasLiveSubscription } from "@/lib/stripeWebhook";
 
 export async function POST(request: Request): Promise<NextResponse> {
   const priceId = process.env.STRIPE_PRICE_ID;
@@ -32,6 +33,13 @@ export async function POST(request: Request): Promise<NextResponse> {
 
   const clerk = await clerkClient();
   const org = await clerk.organizations.getOrganization({ organizationId: orgId });
+  // A staff that already has a subscription manages it in the billing portal; a second Checkout would bill it twice.
+  if (hasLiveSubscription((org.publicMetadata as { subscriptionStatus?: unknown }).subscriptionStatus)) {
+    return NextResponse.json(
+      { error: "already_subscribed", message: "Your staff is already subscribed. Use Manage billing to change or cancel it." },
+      { status: 409 },
+    );
+  }
   const existingCustomerId = (org.privateMetadata as { stripeCustomerId?: string }).stripeCustomerId;
   const user = existingCustomerId ? null : await currentUser();
 

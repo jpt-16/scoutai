@@ -124,6 +124,9 @@ export async function POST(request: Request): Promise<NextResponse> {
   } catch {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
+  if (typeof body !== "object" || body === null) {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
   const input = {
     playName: text(body.playName),
     formation: text(body.formation),

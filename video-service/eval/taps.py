@@ -36,21 +36,36 @@ class Tap:
     y: float
 
 
-def read_taps(data: dict, start: int = 0) -> list[Tap]:
-    """The taps of a taps file (`start`: the clip frame the tracker's frame 0 is, the calibration's `frame`). Unknown letters are
+def _frame_scale(data: dict, clip_fps: float | None) -> float:
+    """How many of the clip's frames one of the tap page's frames is. The page writes `frame = round(time * fps)` with the
+    frame rate the coach typed in (30 unless changed), and writes that `fps` too, so the time is in the file: with the clip's own
+    rate a wrong entry (a 60 fps phone video left at 30) puts every tap on the right moment all the same."""
+    try:
+        tap_fps = float(data.get("fps") or 0)
+    except (TypeError, ValueError):
+        return 1.0
+    if clip_fps and clip_fps > 0 and math.isfinite(tap_fps) and tap_fps > 0:
+        return float(clip_fps) / tap_fps
+    return 1.0
+
+
+def read_taps(data: dict, start: int = 0, clip_fps: float | None = None) -> list[Tap]:
+    """The taps of a taps file (`start`: the clip frame the tracker's frame 0 is, the calibration's `frame`; `clip_fps`: the
+    clip's own frame rate, when known, so the file's frames are put on the clip's timeline by time). Unknown letters are
     dropped, and a letter tapped twice keeps the last."""
+    scale = _frame_scale(data, clip_fps)
     default = int(data["frame"]) if data.get("frame") is not None else 0
     out: dict[str, Tap] = {}
     for letter, point in (data.get("taps") or {}).items():
         letter = str(letter).strip().upper()
         if letter in LETTERS and isinstance(point, (list, tuple)) and len(point) in (2, 3):
-            frame = int(point[2]) if len(point) == 3 else default
+            frame = round((int(point[2]) if len(point) == 3 else default) * scale)
             out[letter] = Tap(letter, max(0, frame - int(start)), float(point[0]), float(point[1]))
     return list(out.values())
 
 
-def load_taps(path: Path, start: int = 0) -> list[Tap]:
-    return read_taps(json.loads(Path(path).read_text()), start)
+def load_taps(path: Path, start: int = 0, clip_fps: float | None = None) -> list[Tap]:
+    return read_taps(json.loads(Path(path).read_text()), start, clip_fps)
 
 
 def _offsets():

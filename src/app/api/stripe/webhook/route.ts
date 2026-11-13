@@ -12,7 +12,7 @@
 import { clerkClient } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { getStripe } from "@/lib/stripe";
-import { mapStripeEventToOrgPatch } from "@/lib/stripeWebhook";
+import { applyBillingEvent, mapStripeEventToOrgPatch } from "@/lib/stripeWebhook";
 
 export const runtime = "nodejs";
 
@@ -38,20 +38,19 @@ export async function POST(request: Request): Promise<NextResponse> {
     return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
   }
 
-  const orgPatch = mapStripeEventToOrgPatch(event);
-  if (orgPatch) {
-    try {
-      const clerk = await clerkClient();
-      // updateOrganizationMetadata deep-merges, so this never clobbers other
-      // metadata keys the org might hold.
-      await clerk.organizations.updateOrganizationMetadata(orgPatch.orgId, {
-        publicMetadata: orgPatch.publicMetadata,
-        privateMetadata: orgPatch.privateMetadata,
-      });
-    } catch (error) {
-      console.error("stripe-webhook: failed to update organization metadata", error);
-      return NextResponse.json({ error: "Could not update organization" }, { status: 500 });
+  // Events this app doesn't use (invoices, charges…) are acknowledged without touching Clerk.
+  if (!mapStripeEventToOrgPatch(event)) return NextResponse.json({ received: true });
+
+  try {
+    const clerk = await clerkClient();
+    const outcome = await applyBillingEvent(clerk.organizations, event);
+    if (outcome === "stale") {
+      console.warn(`stripe-webhook: ignored ${event.type} ${event.id}, older than the status already applied`);
+      return NextResponse.json({ received: true, ignored: "stale" });
     }
+  } catch (error) {
+    console.error("stripe-webhook: failed to update organization metadata", error);
+    return NextResponse.json({ error: "Could not update organization" }, { status: 500 });
   }
 
   return NextResponse.json({ received: true });

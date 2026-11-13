@@ -12,6 +12,7 @@
 import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
 import { checkRateLimit } from "@vercel/firewall";
 import { NextResponse } from "next/server";
+import { isBareFileName } from "@/lib/blobPaths";
 import { requireEntitlement } from "@/lib/entitlement";
 import { checkBlobRateLimit } from "@/lib/rateLimit";
 import { TIER_LIMITS } from "@/lib/usageLimits";
@@ -43,19 +44,30 @@ export async function POST(request: Request): Promise<NextResponse> {
     );
   }
 
-  const body = (await request.json()) as HandleUploadBody;
+  let body: HandleUploadBody;
+  try {
+    body = (await request.json()) as HandleUploadBody;
+  } catch {
+    return NextResponse.json({ error: "Expected JSON." }, { status: 400 });
+  }
 
   try {
     const jsonResponse = await handleUpload({
       body,
       request,
-      onBeforeGenerateToken: async () => ({
-        allowedContentTypes: ["video/mp4", "video/quicktime", "video/x-m4v"],
-        addRandomSuffix: true,
-        // A single play is seconds long — cap well below what a full cutup
-        // would need, since bigger clips mean bigger Gemini bills.
-        maximumSizeInBytes: 75 * 1024 * 1024,
-      }),
+      onBeforeGenerateToken: async (pathname) => {
+        // The browser names the file, and the store also holds the staff's saved copies, game files and the rate
+        // counters under folders (`sync/`, `film/`, `ratelimit/`…). A clip here is a bare file name; one with a
+        // folder in it is not ours to write.
+        if (!isBareFileName(pathname)) throw new Error("That isn't a plain file name.");
+        return {
+          allowedContentTypes: ["video/mp4", "video/quicktime", "video/x-m4v"],
+          addRandomSuffix: true,
+          // A single play is seconds long — cap well below what a full cutup
+          // would need, since bigger clips mean bigger Gemini bills.
+          maximumSizeInBytes: 75 * 1024 * 1024,
+        };
+      },
       onUploadCompleted: async ({ blob }) => {
         // No app-side record needed — /api/parse-video fetches the blob URL
         // directly once the client calls it. Logged only for visibility.

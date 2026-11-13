@@ -109,11 +109,11 @@ def main() -> None:
     frames = [cap.read()[1] for _ in range(len(dump["raw"]))]
     from .taps import load_taps
 
-    taps = load_taps(args.taps, args.start) if args.taps else None
+    fps = dump.get("fps", 30.0)
+    taps = load_taps(args.taps, args.start, fps) if args.taps else None
     out = play_tracks(dump, frames, args.scout_color, taps=taps)
     for note in out.get("tap_notes", []):
         print("tap:", note)
-    fps = dump.get("fps", 30.0)
     tracks, labels, boxes = out["tracks"], out["labels"], out["boxes"]
     to_snap = [np.array(m) for m in dump["to_snap"]]
     as_json = [

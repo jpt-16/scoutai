@@ -16,7 +16,7 @@ import { generateJson } from "@/lib/gemini";
 import { checkBlobRateLimit } from "@/lib/rateLimit";
 import { alignmentFromFilm, DB_SLOTS, FILM_ANCHORS } from "@/lib/secondary";
 import { TIER_LIMITS } from "@/lib/usageLimits";
-import { QB_ANCHOR_RULES, uploadClipToGemini, VideoDetectionError } from "@/lib/videoDetection";
+import { isBlobUrl, QB_ANCHOR_RULES, uploadClipToGemini, VideoDetectionError } from "@/lib/videoDetection";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -90,8 +90,15 @@ export async function POST(request: Request): Promise<NextResponse> {
   } catch {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
+  if (typeof body !== "object" || body === null) {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
   if (typeof body.videoUrl !== "string" || !body.videoUrl) {
     return NextResponse.json({ error: "videoUrl is required" }, { status: 400 });
+  }
+  // The address is the browser's word and is fetched with the store's token: only a clip in this app's own Blob store.
+  if (!isBlobUrl(body.videoUrl)) {
+    return NextResponse.json({ error: "That isn't a clip you uploaded here" }, { status: 400 });
   }
 
   const apiKey = process.env.GEMINI_API_KEY;

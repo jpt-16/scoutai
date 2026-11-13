@@ -106,6 +106,9 @@ export async function POST(request: Request): Promise<NextResponse> {
   } catch {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
+  if (typeof body !== "object" || body === null) {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
   if (!Array.isArray(body.rows) || body.rows.length === 0) {
     return NextResponse.json({ error: "No rows to review" }, { status: 400 });
   }
