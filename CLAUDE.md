@@ -37,8 +37,8 @@ src/
   app/
     layout.tsx             Fonts, metadata (manifest, apple web app), SW registration
     globals.css            Theme tokens (dark field palette) + print rules
-    page.tsx               Upload landing: dropzone, demo button, parse-report dialog
-    script/page.tsx        iPad reader: Scout O/D + All/7v7/Team toggles, filters, swiper, Print Grid
+    page.tsx               Redirects / to /script (landing page removed; redesign later)
+    script/page.tsx        iPad reader + empty-state upload/demo: Scout O/D + All/7v7/Team toggles, filters, swiper, Print Grid
   components/
     ScoutCard.tsx          PlayIQ-style card: title header, white-field SVG, assignment table
     PrintGrid.tsx          Letter-size sheets, 2-up portrait / 4-up landscape, window.print()
@@ -61,9 +61,8 @@ src/
 
 1. `parseHudlCsv(file)` / `parseHudlCsvText(text)` in `src/lib/hudlParser.ts` returns
    `{ cards, columns, missingColumns, warnings, rowCount }`.
-2. If there's at least one card, the landing page saves it with `saveScript()` and routes to
-   `/script?loaded=1`, where `ImportNotice` shows the warnings. With zero cards it shows
-   the "No plays found" dialog instead.
+2. `/` redirects to `/script`. With nothing loaded, the script page shows the upload dropzone and demo
+   button. If at least one card parses, it's stored and shown; with zero cards an inline error appears.
 3. `/script` reads it back with `loadScript()`, filters it, and renders `<ScoutCard>`.
 4. `<ScoutCard>` calls `buildDiagram(card)` from `src/lib/formations.ts` and draws the SVG.
 

@@ -1,8 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
 import {
   ChevronLeft,
   ChevronRight,
@@ -15,13 +13,13 @@ import {
   Undo2,
   Eraser,
   RectangleVertical,
-  Upload,
 } from "lucide-react";
 import { BrandMark } from "@/components/BrandMark";
 import { FilterGroup, type FilterOption } from "@/components/FilterBar";
 import { EditPlayDialog } from "@/components/EditPlayDialog";
 import { ImportNotice } from "@/components/ImportNotice";
 import { PrintGrid } from "@/components/PrintGrid";
+import { UploadDropzone } from "@/components/UploadDropzone";
 import { ScoutCard, SCOUT_CARD_ASPECT } from "@/components/ScoutCard";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -79,7 +77,6 @@ const UNITS: { value: ScoutUnit; label: string; short: string }[] = [
 ];
 
 export default function ScriptPage() {
-  const router = useRouter();
   // undefined while reading localStorage, null when nothing is loaded.
   const [script, setScript] = useState<StoredScript | null | undefined>(undefined);
   const [view, setView] = useState<View>("field");
@@ -102,6 +99,8 @@ export default function ScriptPage() {
     trigger: 0,
   });
   const addFilmInput = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   useEffect(() => {
     setScript(loadScript());
@@ -247,6 +246,36 @@ export default function ScriptPage() {
     }));
   };
 
+  const uploadFirstFilms = async (files: File[]) => {
+    setUploading(true);
+    setUploadError(null);
+    try {
+      const imported = await importFilms(files);
+      if (imported.cards.length > 0) {
+        setScript(
+          storeScript({
+            fileName: "",
+            films: imported.films,
+            savedAt: "",
+            cards: imported.cards,
+            warnings: imported.warnings,
+          }),
+        );
+        setIndex(0);
+        return;
+      }
+      const [first] = imported.failed;
+      setUploadError(
+        first?.result.unsupportedFile?.message ??
+          `No plays found in ${first?.name ?? "that file"}. Export the breakdown from Hudl as CSV.`,
+      );
+    } catch {
+      setUploadError("Couldn't read those files. Try exporting them from Hudl again.");
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const loadDemo = () => {
     setScript(saveScript(DEMO_FILE_NAME, parseHudlCsvText(MOCK_HUDL_CSV)));
     setIndex(0);
@@ -264,15 +293,12 @@ export default function ScriptPage() {
             Upload this week&apos;s Hudl breakdown, or try the 5-play demo.
           </p>
         </div>
-        <div className="flex flex-wrap justify-center gap-3">
-          <Button size="xl" onClick={() => router.push("/")}>
-            <Upload aria-hidden="true" />
-            Upload a Hudl CSV
-          </Button>
-          <Button size="xl" variant="outline" onClick={loadDemo}>
-            Load demo script
-          </Button>
-        </div>
+        <UploadDropzone
+          onFiles={uploadFirstFilms}
+          onDemo={loadDemo}
+          busy={uploading}
+          error={uploadError}
+        />
       </main>
     );
   }
@@ -284,11 +310,6 @@ export default function ScriptPage() {
       className={cn("gap-0", view === "field" ? "h-dvh overflow-hidden" : "min-h-dvh")}
     >
       <header className="no-print flex h-16 shrink-0 items-center gap-4 border-b px-4 sm:px-6">
-        <Button asChild variant="outline" size="icon" className="border">
-          <Link href="/" aria-label="Back to upload">
-            <ChevronLeft className="size-5" />
-          </Link>
-        </Button>
         <div className="flex min-w-0 flex-1 flex-col">
           <span className="text-xs font-bold tracking-[0.14em] text-primary">SCOUT SCRIPT</span>
           <span className="font-display truncate text-2xl leading-[1.05] font-bold">
