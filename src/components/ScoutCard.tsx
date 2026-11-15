@@ -43,27 +43,29 @@ interface ScoutCardProps {
   className?: string;
 }
 
-/** White-field diagram palettes (PlayIQ-style): black players, blue LOS, red routes. */
+/**
+ * Play-sheet palettes: warm paper, ink-black players, one deep-blue LOS, vermilion
+ * routes. `print` is the same sheet in true black on white for paper.
+ */
 const PALETTES = {
   field: {
-    card: "#ffffff",
-    ink: "#111111",
-    muted: "#52525b",
-    rule: "#d4d4d8",
-    box: "#f4f4f5",
-    field: "#ffffff",
-    grid: "#d4d4d8",
-    hash: "#a1a1aa",
-    numbers: "#b8b8c0",
-    los: "#2563eb",
-    offense: "#111111",
-    offenseFill: "#ffffff",
-    block: "#111111",
-    route: "#dc2626",
-    ball: "#ea580c",
-    defense: "#dc2626",
-    badgeBg: "#111111",
-    badgeInk: "#ffffff",
+    card: "#fbf9f3",
+    ink: "#17150f",
+    muted: "#6b665a",
+    rule: "#cdc7b4",
+    box: "#fbf9f3",
+    field: "#fbf9f3",
+    grid: "#e3dece",
+    gridMajor: "#d3cdb9",
+    hash: "#9a937f",
+    numbers: "#cfc9b6",
+    los: "#1f3a8a",
+    offense: "#17150f",
+    offenseFill: "#fbf9f3",
+    block: "#17150f",
+    route: "#c4301c",
+    ball: "#c2680c",
+    defense: "#c4301c",
   },
   print: {
     card: "#ffffff",
@@ -72,20 +74,23 @@ const PALETTES = {
     rule: "#111111",
     box: "#ffffff",
     field: "#ffffff",
-    grid: "#c8c8cc",
+    grid: "#dcdcdf",
+    gridMajor: "#bdbdc2",
     hash: "#8a8a93",
-    numbers: "#a8a8b0",
-    los: "#1d4ed8",
+    numbers: "#c4c4ca",
+    los: "#1d3a8a",
     offense: "#111111",
     offenseFill: "#ffffff",
     block: "#111111",
-    route: "#b91c1c",
-    ball: "#c2410c",
-    defense: "#b91c1c",
-    badgeBg: "#111111",
-    badgeInk: "#ffffff",
+    route: "#b3261a",
+    ball: "#b45309",
+    defense: "#b3261a",
   },
 } as const;
+
+/** SVG text can't use CSS variables in attributes, so the stacks are spelled out. */
+const SANS = "'IBM Plex Sans Condensed','Barlow Condensed',sans-serif";
+const MONO = "'IBM Plex Mono',ui-monospace,Menlo,monospace";
 
 /** Card aspect ratio (width / height) shared with layouts that size cards. */
 export const SCOUT_CARD_ASPECT = 760 / 600;
@@ -208,8 +213,8 @@ export function ScoutCard({
     <article
       aria-label={`Card ${cardNumber}: ${title}`}
       className={cn(
-        "@container flex aspect-[760/600] w-full flex-col overflow-hidden border-2",
-        variant === "print" ? "rounded-md" : "rounded-[14px]",
+        "@container flex aspect-[760/600] w-full flex-col overflow-hidden border",
+        variant === "print" ? "rounded-[2px]" : "rounded-[3px]",
         className,
       )}
       style={
@@ -217,41 +222,51 @@ export function ScoutCard({
           background: c.card,
           color: c.ink,
           borderColor: variant === "print" ? c.ink : c.rule,
+          borderTop: `max(3px, 0.55cqw) solid ${c.ink}`,
+          fontFamily: SANS,
           "--sc-muted": c.muted,
         } as React.CSSProperties
       }
     >
-      {/* Header: card number, centered play title, run/pass tag. */}
+      {/* Header: number, left-aligned title block, play-type tag. Hairline rules, no pills. */}
       <header
-        className="grid h-[max(46px,8.5cqw)] shrink-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-[max(8px,1.6cqw)] border-b-2 px-[max(8px,1.6cqw)]"
+        className="grid h-[max(46px,8.6cqw)] shrink-0 grid-cols-[auto_minmax(0,1fr)_auto] items-stretch gap-[max(8px,1.8cqw)] border-b px-[max(8px,1.8cqw)]"
         style={{ borderColor: c.rule }}
       >
         <div
-          className="flex flex-col items-center justify-center rounded-md px-[max(6px,1.2cqw)] py-[max(2px,0.4cqw)]"
-          style={{ background: c.badgeBg, color: c.badgeInk }}
+          className="flex items-center border-r pr-[max(8px,1.8cqw)]"
+          style={{ borderColor: c.rule }}
         >
-          <span className="text-[max(8px,1.25cqw)] leading-none font-bold tracking-[0.12em]">
-            CARD
-          </span>
-          <span className="font-display text-[max(18px,3.6cqw)] leading-[0.95] font-extrabold">
+          <span
+            className="text-[max(20px,4.6cqw)] leading-none font-semibold tabular-nums"
+            style={{ fontFamily: MONO, letterSpacing: "-0.04em" }}
+          >
             {cardNumber}
           </span>
         </div>
-        <div className="flex min-w-0 flex-col items-center text-center">
-          <h3 className="font-display w-full truncate text-[max(16px,3.7cqw)] leading-tight font-extrabold uppercase">
+        <div className="flex min-w-0 flex-col justify-center">
+          <h3
+            className="w-full truncate text-[max(15px,3.5cqw)] leading-[1.05] font-semibold tracking-[-0.01em]"
+            style={{ fontFamily: SANS }}
+          >
             {title}
           </h3>
           <span
-            className="text-[max(9px,1.45cqw)] font-semibold tracking-[0.06em] uppercase"
-            style={{ color: c.muted }}
+            className="mt-[0.25em] truncate text-[max(8px,1.3cqw)] font-medium tracking-[0.08em] uppercase"
+            style={{ color: c.muted, fontFamily: MONO }}
           >
             {subtitle}
           </span>
         </div>
         <span
-          className="font-display rounded-md border-2 px-[max(6px,1.1cqw)] py-[max(1px,0.3cqw)] text-[max(12px,2.2cqw)] font-extrabold whitespace-nowrap"
-          style={{ color: tagColor, borderColor: tagColor }}
+          className="flex items-center gap-[max(4px,0.8cqw)] self-center text-[max(9px,1.5cqw)] font-semibold tracking-[0.08em] whitespace-nowrap uppercase"
+          style={{ color: c.ink, fontFamily: MONO }}
         >
+          <span
+            aria-hidden="true"
+            className="inline-block size-[max(7px,1.3cqw)]"
+            style={{ background: tagColor }}
+          />
           {tag}
         </span>
       </header>
@@ -281,26 +296,33 @@ export function ScoutCard({
               viewBox="0 0 10 10"
               refX={8}
               refY={5}
-              markerWidth={4}
-              markerHeight={4}
+              markerWidth={4.5}
+              markerHeight={4.5}
               orient="auto-start-reverse"
             >
-              <path d="M 0 0 L 10 5 L 0 10 Z" fill={color} />
+              <path d="M 0 0.5 L 10 5 L 0 9.5 L 2.4 5 Z" fill={color} />
             </marker>
           ))}
         </defs>
 
         {/* Field: 5-yard lines, hash marks (left, middle, right), field numbers. */}
         <rect x={0} y={0} width={FIELD.width} height={FIELD.height} fill={c.field} />
-        <g stroke={c.grid} strokeWidth={1.5}>
-          {diagram.yardLines.map(({ y }) => (
-            <line key={y} x1={0} x2={FIELD.width} y1={y} y2={y} />
+        <g strokeWidth={1}>
+          {diagram.yardLines.map(({ y, label }) => (
+            <line
+              key={y}
+              x1={0}
+              x2={FIELD.width}
+              y1={y}
+              y2={y}
+              stroke={label ? c.gridMajor : c.grid}
+            />
           ))}
         </g>
-        <g stroke={c.hash} strokeWidth={1.5}>
+        <g stroke={c.hash} strokeWidth={1}>
           {diagram.hashTicks.map((y) => (
             <g key={y}>
-              <line x1={FIELD.hashX.L - 5} x2={FIELD.hashX.L + 5} y1={y} y2={y} />
+              <line x1={FIELD.hashX.L - 6} x2={FIELD.hashX.L + 6} y1={y} y2={y} />
               <line
                 x1={FIELD.hashX.M - 3}
                 x2={FIELD.hashX.M + 3}
@@ -308,15 +330,15 @@ export function ScoutCard({
                 y2={y}
                 strokeOpacity={0.5}
               />
-              <line x1={FIELD.hashX.R - 5} x2={FIELD.hashX.R + 5} y1={y} y2={y} />
+              <line x1={FIELD.hashX.R - 6} x2={FIELD.hashX.R + 6} y1={y} y2={y} />
             </g>
           ))}
         </g>
         <g
           fill={c.numbers}
           fontSize={22}
-          fontWeight={800}
-          fontFamily="'Barlow Condensed', sans-serif"
+          fontWeight={600}
+          fontFamily={SANS}
           textAnchor="middle"
           stroke={c.field}
           strokeWidth={5}
@@ -344,15 +366,15 @@ export function ScoutCard({
         </g>
 
         {/* Line of scrimmage. */}
-        <rect x={0} y={diagram.losY - 2.5} width={FIELD.width} height={5} fill={c.los} />
+        <rect x={0} y={diagram.losY - 1.75} width={FIELD.width} height={3.5} fill={c.los} />
 
         {/* Blocks, pulls, fakes, routes, ball carrier. */}
-        <g fill="none" stroke={c.block} strokeWidth={3} strokeLinecap="butt" strokeLinejoin="miter">
+        <g fill="none" stroke={c.block} strokeWidth={2.25} strokeLinecap="butt" strokeLinejoin="miter">
           {diagram.blocks.map((b, i) => (
             <path key={i} d={blockPath(b)} />
           ))}
           {diagram.targetBlocks.map(({ path }, i) => (
-            <path key={`t${i}`} d={blockPath(path)} strokeWidth={3.5} />
+            <path key={`t${i}`} d={blockPath(path)} strokeWidth={2.5} />
           ))}
           {diagram.pulls.map((p, i) => (
             <path key={`p${i}`} d={linePath(p, 3)} markerEnd={marker("block")} />
@@ -369,8 +391,8 @@ export function ScoutCard({
               dy="0.36em"
               textAnchor="middle"
               fontSize={12}
-              fontWeight={800}
-              fontFamily="'Barlow Condensed', sans-serif"
+              fontWeight={700}
+              fontFamily={SANS}
               fill={c.ink}
               stroke={c.field}
               strokeWidth={3}
@@ -386,8 +408,8 @@ export function ScoutCard({
               key={`f${i}`}
               d={linePath(p, 3)}
               stroke={c.ball}
-              strokeWidth={3}
-              strokeDasharray="7 6"
+              strokeWidth={2.25}
+              strokeDasharray="6 5"
               markerEnd={marker("ball")}
             />
           ))}
@@ -396,7 +418,7 @@ export function ScoutCard({
               key={`r${i}`}
               d={linePath(p, 3)}
               stroke={c.route}
-              strokeWidth={3.5}
+              strokeWidth={2.5}
               markerEnd={marker("route")}
             />
           ))}
@@ -404,7 +426,7 @@ export function ScoutCard({
             <path
               d={linePath(diagram.carrier, 3)}
               stroke={c.ball}
-              strokeWidth={4}
+              strokeWidth={3}
               markerEnd={marker("ball")}
             />
           )}
@@ -437,8 +459,8 @@ export function ScoutCard({
               dy="0.36em"
               textAnchor="middle"
               fontSize={/^\d$/.test(label) ? 17 : 11}
-              fontWeight={800}
-              fontFamily="'Barlow Condensed', sans-serif"
+              fontWeight={700}
+              fontFamily={SANS}
               fill={c.route}
               stroke={c.field}
               strokeWidth={3.5}
@@ -492,18 +514,18 @@ export function ScoutCard({
                 />
               )}
               <path
-                d={`M ${p.x - 7} ${p.y - 7} L ${p.x + 7} ${p.y + 7} M ${p.x + 7} ${p.y - 7} L ${p.x - 7} ${p.y + 7}`}
+                d={`M ${p.x - 6} ${p.y - 6} L ${p.x + 6} ${p.y + 6} M ${p.x + 6} ${p.y - 6} L ${p.x - 6} ${p.y + 6}`}
                 stroke={c.defense}
-                strokeWidth={3.5}
-                strokeLinecap="round"
+                strokeWidth={2.5}
+                strokeLinecap="butt"
               />
               <text
                 x={p.x}
                 y={diagram.flipped ? p.y + 20 : p.y - 12}
                 textAnchor="middle"
-                fontSize={11}
-                fontWeight={800}
-                fontFamily="'Barlow Condensed', sans-serif"
+                fontSize={9.5}
+                fontWeight={600}
+                fontFamily={MONO}
                 fill={c.defense}
               >
                 {p.label}
@@ -517,23 +539,23 @@ export function ScoutCard({
           p.ball ? (
             <rect
               key={i}
-              x={p.x - 9}
-              y={p.y - 9}
-              width={18}
-              height={18}
+              x={p.x - 8}
+              y={p.y - 8}
+              width={16}
+              height={16}
               fill={c.offenseFill}
               stroke={c.offense}
-              strokeWidth={2.5}
+              strokeWidth={2}
             />
           ) : (
             <g key={i}>
               <circle
                 cx={p.x}
                 cy={p.y}
-                r={p.label ? 11 : 9}
+                r={p.label ? 10.5 : 8.5}
                 fill={c.offenseFill}
                 stroke={c.offense}
-                strokeWidth={2.5}
+                strokeWidth={p.label ? 1.75 : 2}
               />
               {p.label && (
                 <text
@@ -541,9 +563,9 @@ export function ScoutCard({
                   y={p.y}
                   dy="0.36em"
                   textAnchor="middle"
-                  fontSize={13}
-                  fontWeight={800}
-                  fontFamily="'Barlow Condensed', sans-serif"
+                  fontSize={11.5}
+                  fontWeight={600}
+                  fontFamily={MONO}
                   fill={c.offense}
                 >
                   {p.label}
@@ -603,7 +625,7 @@ export function ScoutCard({
 
       {/* Assignment table: generated from the play, or the coach's own words. */}
       <div
-        className="grid shrink-0 gap-px border-t-2"
+        className="grid shrink-0 gap-px border-t"
         style={{
           gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
           background: c.rule,
@@ -619,8 +641,8 @@ export function ScoutCard({
               style={{ background: c.box, gridColumn: isNotes ? `span ${notesSpan}` : undefined }}
             >
               <span
-                className="shrink-0 text-[max(9px,1.45cqw)] font-extrabold tracking-[0.06em]"
-                style={{ color: c.muted }}
+                className="shrink-0 text-[max(8px,1.3cqw)] font-semibold tracking-[0.04em]"
+                style={{ color: c.muted, fontFamily: MONO }}
               >
                 {row.label}
               </span>
@@ -630,7 +652,7 @@ export function ScoutCard({
                   defaultValue={row.text}
                   aria-label={`${row.label} assignment`}
                   className={cn(
-                    "min-w-0 flex-1 bg-transparent text-[max(11px,1.75cqw)] font-semibold outline-none",
+                    "min-w-0 flex-1 bg-transparent text-[max(11px,1.8cqw)] font-medium outline-none",
                     "rounded-sm focus-visible:ring-2 focus-visible:ring-[#2563eb]",
                     row.custom ? "italic" : "",
                   )}
@@ -645,7 +667,7 @@ export function ScoutCard({
               ) : (
                 <span
                   className={cn(
-                    "min-w-0 text-[max(11px,1.75cqw)] leading-tight font-semibold",
+                    "min-w-0 text-[max(11px,1.8cqw)] leading-tight font-medium",
                     // Paper can't scroll or tap: wrap to two lines instead of cutting off.
                     variant === "print" ? "line-clamp-2 break-words" : "truncate",
                     row.custom ? "italic" : "",

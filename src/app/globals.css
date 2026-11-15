@@ -56,6 +56,9 @@
 
   --font-sans: "Barlow", ui-sans-serif, system-ui, sans-serif;
   --font-display: "Barlow Condensed", "Barlow", ui-sans-serif, system-ui, sans-serif;
+  /* Scout card typography: a condensed grotesque for titles and calls, a mono for data labels. */
+  --font-card: "IBM Plex Sans Condensed", "Barlow Condensed", ui-sans-serif, system-ui, sans-serif;
+  --font-card-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
 }
 
 @layer base {

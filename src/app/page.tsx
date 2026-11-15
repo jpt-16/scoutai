@@ -166,7 +166,7 @@ export default function LandingPage() {
                 ] as const
               ).map(({ unit, label }) => (
                 <figure key={unit} className="reveal flex flex-col gap-3">
-                  <div className="overflow-hidden rounded-3xl shadow-[0_30px_80px_-24px_rgba(0,0,0,0.75)] ring-1 ring-white/10">
+                  <div className="shadow-[0_30px_80px_-24px_rgba(0,0,0,0.75)]">
                     <ScoutCard card={PREVIEW_CARD} unit={unit} />
                   </div>
                   <figcaption className="text-center text-[15px] font-semibold text-muted-foreground">

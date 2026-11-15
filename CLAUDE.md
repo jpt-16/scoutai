@@ -183,16 +183,23 @@ Free-text tags are classified by keyword (`classifyFormation`, `classifyFront`,
 - Formations: Spread, Trips, I-Form, Double Eagle, **Pro** (Q under center, F behind him, H behind
   the F) and **Split Pro** (backs side by side, used only when the tag says SPLIT).
 
-Card look (`ScoutCard.tsx`, PlayIQ-style):
+Card look (`ScoutCard.tsx`, a printed play sheet: warm paper, hairline rules, square corners, no pills):
 
-- **Header:** card #, a centered play title (formation · play call, or formation vs front),
-  the hash and period, and a RUN / PASS / RPO / PLAY ACTION / DEF tag.
-- **Field:** white, with light gray 5-yard lines, left/middle/right hash ticks, field numbers
-  (turned 90° to face their own sideline, like a real field) and a **blue LOS bar**.
+- **Type:** IBM Plex Sans Condensed (titles, calls, route labels) and IBM Plex Mono (card number,
+  labels, player letters, tags), both self-hosted via `@fontsource`. The stacks are `SANS`/`MONO`
+  in `ScoutCard.tsx` (SVG attributes can't read CSS variables); the CSS tokens are `--font-card`
+  and `--font-card-mono`.
+- **Header:** a heavy ink top rule, the card # in mono, a left-aligned play title (formation · play
+  call, or formation vs front) with the hash and period under it, and a RUN / PASS / RPO /
+  PLAY ACTION / DEF tag as a colored square plus mono text.
+- **Field:** paper-colored, with hairline 5-yard lines (10s a shade darker), left/middle/right hash
+  ticks, field numbers (turned 90° to face their own sideline, like a real field) and a thin
+  deep-blue **LOS bar**.
 - **Symbols:** the center is a square, other linemen are unlabeled circles, and skill players
   are circles with black letters (Q/F/H/X/Y/Z; the staff's own convention, kept over a generic
   X/T/QB/RB set).
-- **Lines:** routes are red, the ball carrier and fakes orange, blocks black. Every path is
+- **Lines:** routes are vermilion, the ball carrier and fakes orange, blocks black, all drawn thin
+  (about 2–3 px in viewBox units). Every path is
   straight segments with sharp breaks and `marker-end` arrows (ids from `useId`). Route labels
   move to a clear spot when they'd land on a player.
 - **Route angles:** true field angles (`YARD_X` across, `YARD_PX` up).
