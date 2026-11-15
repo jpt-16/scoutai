@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
+  ChartColumn,
   ChevronLeft,
   ChevronRight,
   ClipboardCheck,
@@ -20,6 +21,8 @@ import {
   Sparkles,
   Upload,
   Sun,
+  TriangleAlert,
+  X as XIcon,
 } from "lucide-react";
 import { AppGate } from "@/components/AppGate";
 import { BrandMark } from "@/components/BrandMark";
@@ -63,6 +66,8 @@ import { applyReview, reviewRows, type ReviewResult } from "@/lib/importReview";
 import { SyncBadge } from "@/components/CloudSync";
 import { GameSaveBack } from "@/components/GameSaveBack";
 import { ReviewBar, ReviewSummaryDialog } from "@/components/ReviewBar";
+import { ScoutReportDialog } from "@/components/ScoutReportDialog";
+import { needsLook, qaFlagMap } from "@/lib/qaFlags";
 import { loadScript, saveScript, storeScript, type ScriptSlot, type StoredScript } from "@/lib/scriptStore";
 import { nextUnchecked, reviewStatus, withRouteCheck } from "@/lib/review";
 import { useRemoteApplied } from "@/lib/useRemoteApplied";
@@ -177,6 +182,9 @@ function ScriptApp({ demoMode = false }: { demoMode?: boolean }) {
   const [reviewing, setReviewing] = useState(false);
   const [onlyUnchecked, setOnlyUnchecked] = useState(false);
   const [summaryOpen, setSummaryOpen] = useState(false);
+  // The scouting report, and the plays a number in it (or the needs-a-look list) sent the reader to.
+  const [reportOpen, setReportOpen] = useState(false);
+  const [finder, setFinder] = useState<{ label: string; ids: Set<string> } | null>(null);
   // Sunlight mode (black and white, thick lines), remembered on this iPad.
   const [sunlight, setSunlight] = useState(false);
   useEffect(() => {
@@ -251,6 +259,28 @@ function ScriptApp({ demoMode = false }: { demoMode?: boolean }) {
   // Whole-script tendencies, not the currently filtered view -- "how often
   // does this team run Trips" means the whole game, not just this filter.
   const tendencies = useMemo(() => computeTendencies(cards), [cards]);
+  // Automatic checks (src/lib/qaFlags.ts): what a coach should look at before trusting a play.
+  const flags = useMemo(() => qaFlagMap(cards), [cards]);
+  const lookIds = useMemo(() => needsLook(flags), [flags]);
+  /** Sends the reader to a set of plays (a number in the report, the needs-a-look list), clearing every other filter. */
+  const showPlays = (label: string, ids: string[], lens: ScoutUnit) => {
+    setUnit(lens);
+    setMode("all");
+    setDown("all");
+    setFormation("all");
+    setFilm("all");
+    setOnlyUnchecked(false);
+    setFinder({ label, ids: new Set(ids) });
+    setIndex(0);
+  };
+  /** The needs-a-look plays, on whichever side of the ball has some (this one first). */
+  const showNeedsLook = () => {
+    const byId = new Map(cards.map((c) => [c.id, c]));
+    const here = pair ? "offense" : unit;
+    const inLens = (lens: ScoutUnit) => lookIds.filter((id) => byId.has(id) && inPeriod(byId.get(id)!, "all", lens));
+    const lens: ScoutUnit = inLens(here).length > 0 ? here : here === "offense" ? "defense" : "offense";
+    showPlays("Needs a look", inLens(lens), lens);
+  };
   const multiFilm = (script?.films.length ?? 0) > 1;
   const modeCards = useMemo(
     () =>
@@ -272,7 +302,8 @@ function ScriptApp({ demoMode = false }: { demoMode?: boolean }) {
           (c) =>
             (down === "all" || c.down === down) &&
             (formation === "all" || c.formationKey === formation) &&
-            !(reviewing && onlyUnchecked && c.reviewedAt),
+            !(reviewing && onlyUnchecked && c.reviewedAt) &&
+            (!finder || finder.ids.has(c.id)),
         );
     // Scout D: the staff's secondary for each card's formation (src/lib/secondary.ts).
     if (unit !== "defense" || !dbAlignments) return list;
@@ -280,7 +311,7 @@ function ScriptApp({ demoMode = false }: { demoMode?: boolean }) {
       const secondary = dbAlignmentFor(dbAlignments, c.formationName ?? c.formation, c.formationKey);
       return secondary ? { ...c, secondary } : c;
     });
-  }, [modeCards, down, formation, practicePeriod, unit, dbAlignments, reviewing, onlyUnchecked]);
+  }, [modeCards, down, formation, practicePeriod, unit, dbAlignments, reviewing, onlyUnchecked, finder]);
   const cardMode = mode === "7v7" ? "7v7" : "team";
 
   const downOptions: FilterOption<DownFilter>[] = [
@@ -898,6 +929,24 @@ function ScriptApp({ demoMode = false }: { demoMode?: boolean }) {
               {reviewing ? "Done" : "Review"}
             </Button>
           )}
+          {!drawing && !demoMode && !practice && (
+            <Button size="lg" variant="outline" onClick={() => setReportOpen(true)} title="Scouting report: what they do, by situation">
+              <ChartColumn aria-hidden="true" />
+              <span className="hidden xl:inline">Report</span>
+            </Button>
+          )}
+          {!drawing && !demoMode && !practice && lookIds.length > 0 && (
+            <Button
+              size="lg"
+              variant={finder?.label === "Needs a look" ? "default" : "outline"}
+              onClick={showNeedsLook}
+              title="Plays the app isn't sure about: tags it can't place, values that can't be right, doubts from the film"
+            >
+              <TriangleAlert aria-hidden="true" />
+              <span className="hidden xl:inline">Check</span>
+              <span className="tabular-nums">{lookIds.length}</span>
+            </Button>
+          )}
           {unit === "offense" && view === "field" && !drawing && !demoMode && (
             <>
               <Button
@@ -1015,6 +1064,51 @@ function ScriptApp({ demoMode = false }: { demoMode?: boolean }) {
           autoStyle={coverageStyleFor(current.coverage)}
           drawnDepths={drawnSafetyDepths}
           onChange={setDefenseAlignment}
+        />
+      )}
+
+      {finder && !practice && (
+        <div className="mx-4 mt-2 flex items-center gap-3 rounded-xl border border-primary/40 bg-primary/10 px-4 py-2">
+          <span className="min-w-0 flex-1 text-sm">
+            <span className="font-bold tabular-nums">{filtered.length}</span> {filtered.length === 1 ? "play" : "plays"}:{" "}
+            <span className="font-semibold">{finder.label}</span>
+          </span>
+          <Button
+            size="lg"
+            variant="outline"
+            onClick={() => {
+              setFinder(null);
+              setIndex(0);
+            }}
+          >
+            <XIcon aria-hidden="true" />
+            Show all
+          </Button>
+        </div>
+      )}
+      {!practice && !demoMode && view === "field" && current && (flags.get(current.id)?.length ?? 0) > 0 && (
+        <ul className="mx-4 mt-2 flex flex-col gap-1" aria-label="What to check on this play">
+          {flags.get(current.id)!.map((f) => (
+            <li
+              key={`${f.code}:${f.message}`}
+              className={cn(
+                "flex items-start gap-2 rounded-lg border px-3 py-2 text-sm",
+                f.level === "check" ? "border-amber-400/50 bg-amber-400/10 text-foreground" : "border-border text-muted-foreground",
+              )}
+            >
+              <TriangleAlert aria-hidden="true" className={cn("mt-0.5 size-4 shrink-0", f.level === "check" ? "text-amber-400" : "text-muted-foreground")} />
+              <span>{f.message}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {reportOpen && (
+        <ScoutReportDialog
+          open={reportOpen}
+          onOpenChange={setReportOpen}
+          cards={cards}
+          initialUnit={pair ? "offense" : unit}
+          onShowPlays={showPlays}
         />
       )}
 

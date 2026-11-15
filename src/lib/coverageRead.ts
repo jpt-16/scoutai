@@ -25,6 +25,7 @@
 
 import { deriveCard, type HudlPlayCard } from "./hudlParser";
 import { matchFilmToCard, readDefense, type DefenseRead, type DefRole } from "./defenseRead";
+import type { CoverageFamily } from "./coverageTag";
 import { isPressureTag } from "./pressure";
 import { matchDetectedLetters, type DetectedPlayer } from "./videoImport";
 import { snapTime, type TrackedPlayer, type TrackedPlayFile } from "./trackedPlay";
@@ -80,7 +81,8 @@ const HOOK_WIDTH = 7;
 const BOX_HALF_WIDTH = 4;
 const LINE_DEPTH = 1.6;
 
-export type CoverageFamily = "0" | "1" | "2" | "2-man" | "tampa-2" | "3" | "4";
+export type { CoverageFamily } from "./coverageTag";
+export { coverageFamilyOf } from "./coverageTag";
 export type FlatPlayer = "cloud" | "sky" | "buzz" | "none";
 
 /** What one defender was doing: covering a man, holding a zone, or rushing. */
@@ -377,22 +379,6 @@ export function readCoverage(file: TrackedPlayFile): CoverageRead | null {
     }),
   ];
   return { family, label, man, deep: deep.length, flats, match, shell, rotated, confidence, sure: confidence >= SURE_COVERAGE, evidence, assignments };
-}
-
-/**
- * The coverage family a COVERAGE tag names ("C3", "Cover 3 Sky", "Quarters", "Tampa"), for scoring against a sheet. A
- * number this staff doesn't use as a coverage (no Cover 5 or 6; their sheets also carry calls like "6 - DOUBLE FIRE")
- * names none.
- */
-export function coverageFamilyOf(tag: string): CoverageFamily | null {
-  const t = ` ${tag.toUpperCase().replace(/[^A-Z0-9]+/g, " ")} `;
-  if (/ TAMPA /.test(t)) return "tampa-2";
-  if (/ (QUARTERS|QTRS|QUARTER) /.test(t)) return "4";
-  if (/ (2 MAN|TWO MAN|COVER 5|C5) /.test(t)) return "2-man";
-  const n = t.match(/ (?:COVER|CVR|CV|C)? ?([0-9]) /)?.[1] ?? t.match(/ C([0-9])/)?.[1];
-  if (n === "0" || n === "1" || n === "2" || n === "3" || n === "4") return n;
-  if (/ (ZERO) /.test(t)) return "0";
-  return null;
 }
 
 /**

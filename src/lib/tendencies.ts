@@ -53,7 +53,7 @@ export interface ScriptTendencies {
   directionSplit: { left: number; right: number; total: number };
 }
 
-function distanceBucketLabel(card: Pick<HudlPlayCard, "distance" | "isGoalToGo">): "Short" | "Medium" | "Long" {
+export function distanceBucketLabel(card: Pick<HudlPlayCard, "distance" | "isGoalToGo">): "Short" | "Medium" | "Long" {
   if (card.isGoalToGo) return "Short";
   if (card.distance == null) return "Medium"; // unknown: don't skew the label toward an extreme
   if (card.distance <= 3) return "Short";

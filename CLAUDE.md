@@ -70,6 +70,9 @@ src/
     generatedCard.ts       Text-to-card: Gemini prompt, answer validation, grid → card overrides
     batchMatcher.ts        Batch plan: sort clips from the sheet, match clip ↔ row, route each row
     gemini.ts              The one Gemini JSON call: model fallback, schema fallback, real error reasons
+    scoutReport.ts         The scouting report: their defense (fronts, blitz, coverage) and offense (run/pass by down, distance, formation), by situation
+    qaFlags.ts             Automatic checks on each play ("needs a look"): film doubts, values that can't be right, tags the app can't place
+    coverageTag.ts         What a COVERAGE tag names (Cover 3, Tampa 2…); coverageRead.ts re-exports it
     exportUtils.ts         Export targets (CoachPad 13.3" 4:3, iPad, letter), card fit, file names
     film/                  Hosted film pipeline: jobs, service, storage, upload plan (see "Game film upload")
   types/
@@ -621,6 +624,31 @@ checking it), **Undo** un-checks, **Unchecked only** filters the list, and **Sco
   coach picks a route by hand). Only on Scout O or Both, where the routes are drawn. The Scorecard adds a FILM ROUTES section
   (rated, right / close / wrong %, per letter) and **Route ratings (routes.csv)**: play, letter, rating and the drawn path, which is
   how the film's routes get measured from every Sunday review with no separate sheet.
+
+## Scouting report and the Check list (`src/lib/scoutReport.ts`, `qaFlags.ts`, `ScoutReportDialog.tsx`)
+
+Two things a staff does with a whole game that a single card can't show, both computed in the browser from the cards (nothing is sent anywhere).
+
+- **Report** (script reader toolbar, not in practice mode or the demo): **Their defense** and **Their offense**, under one set of situation
+  filters (down, distance bucket, formation family, hash), each number with the plays behind it. Tapping a number (a coverage, a blitz call,
+  "1st down: runs") sends the reader to exactly those plays (`finder` in `script/page.tsx`: a banner says what the list is, **Show all** clears
+  it). Defense: fronts (the staff's own text, of all plays), blitz (rate of the **tagged** snaps, the calls, a rate by down; this staff writes the
+  blitz in COVERAGE, `readDefenseTag` / `parsePressure`), coverage (of the non-blitz tagged snaps; man or zone). Offense: run / pass overall, by
+  down, by distance and by formation family, the kinds of play they call, where their runs go. A **gain** (yards per play) shows only where
+  RESULT reads plainly as yards (`parseGain`) on at least 3 plays. Film cards carry no RESULT, so there it simply doesn't appear.
+- **Where to attack** is plain sentences made by rules (`defenseInsights`, `offenseInsights`), each carrying its sample size and written only
+  where the plays say enough: a slice needs `MIN_SNAPS` (4), the whole `MIN_TOTAL` (8) and a `MIN_SWING` (20 points) from the whole, and a
+  coverage or blitz sentence only counts snaps that **have** a COVERAGE tag (a blank column never reads as "never blitzes"). Don't loosen
+  these to make a report look fuller: a coach reads each sentence as a fact about the opponent. A play whose `scoutSide` is the other team is
+  left out of the side it wasn't on, as everywhere else.
+- **Check** (toolbar, with a count) lists the plays the app isn't sure about (`qaFlagMap`, `needsLook`), and the reader prints the reasons
+  above the card. **check** level: a doubt the film reader wrote in the notes ("Check routes: …", "Check formation: …", "Lost early on film…",
+  "Tapped, but …"; gone once a coach has checked the play in Review mode), a down / distance / yard line that can't be right, a formation or
+  front the classifiers can't place. **info** level (shown on the play, never counted): a call read as neither run nor pass, and down and
+  distance that don't follow the play before (`expectedNext`: a gain to the sticks is 1st down, a short one the next down with the yards left;
+  a penalty explains it, so it's only information). Nothing is flagged because film left down and distance blank.
+- Not built: a printable report, a clip beside each card (film is deleted after 14 days and plays from a private store), blitz or coverage by
+  formation family, EPA or success rate (no result on film).
 
 ## Sideline screens: sunlight mode and CoachPad export
 
