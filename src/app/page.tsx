@@ -8,7 +8,6 @@ import { ScoutCard } from "@/components/ScoutCard";
 import { UploadDropzone } from "@/components/UploadDropzone";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -110,29 +109,29 @@ export default function UploadPage() {
 
   return (
     <div className="flex min-h-dvh flex-col">
-      <header className="flex h-[72px] shrink-0 items-center justify-between border-b px-6 lg:px-12">
+      <header className="sticky top-0 z-20 flex h-16 shrink-0 items-center justify-between border-b border-white/10 bg-background/70 px-6 backdrop-blur-xl backdrop-saturate-150 lg:px-12 contrast-more:bg-background motion-reduce:backdrop-blur-none">
         <BrandMark />
-        <p className="hidden items-center gap-2 text-[15px] font-medium text-muted-foreground md:flex">
+        <p className="hidden items-center gap-2 text-[15px] text-muted-foreground md:flex">
           <Smartphone className="size-[18px]" aria-hidden="true" />
           Add to Home Screen to use offline on the field
         </p>
       </header>
 
-      <main className="grid flex-1 gap-10 px-6 py-10 lg:grid-cols-[minmax(0,1fr)_520px] lg:gap-14 lg:px-12 lg:py-12">
-        <section className="flex min-w-0 flex-col gap-6">
-          <p className="text-sm font-bold tracking-[0.14em] text-primary">
-            SCOUT TEAM CARDS FROM YOUR HUDL BREAKDOWN
+      <main className="flex flex-1 flex-col items-center px-6 pb-24">
+        <section className="flex w-full max-w-[880px] flex-col items-center gap-6 pt-14 text-center sm:pt-20">
+          <p className="text-[15px] font-semibold tracking-[0.01em] text-primary">
+            Scout team cards from your Hudl breakdown
           </p>
-          <h1 className="font-display text-5xl leading-[0.95] font-extrabold uppercase sm:text-[68px]">
+          <h1 className="text-balance text-[44px] leading-[1.03] font-bold tracking-[-0.03em] sm:text-[72px] sm:leading-[1.02]">
             Stop drawing cards.
             <br />
-            Start repping looks.
+            <span className="text-muted-foreground">Start repping looks.</span>
           </h1>
-          <p className="max-w-[540px] text-[19px] leading-normal text-[#c9cfc9]">
-            Upload this week&apos;s Hudl breakdown. Every play becomes a clean vector card you can flip
-            through on the iPad at practice, or print 2 or 4 to a page.
+          <p className="max-w-[600px] text-pretty text-[19px] leading-[1.45] text-muted-foreground sm:text-[21px]">
+            Drop in this week&apos;s breakdown. Every play becomes a clean card to flip through on the
+            iPad at practice, or print 2 or 4 to a page.
           </p>
-          <div className="mt-2">
+          <div className="mt-4 w-full">
             <UploadDropzone onFiles={handleFiles} onDemo={handleDemo} busy={busy} error={error} />
           </div>
           <p className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -141,23 +140,40 @@ export default function UploadPage() {
           </p>
         </section>
 
-        <aside className="flex flex-col gap-5">
-          <ScoutCard card={PREVIEW_CARD} />
-          <ol className="grid grid-cols-3 gap-3">
+        <section
+          aria-label="Example scout card"
+          className="relative mt-20 w-full max-w-[760px] sm:mt-28"
+        >
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute -inset-x-8 -inset-y-10 -z-10 rounded-[48px] bg-[radial-gradient(60%_60%_at_50%_50%,rgba(255,138,61,0.16),transparent_70%)]"
+          />
+          <div className="overflow-hidden rounded-3xl shadow-[0_30px_80px_-20px_rgba(0,0,0,0.7)] ring-1 ring-white/10">
+            <ScoutCard card={PREVIEW_CARD} />
+          </div>
+          <p className="mt-5 text-center text-[15px] text-muted-foreground">
+            Every card is drawn from a single row of your Hudl export.
+          </p>
+        </section>
+
+        <section aria-label="How it works" className="mt-24 w-full max-w-[980px] sm:mt-32">
+          <h2 className="text-center text-[32px] leading-tight font-bold tracking-[-0.02em] sm:text-[44px]">
+            Three steps. No drawing.
+          </h2>
+          <ol className="mt-10 grid gap-4 sm:grid-cols-3">
             {STEPS.map((step, i) => (
-              <li key={step}>
-                <Card className="h-full gap-1.5 rounded-xl py-3.5">
-                  <CardContent className="flex flex-col gap-1.5 px-3.5">
-                    <span className="font-display text-[22px] font-extrabold text-primary">
-                      {String(i + 1).padStart(2, "0")}
-                    </span>
-                    <span className="text-[15px] leading-snug font-semibold">{step}</span>
-                  </CardContent>
-                </Card>
+              <li
+                key={step}
+                className="flex flex-col gap-3 rounded-3xl border border-white/10 bg-white/[0.04] p-6"
+              >
+                <span className="flex size-9 items-center justify-center rounded-full bg-primary/15 text-[17px] font-semibold text-primary">
+                  {i + 1}
+                </span>
+                <span className="text-[19px] leading-snug font-semibold tracking-[-0.01em]">{step}</span>
               </li>
             ))}
           </ol>
-        </aside>
+        </section>
       </main>
 
       <Dialog open={report != null} onOpenChange={(open) => !open && setReport(null)}>
