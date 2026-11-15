@@ -71,6 +71,78 @@
   }
 }
 
+/* Landing page helpers ------------------------------------------------- */
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: 5rem; /* keeps anchored sections and focus clear of the sticky header */
+}
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
+
+.section-title {
+  font-size: clamp(2rem, 5vw, 3.5rem);
+  line-height: 1.05;
+  letter-spacing: -0.025em;
+  font-weight: 700;
+  text-wrap: balance;
+}
+
+.nav-link {
+  min-height: 2.75rem;
+  align-items: center;
+  border-radius: 9999px;
+  padding-inline: 1rem;
+  font-size: 15px;
+  color: var(--muted-foreground);
+  outline: none;
+  transition:
+    color 120ms,
+    background-color 120ms;
+}
+.nav-link:hover {
+  color: var(--foreground);
+  background-color: rgb(255 255 255 / 0.06);
+}
+.nav-link:focus-visible {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 60%, transparent);
+}
+
+/* Scroll reveal: decorative, so it only runs where scroll-driven animations
+   exist and the user hasn't asked for less motion. Elsewhere content simply shows. */
+@media (prefers-reduced-motion: no-preference) {
+  @supports ((animation-timeline: view()) and (animation-range: entry)) {
+    @keyframes reveal-up {
+      from {
+        opacity: 0;
+        translate: 0 24px;
+      }
+    }
+    .reveal {
+      animation: reveal-up auto linear backwards;
+      animation-timeline: view();
+      animation-range: entry 0% entry 35%;
+    }
+  }
+}
+
+/* Honor the system's transparency and contrast settings on the glass header. */
+@media (prefers-reduced-transparency: reduce) {
+  .site-header {
+    background-color: var(--background);
+    backdrop-filter: none;
+  }
+}
+@media (prefers-contrast: more) {
+  .site-header {
+    background-color: var(--background);
+    backdrop-filter: none;
+    border-bottom-color: var(--foreground);
+  }
+}
+
 @media print {
   html,
   body {

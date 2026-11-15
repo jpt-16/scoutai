@@ -37,7 +37,7 @@ src/
   app/
     layout.tsx             Fonts, metadata (manifest, apple web app), SW registration
     globals.css            Theme tokens (dark field palette) + print rules
-    page.tsx               Redirects / to /script (landing page removed; redesign later)
+    page.tsx               Landing page (server): hero + upload, example cards, features, steps; scroll reveals are CSS-only
     script/page.tsx        iPad reader + empty-state upload/demo: Scout O/D + All/7v7/Team toggles, filters, swiper, Print Grid
   components/
     ScoutCard.tsx          PlayIQ-style card: title header, white-field SVG, assignment table
@@ -46,6 +46,7 @@ src/
     UploadDropzone.tsx     Drag-and-drop + file picker (multiple films), .csv validation
     EditPlayDialog.tsx     Edit a play (formation, strength, play, direction, hash, front, coverage, note)
     ImportNotice.tsx       Non-blocking "Loaded / Added N plays" notice with file notes
+    LandingUpload.tsx      Client island for the landing page: import CSVs / demo, then route to /script
     BrandMark.tsx, ServiceWorkerRegister.tsx
     ui/                    shadcn primitives: button, card, badge, tabs, dialog
   lib/
@@ -61,8 +62,8 @@ src/
 
 1. `parseHudlCsv(file)` / `parseHudlCsvText(text)` in `src/lib/hudlParser.ts` returns
    `{ cards, columns, missingColumns, warnings, rowCount }`.
-2. `/` redirects to `/script`. With nothing loaded, the script page shows the upload dropzone and demo
-   button. If at least one card parses, it's stored and shown; with zero cards an inline error appears.
+2. The landing page (`/`) imports CSVs via `LandingUpload` and routes to `/script?loaded=1`. The script page also
+   shows an upload dropzone and demo button when nothing is loaded. With zero cards an inline error appears.
 3. `/script` reads it back with `loadScript()`, filters it, and renders `<ScoutCard>`.
 4. `<ScoutCard>` calls `buildDiagram(card)` from `src/lib/formations.ts` and draws the SVG.
 
